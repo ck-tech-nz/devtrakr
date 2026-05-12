@@ -184,6 +184,12 @@
               {{ r(row).rework_count }}
             </span>
           </template>
+          <template #delay_hours-cell="{ row }">
+            <span v-if="r(row).total_delay_hours > 0" class="text-red-500 font-medium">
+              {{ r(row).total_delay_hours.toFixed(1) }}h
+            </span>
+            <span v-else class="text-gray-400">-</span>
+          </template>
           <template #delay-cell="{ row }">
             <span v-if="r(row).avg_delay_ratio" :class="delayCellClass(r(row).avg_delay_ratio)">
               {{ r(row).avg_delay_ratio.toFixed(2) }}×
@@ -274,7 +280,8 @@ const columns = [
   { accessorKey: 'tickets', header: '完成工单' },
   { accessorKey: 'earnings', header: '估算收入' },
   { accessorKey: 'rework', header: '重修' },
-  { accessorKey: 'delay', header: '拖延' },
+  { accessorKey: 'delay_hours', header: '延期(h)' },
+  { accessorKey: 'delay', header: '倍数' },
   { accessorKey: 'response', header: '首响' },
   { accessorKey: 'overall', header: '综合分' },
   { accessorKey: 'efficiency', header: '效率' },
@@ -353,6 +360,7 @@ interface TableRow {
   estimated_earnings: number
   rework_count: number
   avg_delay_ratio: number
+  total_delay_hours: number
   avg_first_response_hours: number
 }
 
@@ -378,6 +386,7 @@ const tableRows = computed<TableRow[]>(() => {
     estimated_earnings: d.workload?.estimated_earnings ?? 0,
     rework_count: d.workload?.rework_count ?? 0,
     avg_delay_ratio: d.workload?.avg_delay_ratio ?? 0,
+    total_delay_hours: d.workload?.total_delay_hours ?? 0,
     avg_first_response_hours: d.workload?.avg_first_response_hours ?? 0,
   }))
 })

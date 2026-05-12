@@ -325,14 +325,14 @@ class TestWorkloadMetrics:
         assert result["large_count"] == 1
         assert result["estimated_earnings"] == 250 + 600
 
-    def test_delay_ratio_calculation(self):
-        """avg_delay_ratio = mean(actual/estimated)，over_estimate_count 统计 >1 的工单。"""
+    def test_delay_metrics(self):
+        """avg_delay_ratio / total_delay_hours / total_overrun_hours / over_estimate_count。"""
         user = UserFactory()
         project = ProjectFactory()
         base = timezone.make_aware(timezone.datetime(2026, 4, 5, 10, 0))
 
-        # 工单 A: 预计 4h, 实际 8h → ratio 2.0 (拖延)
-        # 工单 B: 预计 4h, 实际 2h → ratio 0.5 (提前)
+        # 工单 A: 预计 4h, 实际 8h → ratio 2.0, +4h
+        # 工单 B: 预计 4h, 实际 2h → ratio 0.5, -2h (提前完成)
         for i, (est, actual) in enumerate([(4.0, 8.0), (4.0, 2.0)]):
             issue = IssueFactory(
                 project=project, assignee=user, priority="P2",
@@ -344,9 +344,12 @@ class TestWorkloadMetrics:
             issue.save(update_fields=["created_at", "resolved_at"])
 
         result = compute_workload_metrics(user, date(2026, 4, 1), date(2026, 4, 30))
-        # (2.0 + 0.5) / 2 = 1.25
         assert result["avg_delay_ratio"] == 1.25
         assert result["over_estimate_count"] == 1
+        # 总延期 = 只算超出的 4h
+        assert result["total_delay_hours"] == 4.0
+        # 净偏差 = 4 + (-2) = 2h
+        assert result["total_overrun_hours"] == 2.0
 
     def test_rework_detection_within_protection_window(self):
         """已解决后 7 天内被改回进行中应计入 rework_count。"""

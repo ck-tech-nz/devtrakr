@@ -191,8 +191,8 @@
               </div>
             </div>
 
-            <!-- 重修 + 拖延 + SLA -->
-            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <!-- 重修 + 总延期 + 拖延度 + SLA -->
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
               <div class="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 p-5">
                 <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-3">保护期 ({{ workload?.protection_days ?? 7 }} 天) 重修</h3>
                 <div class="flex items-end gap-2">
@@ -206,7 +206,20 @@
                 </p>
               </div>
               <div class="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 p-5">
-                <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-3">工作拖延度</h3>
+                <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-3">总延期时长</h3>
+                <div class="flex items-end gap-2">
+                  <div class="text-4xl font-bold" :class="(workload?.total_delay_hours ?? 0) > 0 ? 'text-red-500' : 'text-emerald-500'">
+                    {{ workload?.total_delay_hours != null ? workload.total_delay_hours.toFixed(1) : '-' }}
+                  </div>
+                  <div class="text-sm text-gray-400 dark:text-gray-500 pb-1">小时</div>
+                </div>
+                <p class="text-xs text-gray-500 dark:text-gray-400 mt-3 leading-relaxed">
+                  本期 {{ workload?.over_estimate_count ?? 0 }} 单超出预计的累计延期时间。<br />
+                  净偏差(含提前): {{ workload?.total_overrun_hours != null ? workload.total_overrun_hours.toFixed(1) : '-' }}h
+                </p>
+              </div>
+              <div class="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 p-5">
+                <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-3">平均拖延倍数</h3>
                 <div class="flex items-end gap-2">
                   <div class="text-4xl font-bold" :class="delayColorClass">
                     {{ workload?.avg_delay_ratio ? workload.avg_delay_ratio.toFixed(2) : '-' }}
@@ -214,7 +227,7 @@
                   <div class="text-sm text-gray-400 dark:text-gray-500 pb-1">× 预计</div>
                 </div>
                 <p class="text-xs text-gray-500 dark:text-gray-400 mt-3 leading-relaxed">
-                  实际工时 / 预计工时的平均比。&gt; 1 表示超出预计 ({{ workload?.over_estimate_count ?? 0 }} 单超出)。
+                  每单 actual/estimated 的平均值,反映单工单粒度的拖延倍率。
                 </p>
               </div>
               <div class="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 p-5">
@@ -261,9 +274,15 @@
                   <span v-if="b(row).actual_hours != null">{{ Number(b(row).actual_hours).toFixed(1) }}h</span>
                   <span v-else class="text-gray-400">-</span>
                 </template>
+                <template #delay_hours-cell="{ row }">
+                  <span v-if="b(row).delay_hours != null" :class="rowDelayHoursClass(b(row).delay_hours!)">
+                    {{ b(row).delay_hours! > 0 ? '+' : '' }}{{ b(row).delay_hours!.toFixed(1) }}h
+                  </span>
+                  <span v-else class="text-gray-400">-</span>
+                </template>
                 <template #delay_ratio-cell="{ row }">
-                  <span v-if="b(row).delay_ratio != null" :class="rowDelayClass(b(row).delay_ratio)">
-                    {{ Number(b(row).delay_ratio).toFixed(2) }}×
+                  <span v-if="b(row).delay_ratio != null" :class="rowDelayClass(b(row).delay_ratio!)">
+                    {{ b(row).delay_ratio!.toFixed(2) }}×
                   </span>
                   <span v-else class="text-gray-400">-</span>
                 </template>
@@ -621,6 +640,13 @@ function rowDelayClass(ratio: number) {
   return ''
 }
 
+function rowDelayHoursClass(hours: number) {
+  if (hours > 8) return 'text-red-500 font-medium'
+  if (hours > 0) return 'text-amber-500'
+  if (hours < 0) return 'text-emerald-500'
+  return ''
+}
+
 const sizeBars = computed(() => {
   const w = workload.value
   if (!w) return []
@@ -649,7 +675,8 @@ const breakdownColumns = [
   { accessorKey: 'size', header: '规模' },
   { accessorKey: 'estimated_hours', header: '预计' },
   { accessorKey: 'actual_hours', header: '实际' },
-  { accessorKey: 'delay_ratio', header: '拖延' },
+  { accessorKey: 'delay_hours', header: '延期' },
+  { accessorKey: 'delay_ratio', header: '倍数' },
   { accessorKey: 'price', header: '单价' },
 ]
 
@@ -672,6 +699,7 @@ interface BreakdownRow {
   estimated_hours: number
   actual_hours: number | null
   delay_ratio: number | null
+  delay_hours: number | null
   price: number
 }
 

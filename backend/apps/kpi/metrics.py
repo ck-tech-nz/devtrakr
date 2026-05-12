@@ -432,6 +432,8 @@ def compute_workload_metrics(
     # 拖延度统计:实际工时相对预计工时的偏差
     delay_ratios: list[float] = []
     over_estimate_count = 0
+    total_delay_hours = 0.0    # 仅累计超出部分 (max(0, actual - est))
+    total_overrun_hours = 0.0  # 净偏差 (actual - est),可为负
 
     for issue in resolved_issues:
         est_hours = _issue_estimated_hours(issue)
@@ -458,8 +460,11 @@ def compute_workload_metrics(
         if actual is not None and est_hours > 0:
             ratio = actual / est_hours
             delay_ratios.append(ratio)
+            delta = actual - est_hours
+            total_overrun_hours += delta
             if ratio > 1:
                 over_estimate_count += 1
+                total_delay_hours += delta
 
         breakdown_items.append({
             "issue_id": issue.pk,
@@ -469,6 +474,7 @@ def compute_workload_metrics(
             "size": size_label,
             "price": price,
             "delay_ratio": round(actual / est_hours, 2) if (actual is not None and est_hours > 0) else None,
+            "delay_hours": round(actual - est_hours, 2) if (actual is not None and est_hours > 0) else None,
             "resolved_at": issue.resolved_at.isoformat() if issue.resolved_at else None,
             "priority": issue.priority,
         })
@@ -546,6 +552,8 @@ def compute_workload_metrics(
         "avg_first_response_hours": avg_first_response_hours,
         "avg_delay_ratio": avg_delay_ratio,
         "over_estimate_count": over_estimate_count,
+        "total_delay_hours": round(total_delay_hours, 2),
+        "total_overrun_hours": round(total_overrun_hours, 2),
         "rework_count": rework_count,
         "protection_days": protection_days,
         "protection_helper_count": protection_helper_count,
@@ -568,6 +576,8 @@ def _empty_workload_metrics(protection_days: int = 7) -> dict:
         "avg_first_response_hours": 0.0,
         "avg_delay_ratio": 0.0,
         "over_estimate_count": 0,
+        "total_delay_hours": 0.0,
+        "total_overrun_hours": 0.0,
         "rework_count": 0,
         "protection_days": protection_days,
         "protection_helper_count": 0,
