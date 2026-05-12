@@ -28,6 +28,7 @@ dev = [
     "pytest-django>=4.9,<5.0",
     "factory-boy>=3.3,<4.0",
     "faker>=30.0,<40.0",
+    "isort>=8.0.1",
 ]
 
 [tool.uv.sources]

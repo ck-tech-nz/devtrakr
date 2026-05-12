@@ -20,6 +20,7 @@ staticfiles/
 .entire/
 .claude/settings.local.json
 .gstack/
+.omm/
 
 # DB backups
 .backups/

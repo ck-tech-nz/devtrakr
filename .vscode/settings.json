@@ -1,3 +1,6 @@
 {
-    "chatgpt.openOnStartup": false
+    "chatgpt.openOnStartup": false,
+    "isort.interpreter": ["${workspaceFolder}/backend/.venv/bin/python"],
+    "isort.importStrategy": "fromEnvironment",
+    "isort.args": ["--profile", "black"]
 }

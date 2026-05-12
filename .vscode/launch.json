@@ -24,5 +24,17 @@
         "action": "openExternally"
       }
     }
+  ],
+  "compounds": [
+    {
+      "name": "全栈启动 (Django + Vue)",
+      "configurations": ["Django", "Vue"],
+      "stopAll": true,
+      "presentation": {
+        "hidden": false,
+        "group": "1_fullstack",
+        "order": 1
+      }
+    }
   ]
 }
