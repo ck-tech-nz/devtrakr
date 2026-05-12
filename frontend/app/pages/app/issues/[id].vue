@@ -283,9 +283,9 @@
                   step="0.5"
                   min="0"
                 />
-                <div v-else class="px-3 py-1.5 text-sm text-gray-900 dark:text-gray-100">
+                <p v-else class="text-sm text-gray-900 dark:text-gray-100 mt-0.5">
                   {{ form.estimated_hours ? `${form.estimated_hours} 小时` : '-' }}
-                </div>
+                </p>
               </div>
               <div class="form-row">
                 <div class="flex items-center justify-between">
