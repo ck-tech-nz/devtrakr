@@ -4,24 +4,47 @@
     <div class="flex items-center justify-between flex-wrap gap-3">
       <h1 class="text-2xl font-semibold text-gray-900 dark:text-gray-100">KPI 分析</h1>
       <div class="flex items-center gap-2 flex-wrap">
-        <!-- 周期选择 -->
-        <UButtonGroup>
+        <!-- 周期选择 (← 周/月/季度 →) -->
+        <div class="flex items-center gap-1">
           <UButton
-            v-for="p in periods"
-            :key="p.value"
             size="sm"
-            :variant="activePeriod === p.value ? 'solid' : 'outline'"
-            :color="activePeriod === p.value ? 'primary' : 'neutral'"
-            @click="activePeriod = p.value; customStart = ''; customEnd = ''"
-          >
-            {{ p.label }}
-          </UButton>
-        </UButtonGroup>
+            variant="outline"
+            color="neutral"
+            icon="i-heroicons-chevron-left"
+            :disabled="isCustom"
+            :title="`上一${periodUnitLabel}`"
+            @click="period.shift(-1)"
+          />
+          <UButtonGroup>
+            <UButton
+              v-for="p in periods"
+              :key="p.value"
+              size="sm"
+              :variant="activePeriod === p.value ? 'solid' : 'outline'"
+              :color="activePeriod === p.value ? 'primary' : 'neutral'"
+              @click="period.setPeriod(p.value)"
+            >
+              {{ p.label }}
+            </UButton>
+          </UButtonGroup>
+          <UButton
+            size="sm"
+            variant="outline"
+            color="neutral"
+            icon="i-heroicons-chevron-right"
+            :disabled="isCustom || periodOffset >= 0"
+            :title="`下一${periodUnitLabel}`"
+            @click="period.shift(1)"
+          />
+        </div>
+
+        <!-- 当前周期范围 -->
+        <span class="text-xs text-gray-500 dark:text-gray-400 px-1">{{ period.label.value }}</span>
 
         <!-- 自定义日期 -->
         <UPopover>
           <UButton size="sm" variant="outline" color="neutral" icon="i-heroicons-calendar-days">
-            {{ customStart && customEnd ? `${customStart} ~ ${customEnd}` : '自定义' }}
+            {{ isCustom ? `${customStart} ~ ${customEnd}` : '自定义' }}
           </UButton>
           <template #content>
             <div class="p-3 space-y-3">
@@ -218,16 +241,22 @@ const toast = useToast()
 const loading = ref(true)
 const refreshing = ref(false)
 const data = ref<any>(null)
-const activePeriod = ref('month')
-const customStart = ref('')
-const customEnd = ref('')
 const selectedRole = ref('开发者')
 
+const period = usePeriodRange('month')
+const { activePeriod, customStart, customEnd, isCustom, periodOffset } = period
+
 const periods = [
-  { label: '周', value: 'week' },
-  { label: '月', value: 'month' },
-  { label: '季度', value: 'quarter' },
+  { label: '周', value: 'week' as const },
+  { label: '月', value: 'month' as const },
+  { label: '季度', value: 'quarter' as const },
 ]
+
+const periodUnitLabel = computed(() => {
+  if (activePeriod.value === 'week') return '周'
+  if (activePeriod.value === 'quarter') return '季度'
+  return '月'
+})
 
 const roleOptions = [
   { label: '开发者', value: '开发者' },
@@ -375,20 +404,11 @@ function rankClass(rank: number) {
 }
 
 function buildQuery() {
-  const params = new URLSearchParams()
-  if (customStart.value && customEnd.value) {
-    params.set('start', customStart.value)
-    params.set('end', customEnd.value)
-  } else {
-    params.set('period', activePeriod.value)
-  }
-  if (selectedRole.value) params.set('role', selectedRole.value)
-  return params.toString()
+  return period.toQuery(selectedRole.value ? { role: selectedRole.value } : undefined)
 }
 
 function applyCustomRange() {
-  if (!customStart.value || !customEnd.value) return
-  activePeriod.value = ''
+  period.applyCustom()
   fetchData()
 }
 
@@ -417,11 +437,7 @@ async function handleRefresh() {
   }
 }
 
-watch([activePeriod, selectedRole], () => {
-  if (activePeriod.value) {
-    customStart.value = ''
-    customEnd.value = ''
-  }
+watch([activePeriod, periodOffset, selectedRole], () => {
   fetchData()
 })
 

@@ -63,21 +63,42 @@
 
       <!-- 周期选择 -->
       <div class="flex items-center gap-2 flex-wrap">
-        <UButtonGroup>
+        <div class="flex items-center gap-1">
           <UButton
-            v-for="p in periods"
-            :key="p.value"
             size="sm"
-            :variant="activePeriod === p.value ? 'solid' : 'outline'"
-            :color="activePeriod === p.value ? 'primary' : 'neutral'"
-            @click="activePeriod = p.value; customStart = ''; customEnd = ''"
-          >
-            {{ p.label }}
-          </UButton>
-        </UButtonGroup>
+            variant="outline"
+            color="neutral"
+            icon="i-heroicons-chevron-left"
+            :disabled="isCustom"
+            :title="`上一${periodUnitLabel}`"
+            @click="period.shift(-1)"
+          />
+          <UButtonGroup>
+            <UButton
+              v-for="p in periods"
+              :key="p.value"
+              size="sm"
+              :variant="activePeriod === p.value ? 'solid' : 'outline'"
+              :color="activePeriod === p.value ? 'primary' : 'neutral'"
+              @click="period.setPeriod(p.value)"
+            >
+              {{ p.label }}
+            </UButton>
+          </UButtonGroup>
+          <UButton
+            size="sm"
+            variant="outline"
+            color="neutral"
+            icon="i-heroicons-chevron-right"
+            :disabled="isCustom || periodOffset >= 0"
+            :title="`下一${periodUnitLabel}`"
+            @click="period.shift(1)"
+          />
+        </div>
+        <span class="text-xs text-gray-500 dark:text-gray-400 px-1">{{ period.label.value }}</span>
         <UPopover>
           <UButton size="sm" variant="outline" color="neutral" icon="i-heroicons-calendar-days">
-            {{ customStart && customEnd ? `${customStart} ~ ${customEnd}` : '自定义' }}
+            {{ isCustom ? `${customStart} ~ ${customEnd}` : '自定义' }}
           </UButton>
           <template #content>
             <div class="p-3 space-y-3">
@@ -489,9 +510,9 @@ const { user: authUser } = useAuth()
 
 const loading = ref(true)
 const activeTab = ref('arena')
-const activePeriod = ref('month')
-const customStart = ref('')
-const customEnd = ref('')
+
+const period = usePeriodRange('month')
+const { activePeriod, customStart, customEnd, isCustom, periodOffset } = period
 
 const summary = ref<any>(null)
 const issues = ref<any>(null)
@@ -501,10 +522,16 @@ const trends = ref<any>(null)
 const suggestions = ref<any>(null)
 
 const periods = [
-  { label: '周', value: 'week' },
-  { label: '月', value: 'month' },
-  { label: '季度', value: 'quarter' },
+  { label: '周', value: 'week' as const },
+  { label: '月', value: 'month' as const },
+  { label: '季度', value: 'quarter' as const },
 ]
+
+const periodUnitLabel = computed(() => {
+  if (activePeriod.value === 'week') return '周'
+  if (activePeriod.value === 'quarter') return '季度'
+  return '月'
+})
 
 const tabs = [
   { label: '代码竞技场', value: 'arena', slot: 'arena' },
@@ -715,19 +742,11 @@ function severityLabel(severity: string) {
 
 // 数据加载
 function buildQuery() {
-  const params = new URLSearchParams()
-  if (customStart.value && customEnd.value) {
-    params.set('start', customStart.value)
-    params.set('end', customEnd.value)
-  } else {
-    params.set('period', activePeriod.value)
-  }
-  return params.toString()
+  return period.toQuery()
 }
 
 function applyCustomRange() {
-  if (!customStart.value || !customEnd.value) return
-  activePeriod.value = ''
+  period.applyCustom()
   fetchAll()
 }
 
@@ -765,11 +784,7 @@ async function fetchAll() {
   }
 }
 
-watch([activePeriod], () => {
-  if (activePeriod.value) {
-    customStart.value = ''
-    customEnd.value = ''
-  }
+watch([activePeriod, periodOffset], () => {
   fetchAll()
 })
 
