@@ -270,10 +270,29 @@
             </div>
             <div class="form-row">
               <div class="flex items-center justify-between">
-                <label class="text-gray-400 dark:text-gray-500">预计工时</label>
-                <UButton v-if="isFieldDirty('estimated_hours')" size="xs" variant="soft" :loading="savingField === 'estimated_hours'" @click="saveField('estimated_hours')">保存</UButton>
+                <label class="text-gray-400 dark:text-gray-500">
+                  预计工时
+                  <span v-if="!canEditEstimatedHours" class="text-[10px] text-gray-400 ml-1">(仅管理员可改)</span>
+                </label>
+                <UButton
+                  v-if="canEditEstimatedHours && isFieldDirty('estimated_hours')"
+                  size="xs"
+                  variant="soft"
+                  :loading="savingField === 'estimated_hours'"
+                  @click="saveField('estimated_hours')"
+                >
+                  保存
+                </UButton>
               </div>
-              <UInput v-model="form.estimated_hours" type="number" placeholder="小时 (用于工单规模分级)" step="0.5" min="0" />
+              <UInput
+                v-model="form.estimated_hours"
+                type="number"
+                placeholder="小时 (用于工单规模分级)"
+                step="0.5"
+                min="0"
+                :readonly="!canEditEstimatedHours"
+                :disabled="!canEditEstimatedHours"
+              />
             </div>
             <div class="form-row">
               <div class="flex items-center justify-between">
@@ -627,7 +646,10 @@
 definePageMeta({ layout: 'default' })
 
 const { api } = useApi()
-const { can } = useAuth()
+const { can, hasGroup, user: authUser } = useAuth()
+const canEditEstimatedHours = computed(() =>
+  hasGroup('管理员') || (authUser.value?.is_superuser ?? false)
+)
 const route = useRoute()
 const router = useRouter()
 const { isOnline } = useServiceStatus()

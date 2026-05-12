@@ -140,9 +140,20 @@ class IssueCreateUpdateSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(f"无效的状态: {value}")
         return value
 
+    def _user_can_edit_estimated_hours(self) -> bool:
+        user = self.context["request"].user
+        if not user.is_authenticated:
+            return False
+        if user.is_superuser:
+            return True
+        return user.groups.filter(name="管理员").exists()
+
     def create(self, validated_data):
         helpers = validated_data.pop("helpers", [])
         attachment_ids = validated_data.pop("attachment_ids", [])
+        # 非管理员创建时忽略客户端传入的 estimated_hours,使用模型默认值 (4h)
+        if "estimated_hours" in validated_data and not self._user_can_edit_estimated_hours():
+            validated_data.pop("estimated_hours")
         validated_data["created_by"] = self.context["request"].user
         issue = super().create(validated_data)
         if helpers:
@@ -171,6 +182,9 @@ class IssueCreateUpdateSerializer(serializers.ModelSerializer):
         user = self.context["request"].user
         old_status = instance.status
         old_assignee = instance.assignee_id
+        # 仅管理员可修改 estimated_hours,其他人静默忽略
+        if "estimated_hours" in validated_data and not self._user_can_edit_estimated_hours():
+            validated_data.pop("estimated_hours")
         validated_data["updated_by"] = user
         issue = super().update(instance, validated_data)
         if helpers is not None:

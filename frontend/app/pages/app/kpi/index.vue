@@ -126,7 +126,12 @@
 
       <!-- 排名表格 -->
       <div class="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 overflow-hidden">
-        <UTable :data="tableRows" :columns="columns" :ui="{ th: 'text-xs', td: 'text-sm' }">
+        <UTable
+          :data="tableRows"
+          :columns="columns"
+          :ui="{ th: 'text-xs', td: 'text-sm', tr: 'hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors cursor-pointer' }"
+          @select="onRowSelect"
+        >
           <template #rank-cell="{ row }">
             <span
               class="inline-flex items-center justify-center w-6 h-6 rounded-full text-xs font-bold"
@@ -214,13 +219,6 @@
             <span v-else-if="r(row).trend < 0" class="text-red-500">{{ r(row).trend.toFixed(1) }}</span>
             <span v-else class="text-gray-400">-</span>
           </template>
-          <template #action-cell="{ row }">
-            <NuxtLink :to="`/app/kpi/${r(row).user_id}`">
-              <UButton size="xs" variant="ghost" color="primary" trailing-icon="i-heroicons-arrow-right">
-                查看详情
-              </UButton>
-            </NuxtLink>
-          </template>
         </UTable>
         <div class="flex items-center justify-between px-4 py-3 border-t border-gray-50 dark:border-gray-800">
           <span class="text-xs text-gray-400 dark:text-gray-500">共 {{ tableRows.length }} 位开发者</span>
@@ -285,7 +283,6 @@ const columns = [
   { accessorKey: 'capability', header: '能力' },
   { accessorKey: 'growth', header: '成长' },
   { accessorKey: 'trend', header: '趋势' },
-  { accessorKey: 'action', header: '操作' },
 ]
 
 interface SummaryCard {
@@ -410,6 +407,13 @@ function formatScore(v: any) {
 
 function r(row: any): TableRow {
   return row.original as TableRow
+}
+
+function onRowSelect(row: any, e?: Event) {
+  if (!e) return
+  const target = e.target as HTMLElement
+  if (target.closest('a, button, input')) return
+  navigateTo(`/app/kpi/${r(row).user_id}`)
 }
 
 function rankClass(rank: number) {
