@@ -66,6 +66,10 @@ class Issue(models.Model):
     reporter = models.CharField(max_length=100, blank=True, default="", verbose_name="提出人")
     remark = models.TextField(blank=True, verbose_name="备注")
     estimated_completion = models.DateField(null=True, blank=True, verbose_name="预计完成")
+    estimated_hours = models.DecimalField(
+        max_digits=8, decimal_places=2, default=4.0,
+        verbose_name="预计工时", help_text="用于工单规模分级 (小型/中型/大型) 的依据,默认 4 小时",
+    )
     actual_hours = models.DecimalField(max_digits=8, decimal_places=2, null=True, blank=True, verbose_name="实际工时")
     cause = models.TextField(blank=True, verbose_name="原因分析")
     solution = models.TextField(blank=True, verbose_name="解决办法")

@@ -68,7 +68,7 @@ class IssueListSerializer(serializers.ModelSerializer):
             "assignee", "assignee_name", "helpers", "helpers_names", "remark", "cause", "solution",
             "ai_cause", "ai_solution",
             "resolution_hours", "created_at", "updated_at", "github_issues",
-            "estimated_completion", "source",
+            "estimated_completion", "estimated_hours", "source",
         ]
 
     def get_created_by_name(self, obj):
@@ -116,7 +116,7 @@ class IssueCreateUpdateSerializer(serializers.ModelSerializer):
         fields = [
             "id", "project", "repo", "title", "description", "priority", "status",
             "labels", "assignee", "helpers", "reporter", "remark", "estimated_completion",
-            "actual_hours", "cause", "solution", "attachment_ids",
+            "estimated_hours", "actual_hours", "cause", "solution", "attachment_ids",
         ]
         read_only_fields = ["id"]
 

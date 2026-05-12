@@ -158,7 +158,7 @@
                   </div>
                 </div>
                 <div class="mt-4 pt-4 border-t border-gray-100 dark:border-gray-800 text-xs text-gray-400 dark:text-gray-500">
-                  规则: 工时 &lt; 4h 走计件梯度 (前 20 个 ¥100, 21+ ¥160); 4-16h 中型 ¥250; ≥16h 大型 ¥600 (可在评分配置中调整)
+                  规则: 预计工时 &lt; 4h 走计件梯度 (前 20 个 ¥100, 21+ ¥160); 4-16h 中型 ¥250; ≥16h 大型 ¥600 (可在评分配置中调整)
                 </div>
               </div>
 
@@ -191,8 +191,8 @@
               </div>
             </div>
 
-            <!-- 重修与 SLA -->
-            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <!-- 重修 + 拖延 + SLA -->
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
               <div class="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 p-5">
                 <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-3">保护期 ({{ workload?.protection_days ?? 7 }} 天) 重修</h3>
                 <div class="flex items-end gap-2">
@@ -202,7 +202,19 @@
                   <div class="text-sm text-gray-400 dark:text-gray-500 pb-1">单</div>
                 </div>
                 <p class="text-xs text-gray-500 dark:text-gray-400 mt-3 leading-relaxed">
-                  当 issue 在被标记完成后 7 天内回到待处理/进行中,记为一次重修。未来 AI 关联惩罚将基于此数据。
+                  Issue 在标记完成后 {{ workload?.protection_days ?? 7 }} 天内回到未完成状态,记为重修。
+                </p>
+              </div>
+              <div class="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 p-5">
+                <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-3">工作拖延度</h3>
+                <div class="flex items-end gap-2">
+                  <div class="text-4xl font-bold" :class="delayColorClass">
+                    {{ workload?.avg_delay_ratio ? workload.avg_delay_ratio.toFixed(2) : '-' }}
+                  </div>
+                  <div class="text-sm text-gray-400 dark:text-gray-500 pb-1">× 预计</div>
+                </div>
+                <p class="text-xs text-gray-500 dark:text-gray-400 mt-3 leading-relaxed">
+                  实际工时 / 预计工时的平均比。&gt; 1 表示超出预计 ({{ workload?.over_estimate_count ?? 0 }} 单超出)。
                 </p>
               </div>
               <div class="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 p-5">
@@ -242,8 +254,18 @@
                     {{ b(row).size }}
                   </UBadge>
                 </template>
-                <template #hours-cell="{ row }">
-                  {{ b(row).hours ? Number(b(row).hours).toFixed(1) : '-' }}h
+                <template #estimated_hours-cell="{ row }">
+                  {{ b(row).estimated_hours ? Number(b(row).estimated_hours).toFixed(1) : '-' }}h
+                </template>
+                <template #actual_hours-cell="{ row }">
+                  <span v-if="b(row).actual_hours != null">{{ Number(b(row).actual_hours).toFixed(1) }}h</span>
+                  <span v-else class="text-gray-400">-</span>
+                </template>
+                <template #delay_ratio-cell="{ row }">
+                  <span v-if="b(row).delay_ratio != null" :class="rowDelayClass(b(row).delay_ratio)">
+                    {{ Number(b(row).delay_ratio).toFixed(2) }}×
+                  </span>
+                  <span v-else class="text-gray-400">-</span>
                 </template>
                 <template #price-cell="{ row }">
                   <span class="text-emerald-600 dark:text-emerald-400 font-medium">¥{{ b(row).price }}</span>
@@ -577,11 +599,27 @@ const arenaCards = computed(() => {
   if (!w) return []
   return [
     { label: '完成工单', value: w.completed_count ?? 0, colorClass: 'text-violet-600 dark:text-violet-400', sub: `${w.small_count ?? 0} 小 / ${w.medium_count ?? 0} 中 / ${w.large_count ?? 0} 大` },
-    { label: '估算计件', value: `¥${w.estimated_earnings ?? 0}`, colorClass: 'text-emerald-600 dark:text-emerald-400', sub: '按梯度+工时分级' },
+    { label: '估算计件', value: `¥${w.estimated_earnings ?? 0}`, colorClass: 'text-emerald-600 dark:text-emerald-400', sub: '按预计工时分级' },
     { label: '保护期重修', value: w.rework_count ?? 0, colorClass: (w.rework_count ?? 0) > 0 ? 'text-red-500' : 'text-gray-900 dark:text-gray-100', sub: `${w.protection_days ?? 7} 天窗口` },
     { label: '协助修复', value: w.protection_helper_count ?? 0, colorClass: 'text-sky-600 dark:text-sky-400', sub: '帮助他人解决' },
   ]
 })
+
+const delayColorClass = computed(() => {
+  const r = workload.value?.avg_delay_ratio
+  if (!r) return 'text-gray-900 dark:text-gray-100'
+  if (r > 1.5) return 'text-red-500'
+  if (r > 1.1) return 'text-amber-500'
+  if (r < 0.9) return 'text-emerald-500'
+  return 'text-gray-900 dark:text-gray-100'
+})
+
+function rowDelayClass(ratio: number) {
+  if (ratio > 1.5) return 'text-red-500 font-medium'
+  if (ratio > 1.1) return 'text-amber-500'
+  if (ratio < 0.9) return 'text-emerald-500'
+  return ''
+}
 
 const sizeBars = computed(() => {
   const w = workload.value
@@ -589,9 +627,9 @@ const sizeBars = computed(() => {
   const total = (w.small_count ?? 0) + (w.medium_count ?? 0) + (w.large_count ?? 0)
   const pct = (n: number) => total > 0 ? Math.round(n / total * 100) : 0
   return [
-    { label: '小型 (< 4h)', count: w.small_count ?? 0, pct: pct(w.small_count ?? 0), colorClass: 'bg-violet-400', unit_price_hint: '100-160' },
-    { label: '中型 (4-16h)', count: w.medium_count ?? 0, pct: pct(w.medium_count ?? 0), colorClass: 'bg-amber-400', unit_price_hint: '250' },
-    { label: '大型 (≥ 16h)', count: w.large_count ?? 0, pct: pct(w.large_count ?? 0), colorClass: 'bg-rose-400', unit_price_hint: '600' },
+    { label: '小型 (预计 < 4h)', count: w.small_count ?? 0, pct: pct(w.small_count ?? 0), colorClass: 'bg-violet-400', unit_price_hint: '100-160' },
+    { label: '中型 (预计 4-16h)', count: w.medium_count ?? 0, pct: pct(w.medium_count ?? 0), colorClass: 'bg-amber-400', unit_price_hint: '250' },
+    { label: '大型 (预计 ≥ 16h)', count: w.large_count ?? 0, pct: pct(w.large_count ?? 0), colorClass: 'bg-rose-400', unit_price_hint: '600' },
   ]
 })
 
@@ -609,7 +647,9 @@ const breakdownColumns = [
   { accessorKey: 'issue_id', header: '编号' },
   { accessorKey: 'title', header: '标题' },
   { accessorKey: 'size', header: '规模' },
-  { accessorKey: 'hours', header: '工时' },
+  { accessorKey: 'estimated_hours', header: '预计' },
+  { accessorKey: 'actual_hours', header: '实际' },
+  { accessorKey: 'delay_ratio', header: '拖延' },
   { accessorKey: 'price', header: '单价' },
 ]
 
@@ -629,7 +669,9 @@ interface BreakdownRow {
   issue_id: number
   title: string
   size: string
-  hours: number
+  estimated_hours: number
+  actual_hours: number | null
+  delay_ratio: number | null
   price: number
 }
 

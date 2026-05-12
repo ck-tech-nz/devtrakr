@@ -281,7 +281,7 @@ class TestWorkloadMetrics:
         assert result["breakdown"] == []
 
     def test_piece_rate_count_tier_at_boundary(self):
-        """前 20 个走 ¥100，第 21 个起 ¥160（全部 < 4h）。"""
+        """前 20 个走 ¥100，第 21 个起 ¥160（estimated_hours < 4h 走小型）。"""
         user = UserFactory()
         project = ProjectFactory()
         base = timezone.make_aware(timezone.datetime(2026, 4, 5, 10, 0))
@@ -289,7 +289,8 @@ class TestWorkloadMetrics:
         for i in range(22):
             issue = IssueFactory(
                 project=project, assignee=user, priority="P2",
-                status="已解决", created_by=user, actual_hours=1.0,
+                status="已解决", created_by=user,
+                estimated_hours=2.0, actual_hours=1.0,
             )
             issue.created_at = base + timedelta(hours=i)
             issue.resolved_at = base + timedelta(hours=i, minutes=30)
@@ -302,24 +303,50 @@ class TestWorkloadMetrics:
         assert result["estimated_earnings"] == 2320
 
     def test_hour_bracket_medium_and_large(self):
-        """工时 ≥ 4h 走中型 ¥250，≥ 16h 走大型 ¥600。"""
+        """规模由 estimated_hours 决定:4-16h 中型 ¥250,≥ 16h 大型 ¥600。"""
         user = UserFactory()
         project = ProjectFactory()
         base = timezone.make_aware(timezone.datetime(2026, 4, 5, 10, 0))
 
-        for i, hours in enumerate([8.0, 20.0]):
+        # 中型: estimated 8h, actual 9h (略超)
+        # 大型: estimated 20h, actual 18h (低于预计)
+        for i, (est, actual) in enumerate([(8.0, 9.0), (20.0, 18.0)]):
             issue = IssueFactory(
                 project=project, assignee=user, priority="P1",
-                status="已解决", created_by=user, actual_hours=hours,
+                status="已解决", created_by=user,
+                estimated_hours=est, actual_hours=actual,
             )
             issue.created_at = base + timedelta(days=i)
-            issue.resolved_at = base + timedelta(days=i, hours=hours)
+            issue.resolved_at = base + timedelta(days=i, hours=actual)
             issue.save(update_fields=["created_at", "resolved_at"])
 
         result = compute_workload_metrics(user, date(2026, 4, 1), date(2026, 4, 30))
         assert result["medium_count"] == 1
         assert result["large_count"] == 1
         assert result["estimated_earnings"] == 250 + 600
+
+    def test_delay_ratio_calculation(self):
+        """avg_delay_ratio = mean(actual/estimated)，over_estimate_count 统计 >1 的工单。"""
+        user = UserFactory()
+        project = ProjectFactory()
+        base = timezone.make_aware(timezone.datetime(2026, 4, 5, 10, 0))
+
+        # 工单 A: 预计 4h, 实际 8h → ratio 2.0 (拖延)
+        # 工单 B: 预计 4h, 实际 2h → ratio 0.5 (提前)
+        for i, (est, actual) in enumerate([(4.0, 8.0), (4.0, 2.0)]):
+            issue = IssueFactory(
+                project=project, assignee=user, priority="P2",
+                status="已解决", created_by=user,
+                estimated_hours=est, actual_hours=actual,
+            )
+            issue.created_at = base + timedelta(days=i)
+            issue.resolved_at = base + timedelta(days=i, hours=actual)
+            issue.save(update_fields=["created_at", "resolved_at"])
+
+        result = compute_workload_metrics(user, date(2026, 4, 1), date(2026, 4, 30))
+        # (2.0 + 0.5) / 2 = 1.25
+        assert result["avg_delay_ratio"] == 1.25
+        assert result["over_estimate_count"] == 1
 
     def test_rework_detection_within_protection_window(self):
         """已解决后 7 天内被改回进行中应计入 rework_count。"""

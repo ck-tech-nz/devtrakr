@@ -142,6 +142,8 @@ class KPITeamView(APIView):
                     "large_count": wm.get("large_count", 0),
                     "estimated_earnings": wm.get("estimated_earnings", 0),
                     "avg_first_response_hours": wm.get("avg_first_response_hours", 0),
+                    "avg_delay_ratio": wm.get("avg_delay_ratio", 0),
+                    "over_estimate_count": wm.get("over_estimate_count", 0),
                     "rework_count": wm.get("rework_count", 0),
                     "protection_helper_count": wm.get("protection_helper_count", 0),
                 },

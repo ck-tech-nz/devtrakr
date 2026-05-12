@@ -367,13 +367,20 @@ def _price_at_index(idx: int, count_tiers: list[dict]) -> int:
     return int(count_tiers[-1].get("price", 0)) if count_tiers else 0
 
 
-def _issue_effort_hours(issue) -> float:
-    """优先使用 actual_hours，缺失时按 resolved_at - created_at 推算。"""
+def _issue_estimated_hours(issue) -> float:
+    """工单规模分级使用预计工时,缺失时回退到默认 4 小时。"""
+    if issue.estimated_hours is not None:
+        return float(issue.estimated_hours)
+    return 4.0
+
+
+def _issue_actual_hours(issue) -> float | None:
+    """实际工时:优先用字段值,缺失时按 resolved_at - created_at 推算。"""
     if issue.actual_hours is not None:
         return float(issue.actual_hours)
     if issue.resolved_at and issue.created_at:
         return (issue.resolved_at - issue.created_at).total_seconds() / 3600
-    return 0.0
+    return None
 
 
 def compute_workload_metrics(
@@ -422,13 +429,17 @@ def compute_workload_metrics(
     small_cumulative_idx = 0
     breakdown_items: list[dict] = []
 
+    # 拖延度统计:实际工时相对预计工时的偏差
+    delay_ratios: list[float] = []
+    over_estimate_count = 0
+
     for issue in resolved_issues:
-        hours = _issue_effort_hours(issue)
-        bracket_price = _price_for_hours(hours, hour_brackets)
+        est_hours = _issue_estimated_hours(issue)
+        bracket_price = _price_for_hours(est_hours, hour_brackets)
 
         if bracket_price is not None:
             price = bracket_price
-            if hours >= 16:
+            if est_hours >= 16:
                 large_count += 1
                 size_label = large_label
             else:
@@ -441,15 +452,30 @@ def compute_workload_metrics(
             size_label = "小型"
 
         total_earnings += price
+
+        # 拖延度
+        actual = _issue_actual_hours(issue)
+        if actual is not None and est_hours > 0:
+            ratio = actual / est_hours
+            delay_ratios.append(ratio)
+            if ratio > 1:
+                over_estimate_count += 1
+
         breakdown_items.append({
             "issue_id": issue.pk,
             "title": issue.title,
-            "hours": round(hours, 2),
+            "estimated_hours": round(est_hours, 2),
+            "actual_hours": round(actual, 2) if actual is not None else None,
             "size": size_label,
             "price": price,
+            "delay_ratio": round(actual / est_hours, 2) if (actual is not None and est_hours > 0) else None,
             "resolved_at": issue.resolved_at.isoformat() if issue.resolved_at else None,
             "priority": issue.priority,
         })
+
+    avg_delay_ratio = (
+        round(sum(delay_ratios) / len(delay_ratios), 2) if delay_ratios else 0.0
+    )
 
     # 首次响应时间：从 issue.created_at 到该 issue 上 assignee 的首次 Activity
     assigned_in_period = Issue.objects.filter(
@@ -518,6 +544,8 @@ def compute_workload_metrics(
         "large_count": large_count,
         "estimated_earnings": total_earnings,
         "avg_first_response_hours": avg_first_response_hours,
+        "avg_delay_ratio": avg_delay_ratio,
+        "over_estimate_count": over_estimate_count,
         "rework_count": rework_count,
         "protection_days": protection_days,
         "protection_helper_count": protection_helper_count,
@@ -538,6 +566,8 @@ def _empty_workload_metrics(protection_days: int = 7) -> dict:
         "large_count": 0,
         "estimated_earnings": 0,
         "avg_first_response_hours": 0.0,
+        "avg_delay_ratio": 0.0,
+        "over_estimate_count": 0,
         "rework_count": 0,
         "protection_days": protection_days,
         "protection_helper_count": 0,

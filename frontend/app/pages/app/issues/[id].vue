@@ -270,10 +270,17 @@
             </div>
             <div class="form-row">
               <div class="flex items-center justify-between">
+                <label class="text-gray-400 dark:text-gray-500">预计工时</label>
+                <UButton v-if="isFieldDirty('estimated_hours')" size="xs" variant="soft" :loading="savingField === 'estimated_hours'" @click="saveField('estimated_hours')">保存</UButton>
+              </div>
+              <UInput v-model="form.estimated_hours" type="number" placeholder="小时 (用于工单规模分级)" step="0.5" min="0" />
+            </div>
+            <div class="form-row">
+              <div class="flex items-center justify-between">
                 <label class="text-gray-400 dark:text-gray-500">实际工时</label>
                 <UButton v-if="isFieldDirty('actual_hours')" size="xs" variant="soft" :loading="savingField === 'actual_hours'" @click="saveField('actual_hours')">保存</UButton>
               </div>
-              <UInput v-model="form.actual_hours" type="number" placeholder="小时" />
+              <UInput v-model="form.actual_hours" type="number" placeholder="小时 (用于拖延度统计)" />
             </div>
           </div>
         </div>
@@ -798,6 +805,7 @@ const form = ref({
   cause: '',
   solution: '',
   estimated_completion: '',
+  estimated_hours: '',
   actual_hours: '',
 })
 
@@ -836,6 +844,7 @@ function populateForm(data: any) {
     cause: data.cause || '',
     solution: data.solution || '',
     estimated_completion: data.estimated_completion || '',
+    estimated_hours: data.estimated_hours != null ? String(data.estimated_hours) : '',
     actual_hours: data.actual_hours != null ? String(data.actual_hours) : '',
   }
   savedForm.value = JSON.parse(JSON.stringify(form.value))
@@ -902,6 +911,7 @@ async function saveField(field: keyof typeof form.value) {
     const body: Record<string, any> = {}
     const val = form.value[field]
     if (field === 'actual_hours') body.actual_hours = val ? Number(val) : null
+    else if (field === 'estimated_hours') body.estimated_hours = val ? Number(val) : null
     else body[field] = val
     await api(`/api/issues/${issue.value.id}/`, { method: 'PATCH', body })
     issue.value = await api<any>(`/api/issues/${route.params.id}/`)

@@ -330,10 +330,11 @@
           <div>
             <h4 class="text-sm font-medium text-gray-800 dark:text-gray-200 mb-1">工单计件 (Code Arena)</h4>
             <ul class="list-disc pl-5 space-y-1">
-              <li><b>工时分级优先</b> — 工单的实际工时 (<code>actual_hours</code>，缺省时按 <code>resolved_at - created_at</code> 推算) 若落在工时分级区间，则采用固定价。</li>
-              <li><b>数量梯度</b> — 工时落入"短工单"区间 (即未匹配任何分级) 时，按完成顺序累积，落在哪个梯度就用哪个单价。</li>
+              <li><b>工时分级优先</b> — 工单的<b>预计工时</b> (<code>estimated_hours</code>，默认 4h，管理员可修改) 若落在工时分级区间，则采用固定价。</li>
+              <li><b>数量梯度</b> — 预计工时落入"短工单"区间 (即未匹配任何分级) 时，按完成顺序累积，落在哪个梯度就用哪个单价。</li>
               <li><b>段位</b> — 综合分映射到段位：≥ 对应阈值即为该段位。最低阈值始终为青铜。</li>
               <li><b>保护期</b> — 工单标记完成后 N 天内若状态回退到未完成，记为一次重修 (rework_count)，作为未来"关联惩罚"机制的数据基础。</li>
+              <li><b>拖延度</b> — <code>actual_hours / estimated_hours</code> 的均值。&gt; 1 表示超出预计工时，仅用于考核工作拖延程度，不参与工单规模分级。</li>
             </ul>
           </div>
 

@@ -179,6 +179,12 @@
               {{ r(row).rework_count }}
             </span>
           </template>
+          <template #delay-cell="{ row }">
+            <span v-if="r(row).avg_delay_ratio" :class="delayCellClass(r(row).avg_delay_ratio)">
+              {{ r(row).avg_delay_ratio.toFixed(2) }}×
+            </span>
+            <span v-else class="text-gray-400">-</span>
+          </template>
           <template #response-cell="{ row }">
             <span v-if="r(row).avg_first_response_hours" class="text-sm">
               {{ r(row).avg_first_response_hours.toFixed(1) }}h
@@ -270,6 +276,7 @@ const columns = [
   { accessorKey: 'tickets', header: '完成工单' },
   { accessorKey: 'earnings', header: '估算收入' },
   { accessorKey: 'rework', header: '重修' },
+  { accessorKey: 'delay', header: '拖延' },
   { accessorKey: 'response', header: '首响' },
   { accessorKey: 'overall', header: '综合分' },
   { accessorKey: 'efficiency', header: '效率' },
@@ -348,6 +355,7 @@ interface TableRow {
   large_count: number
   estimated_earnings: number
   rework_count: number
+  avg_delay_ratio: number
   avg_first_response_hours: number
 }
 
@@ -372,9 +380,17 @@ const tableRows = computed<TableRow[]>(() => {
     large_count: d.workload?.large_count ?? 0,
     estimated_earnings: d.workload?.estimated_earnings ?? 0,
     rework_count: d.workload?.rework_count ?? 0,
+    avg_delay_ratio: d.workload?.avg_delay_ratio ?? 0,
     avg_first_response_hours: d.workload?.avg_first_response_hours ?? 0,
   }))
 })
+
+function delayCellClass(ratio: number) {
+  if (ratio > 1.5) return 'text-red-500 font-medium'
+  if (ratio > 1.1) return 'text-amber-500'
+  if (ratio < 0.9 && ratio > 0) return 'text-emerald-500'
+  return ''
+}
 
 function tierBadgeClass(key: string) {
   const map: Record<string, string> = {
