@@ -1,26 +1,27 @@
 """
 KPI 指标计算模块
 
-compute_issue_metrics  — 问题指标
-compute_commit_metrics — Commit 指标
+compute_issue_metrics    — 问题指标
+compute_commit_metrics   — Commit 指标
+compute_workload_metrics — 工作量/Code Arena 指标（计件、重修、SLA）
 """
 
 from __future__ import annotations
 
 import re
 from collections import defaultdict
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 from django.utils import timezone
 
-from apps.issues.models import Issue
+from apps.issues.models import Activity, Issue
 from apps.repos.models import Commit, GitAuthorAlias
 
 # ---------------------------------------------------------------------------
 # 常量
 # ---------------------------------------------------------------------------
 
-RESOLVED_STATUSES = {"已解决", "已关闭"}
+RESOLVED_STATUSES = {"已解决", "已发布", "已关闭"}
 
 PRIORITY_WEIGHTS = {"P0": 4, "P1": 3, "P2": 2, "P3": 1}
 
@@ -334,4 +335,275 @@ def _empty_commit_metrics() -> dict:
         "commit_type_distribution": {},
         "conventional_ratio": 0,
         "repo_coverage": [],
+    }
+
+
+# ---------------------------------------------------------------------------
+# 工作量 / Code Arena 指标
+# ---------------------------------------------------------------------------
+
+RESOLVED_ACTIONS = ("resolved", "closed")
+NON_RESOLVED_STATUSES = ("未计划", "待处理", "进行中")
+
+
+def _price_for_hours(hours: float, hour_brackets: list[dict]) -> int | None:
+    """根据工时返回固定价格 (中/大型),匹配不到返回 None (走计件梯度)。
+
+    边界: (min_hours, max_hours]。例如 中型 (4, 16] 意为 "超过 4h 且不超过 16h"。
+    这样默认 4h 工单恰好落入「小型」,会走 count_tiers 梯度。
+    """
+    for br in hour_brackets:
+        min_h = br.get("min_hours") or 0
+        max_h = br.get("max_hours")
+        if hours > min_h and (max_h is None or hours <= max_h):
+            return int(br.get("price", 0))
+    return None
+
+
+def _price_at_index(idx: int, count_tiers: list[dict]) -> int:
+    """根据当前累计普通工单序号返回单价。"""
+    cum = 0
+    for tier in count_tiers:
+        cap = tier.get("max_count")
+        if cap is None or idx < cum + cap:
+            return int(tier.get("price", 0))
+        cum += cap
+    return int(count_tiers[-1].get("price", 0)) if count_tiers else 0
+
+
+def _issue_estimated_hours(issue) -> float:
+    """工单规模分级使用预计工时,缺失时回退到默认 4 小时。"""
+    if issue.estimated_hours is not None:
+        return float(issue.estimated_hours)
+    return 4.0
+
+
+def _issue_actual_hours(issue) -> float | None:
+    """实际工时:优先用字段值,缺失时按 resolved_at - created_at 推算。"""
+    if issue.actual_hours is not None:
+        return float(issue.actual_hours)
+    if issue.resolved_at and issue.created_at:
+        return (issue.resolved_at - issue.created_at).total_seconds() / 3600
+    return None
+
+
+def compute_workload_metrics(
+    user, period_start: date, period_end: date, config: dict | None = None
+) -> dict:
+    """计算工作量/Code Arena 指标：计件、重修、首次响应。
+
+    Parameters
+    ----------
+    config : dict | None
+        piece_rate_config dict；缺省时使用 _default_piece_rate_config()。
+    """
+    from apps.kpi.models import _default_piece_rate_config
+
+    cfg = config or _default_piece_rate_config()
+    count_tiers = cfg.get("count_tiers", [])
+    hour_brackets = cfg.get("hour_brackets", [])
+    protection_days = int(cfg.get("protection_days", 7))
+
+    start_dt = timezone.make_aware(datetime.combine(period_start, datetime.min.time()))
+    end_dt = timezone.make_aware(datetime.combine(period_end, datetime.max.time()))
+
+    # 已解决/已关闭/已发布 且 resolved_at 落在周期内
+    resolved_qs = (
+        Issue.objects.filter(
+            assignee=user,
+            status__in=RESOLVED_STATUSES,
+            resolved_at__gte=start_dt,
+            resolved_at__lte=end_dt,
+        )
+        .order_by("resolved_at")
+    )
+    resolved_issues = list(resolved_qs)
+
+    # 计件：按 resolved_at 顺序应用价格梯度
+    small_count = medium_count = large_count = 0
+    medium_label = "中型"
+    large_label = "大型"
+    for br in hour_brackets:
+        if (br.get("min_hours") or 0) >= 16:
+            large_label = br.get("label", large_label)
+        else:
+            medium_label = br.get("label", medium_label)
+
+    total_earnings = 0
+    small_cumulative_idx = 0
+    breakdown_items: list[dict] = []
+
+    # 拖延度统计:实际工时相对预计工时的偏差
+    delay_ratios: list[float] = []
+    over_estimate_count = 0
+    total_delay_hours = 0.0    # 仅累计超出部分 (max(0, actual - est))
+    total_overrun_hours = 0.0  # 净偏差 (actual - est),可为负
+
+    for issue in resolved_issues:
+        # 优先用结算快照 (已冻结的价格/规模/预计工时不受后续配置影响)
+        settlement = issue.settlement or None
+
+        if settlement:
+            price = int(settlement.get("price", 0))
+            size_label = settlement.get("size", "小型")
+            est_hours = float(settlement.get("estimated_hours") or 0)
+            settled = True
+        else:
+            settled = False
+            est_hours = _issue_estimated_hours(issue)
+            bracket_price = _price_for_hours(est_hours, hour_brackets)
+
+            if bracket_price is not None:
+                price = bracket_price
+                if est_hours > 16:
+                    size_label = large_label
+                else:
+                    size_label = medium_label
+            else:
+                price = _price_at_index(small_cumulative_idx, count_tiers)
+                small_cumulative_idx += 1
+                size_label = "小型"
+
+        if size_label == "小型":
+            small_count += 1
+        elif size_label == "大型" or size_label == large_label:
+            large_count += 1
+        else:
+            medium_count += 1
+
+        total_earnings += price
+
+        # 拖延度: 实际工时取 settlement 中的 (若有),否则取当前 issue.actual_hours
+        if settlement and settlement.get("actual_hours") is not None:
+            actual = float(settlement["actual_hours"])
+        else:
+            actual = _issue_actual_hours(issue)
+
+        if actual is not None and est_hours > 0:
+            ratio = actual / est_hours
+            delay_ratios.append(ratio)
+            delta = actual - est_hours
+            total_overrun_hours += delta
+            if ratio > 1:
+                over_estimate_count += 1
+                total_delay_hours += delta
+
+        breakdown_items.append({
+            "issue_id": issue.pk,
+            "title": issue.title,
+            "estimated_hours": round(est_hours, 2),
+            "actual_hours": round(actual, 2) if actual is not None else None,
+            "size": size_label,
+            "price": price,
+            "delay_ratio": round(actual / est_hours, 2) if (actual is not None and est_hours > 0) else None,
+            "delay_hours": round(actual - est_hours, 2) if (actual is not None and est_hours > 0) else None,
+            "resolved_at": issue.resolved_at.isoformat() if issue.resolved_at else None,
+            "priority": issue.priority,
+            "settled": settled,
+        })
+
+    avg_delay_ratio = (
+        round(sum(delay_ratios) / len(delay_ratios), 2) if delay_ratios else 0.0
+    )
+
+    # 首次响应时间：从 issue.created_at 到该 issue 上 assignee 的首次 Activity
+    assigned_in_period = Issue.objects.filter(
+        assignee=user,
+        created_at__gte=start_dt,
+        created_at__lte=end_dt,
+    )
+    response_hours_list: list[float] = []
+    for issue in assigned_in_period.only("id", "created_at"):
+        first_act = (
+            Activity.objects.filter(issue_id=issue.pk, user=user)
+            .order_by("created_at")
+            .first()
+        )
+        if first_act and first_act.created_at and issue.created_at:
+            delta = (first_act.created_at - issue.created_at).total_seconds() / 3600
+            if delta >= 0:
+                response_hours_list.append(delta)
+    avg_first_response_hours = (
+        round(sum(response_hours_list) / len(response_hours_list), 2)
+        if response_hours_list else 0.0
+    )
+
+    # 重修：用户在周期内将 Issue 标记为 已解决/已关闭，之后 protection_days 内
+    # 同 Issue 的状态又变回未解决（任意用户操作均计数，按 Issue 去重）
+    resolve_acts = (
+        Activity.objects.filter(
+            user=user,
+            action__in=RESOLVED_ACTIONS,
+            created_at__gte=start_dt,
+            created_at__lte=end_dt,
+        )
+        .order_by("created_at")
+    )
+    rework_issue_ids: set[int] = set()
+    rework_window = timedelta(days=protection_days)
+    for act in resolve_acts:
+        if act.issue_id in rework_issue_ids:
+            continue
+        window_end = act.created_at + rework_window
+        regression = Activity.objects.filter(
+            issue_id=act.issue_id,
+            action="updated",
+            created_at__gt=act.created_at,
+            created_at__lte=window_end,
+            detail__contains="改为",
+        )
+        for r in regression:
+            # detail 形如 "状态从 已解决 改为 进行中"
+            if any(f"改为 {s}" in (r.detail or "") for s in NON_RESOLVED_STATUSES):
+                rework_issue_ids.add(act.issue_id)
+                break
+    rework_count = len(rework_issue_ids)
+
+    # 保护期协助：用户在保护期内协助修复他人 issue 的次数
+    protection_helper_count = Issue.objects.filter(
+        helpers=user,
+        resolved_at__gte=start_dt,
+        resolved_at__lte=end_dt,
+    ).exclude(assignee=user).distinct().count()
+
+    return {
+        "completed_count": len(resolved_issues),
+        "small_count": small_count,
+        "medium_count": medium_count,
+        "large_count": large_count,
+        "estimated_earnings": total_earnings,
+        "avg_first_response_hours": avg_first_response_hours,
+        "avg_delay_ratio": avg_delay_ratio,
+        "over_estimate_count": over_estimate_count,
+        "total_delay_hours": round(total_delay_hours, 2),
+        "total_overrun_hours": round(total_overrun_hours, 2),
+        "rework_count": rework_count,
+        "protection_days": protection_days,
+        "protection_helper_count": protection_helper_count,
+        "size_distribution": {
+            "small": small_count,
+            "medium": medium_count,
+            "large": large_count,
+        },
+        "breakdown": breakdown_items,
+    }
+
+
+def _empty_workload_metrics(protection_days: int = 7) -> dict:
+    return {
+        "completed_count": 0,
+        "small_count": 0,
+        "medium_count": 0,
+        "large_count": 0,
+        "estimated_earnings": 0,
+        "avg_first_response_hours": 0.0,
+        "avg_delay_ratio": 0.0,
+        "over_estimate_count": 0,
+        "total_delay_hours": 0.0,
+        "total_overrun_hours": 0.0,
+        "rework_count": 0,
+        "protection_days": protection_days,
+        "protection_helper_count": 0,
+        "size_distribution": {"small": 0, "medium": 0, "large": 0},
+        "breakdown": [],
     }

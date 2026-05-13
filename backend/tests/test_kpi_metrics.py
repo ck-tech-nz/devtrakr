@@ -3,7 +3,12 @@ from datetime import date, timedelta
 from django.contrib.auth.models import Group
 from django.utils import timezone
 from apps.kpi.models import KPISnapshot
-from apps.kpi.metrics import compute_issue_metrics, compute_commit_metrics
+from apps.kpi.metrics import (
+    compute_commit_metrics,
+    compute_issue_metrics,
+    compute_workload_metrics,
+)
+from apps.kpi.scoring import compute_tier
 from apps.kpi.services import KPIService
 from tests.factories import (
     UserFactory,
@@ -264,6 +269,242 @@ class TestCommitMetrics:
 # ---------------------------------------------------------------------------
 # KPI Service Tests
 # ---------------------------------------------------------------------------
+
+
+class TestWorkloadMetrics:
+    def test_empty_user(self):
+        user = UserFactory()
+        result = compute_workload_metrics(user, date(2026, 4, 1), date(2026, 4, 30))
+        assert result["completed_count"] == 0
+        assert result["estimated_earnings"] == 0
+        assert result["rework_count"] == 0
+        assert result["breakdown"] == []
+
+    def test_piece_rate_count_tier_at_boundary(self):
+        """前 20 个走 ¥100，第 21 个起 ¥160（estimated_hours < 4h 走小型）。"""
+        user = UserFactory()
+        project = ProjectFactory()
+        base = timezone.make_aware(timezone.datetime(2026, 4, 5, 10, 0))
+
+        for i in range(22):
+            issue = IssueFactory(
+                project=project, assignee=user, priority="P2",
+                status="已解决", created_by=user,
+                estimated_hours=2.0, actual_hours=1.0,
+            )
+            issue.created_at = base + timedelta(hours=i)
+            issue.resolved_at = base + timedelta(hours=i, minutes=30)
+            issue.save(update_fields=["created_at", "resolved_at"])
+
+        result = compute_workload_metrics(user, date(2026, 4, 1), date(2026, 4, 30))
+        assert result["completed_count"] == 22
+        assert result["small_count"] == 22
+        # 20 * 100 + 2 * 160 = 2320
+        assert result["estimated_earnings"] == 2320
+
+    def test_hour_bracket_medium_and_large(self):
+        """规模由 estimated_hours 决定:4-16h 中型 ¥250,≥ 16h 大型 ¥600。"""
+        user = UserFactory()
+        project = ProjectFactory()
+        base = timezone.make_aware(timezone.datetime(2026, 4, 5, 10, 0))
+
+        # 中型: estimated 8h, actual 9h (略超)
+        # 大型: estimated 20h, actual 18h (低于预计)
+        for i, (est, actual) in enumerate([(8.0, 9.0), (20.0, 18.0)]):
+            issue = IssueFactory(
+                project=project, assignee=user, priority="P1",
+                status="已解决", created_by=user,
+                estimated_hours=est, actual_hours=actual,
+            )
+            issue.created_at = base + timedelta(days=i)
+            issue.resolved_at = base + timedelta(days=i, hours=actual)
+            issue.save(update_fields=["created_at", "resolved_at"])
+
+        result = compute_workload_metrics(user, date(2026, 4, 1), date(2026, 4, 30))
+        assert result["medium_count"] == 1
+        assert result["large_count"] == 1
+        assert result["estimated_earnings"] == 250 + 600
+
+    def test_delay_metrics(self):
+        """avg_delay_ratio / total_delay_hours / total_overrun_hours / over_estimate_count。"""
+        user = UserFactory()
+        project = ProjectFactory()
+        base = timezone.make_aware(timezone.datetime(2026, 4, 5, 10, 0))
+
+        # 工单 A: 预计 4h, 实际 8h → ratio 2.0, +4h
+        # 工单 B: 预计 4h, 实际 2h → ratio 0.5, -2h (提前完成)
+        for i, (est, actual) in enumerate([(4.0, 8.0), (4.0, 2.0)]):
+            issue = IssueFactory(
+                project=project, assignee=user, priority="P2",
+                status="已解决", created_by=user,
+                estimated_hours=est, actual_hours=actual,
+            )
+            issue.created_at = base + timedelta(days=i)
+            issue.resolved_at = base + timedelta(days=i, hours=actual)
+            issue.save(update_fields=["created_at", "resolved_at"])
+
+        result = compute_workload_metrics(user, date(2026, 4, 1), date(2026, 4, 30))
+        assert result["avg_delay_ratio"] == 1.25
+        assert result["over_estimate_count"] == 1
+        # 总延期 = 只算超出的 4h
+        assert result["total_delay_hours"] == 4.0
+        # 净偏差 = 4 + (-2) = 2h
+        assert result["total_overrun_hours"] == 2.0
+
+    def test_rework_detection_within_protection_window(self):
+        """已解决后 7 天内被改回进行中应计入 rework_count。"""
+        user = UserFactory()
+        project = ProjectFactory()
+        base = timezone.make_aware(timezone.datetime(2026, 4, 5, 10, 0))
+
+        issue = IssueFactory(
+            project=project, assignee=user, priority="P1",
+            status="进行中", created_by=user,
+        )
+        issue.created_at = base
+        issue.save(update_fields=["created_at"])
+
+        # user 标记已解决
+        resolve_act = ActivityFactory(
+            user=user, issue=issue, action="resolved",
+            detail="状态从 进行中 改为 已解决",
+        )
+        resolve_act.created_at = base + timedelta(hours=2)
+        resolve_act.save(update_fields=["created_at"])
+
+        # 2 天后被改回进行中（仍在 7 天保护期内）
+        regression = ActivityFactory(
+            user=user, issue=issue, action="updated",
+            detail="状态从 已解决 改为 进行中",
+        )
+        regression.created_at = base + timedelta(days=2)
+        regression.save(update_fields=["created_at"])
+
+        # 把 issue 的 resolved_at 也搬到本期内
+        issue.resolved_at = base + timedelta(hours=2)
+        issue.status = "已解决"
+        issue.save(update_fields=["resolved_at", "status"])
+
+        result = compute_workload_metrics(user, date(2026, 4, 1), date(2026, 4, 30))
+        assert result["rework_count"] == 1
+
+    def test_rework_outside_window_not_counted(self):
+        """超过 7 天保护期的回退不计入。"""
+        user = UserFactory()
+        project = ProjectFactory()
+        base = timezone.make_aware(timezone.datetime(2026, 4, 1, 10, 0))
+
+        issue = IssueFactory(
+            project=project, assignee=user, priority="P2",
+            status="已解决", created_by=user,
+        )
+        issue.created_at = base
+        issue.resolved_at = base + timedelta(hours=1)
+        issue.save(update_fields=["created_at", "resolved_at"])
+
+        ra = ActivityFactory(
+            user=user, issue=issue, action="resolved",
+            detail="状态从 进行中 改为 已解决",
+        )
+        ra.created_at = base + timedelta(hours=1)
+        ra.save(update_fields=["created_at"])
+
+        # 10 天后才回退，超出 7 天窗口
+        rg = ActivityFactory(
+            user=user, issue=issue, action="updated",
+            detail="状态从 已解决 改为 进行中",
+        )
+        rg.created_at = base + timedelta(days=10)
+        rg.save(update_fields=["created_at"])
+
+        result = compute_workload_metrics(user, date(2026, 4, 1), date(2026, 4, 30))
+        assert result["rework_count"] == 0
+
+
+class TestSettlement:
+    def test_settle_freezes_price_at_resolve_time(self):
+        """改 piece_rate_config 后已结算工单的金额不变。"""
+        from apps.kpi.settlement import settle_issue
+        from apps.kpi.models import KPIScoringConfig
+
+        user = UserFactory()
+        project = ProjectFactory()
+        issue = IssueFactory(
+            project=project, assignee=user, priority="P2",
+            status="已解决", created_by=user,
+            estimated_hours=4.0,
+        )
+        issue.resolved_at = timezone.now()
+        issue.save(update_fields=["resolved_at"])
+
+        # 用默认配置结算 (4h → 小型 → ¥100)
+        payload = settle_issue(issue)
+        assert payload["price"] == 100
+        assert payload["size"] == "小型"
+
+        # 之后改配置: 小型梯度改 ¥999
+        cfg = KPIScoringConfig.get_solo()
+        new = dict(cfg.piece_rate_config)
+        new["count_tiers"] = [{"max_count": None, "price": 999}]
+        cfg.piece_rate_config = new
+        cfg.save()
+
+        # KPI 计算应该还是用 ¥100,因为已锁定
+        result = compute_workload_metrics(
+            user, date(2026, 1, 1), date(2030, 12, 31)
+        )
+        assert result["estimated_earnings"] == 100
+        assert result["breakdown"][0]["settled"] is True
+        assert result["breakdown"][0]["price"] == 100
+
+    def test_resolve_via_api_locks_settlement(self, auth_client, site_settings):
+        """通过 PATCH 把状态改成已解决,settlement 自动写入。"""
+        user = UserFactory()
+        issue = IssueFactory(status="进行中", estimated_hours=2.0, assignee=user)
+        response = auth_client.patch(
+            f"/api/issues/{issue.id}/", {"status": "已解决"}
+        )
+        assert response.status_code == 200
+        issue.refresh_from_db()
+        assert issue.settlement is not None
+        assert issue.settlement["estimated_hours"] == 2.0
+        assert issue.settlement["price"] > 0
+
+    def test_reopen_does_not_resettle(self):
+        """重修不重新结算 (避免双倍计价)。"""
+        from apps.kpi.settlement import settle_issue
+        user = UserFactory()
+        issue = IssueFactory(
+            assignee=user, status="已解决",
+            estimated_hours=2.0,
+        )
+        issue.resolved_at = timezone.now()
+        issue.save(update_fields=["resolved_at"])
+        first = settle_issue(issue)
+        first_price = first["price"]
+
+        # 改 estimated_hours 后再次调用 settle_issue
+        issue.estimated_hours = 10.0
+        issue.save(update_fields=["estimated_hours"])
+        again = settle_issue(issue)
+        assert again["price"] == first_price  # 不重算
+
+
+class TestTier:
+    def test_bronze_for_low_score(self):
+        t = compute_tier(20)
+        assert t["key"] == "bronze"
+        assert t["next_key"] == "silver"
+
+    def test_gold_at_threshold(self):
+        t = compute_tier(72)
+        assert t["key"] == "gold"
+        assert t["label"] == "黄金"
+
+    def test_master_at_top(self):
+        t = compute_tier(98)
+        assert t["key"] == "master"
+        assert t["next_key"] is None
 
 
 class TestKPIService:

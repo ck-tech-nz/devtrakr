@@ -68,6 +68,35 @@ def _default_ceilings():
     }
 
 
+def _default_piece_rate_config():
+    """Code Arena 工单计件与段位配置。
+
+    - count_tiers: 按累计完成数量分段定价（小型工单走梯度）
+    - hour_brackets: 单工单工时超过阈值时改用固定价（中/大型工单）
+    - tier_thresholds: 综合分 → 段位
+    - protection_days: 保护期天数（同问题在该窗口内复发记为重修）
+    """
+    return {
+        "count_tiers": [
+            {"max_count": 20, "price": 100},
+            {"max_count": None, "price": 160},
+        ],
+        "hour_brackets": [
+            {"min_hours": 4, "max_hours": 16, "price": 250, "label": "中型"},
+            {"min_hours": 16, "max_hours": None, "price": 600, "label": "大型"},
+        ],
+        "tier_thresholds": {
+            "bronze": 0,
+            "silver": 50,
+            "gold": 65,
+            "platinum": 75,
+            "diamond": 85,
+            "master": 95,
+        },
+        "protection_days": 7,
+    }
+
+
 class KPIScoringConfig(SingletonModel):
     """KPI 评分规则配置（全局单例）。"""
 
@@ -101,6 +130,11 @@ class KPIScoringConfig(SingletonModel):
         verbose_name="饱和天花板值",
         help_text="各指标达到满分 100 的阈值",
     )
+    piece_rate_config = models.JSONField(
+        default=_default_piece_rate_config,
+        verbose_name="工单计件配置",
+        help_text="Code Arena 工单单价梯度、工时分级、段位阈值与保护期",
+    )
     updated_at = models.DateTimeField(auto_now=True, verbose_name="更新时间")
 
     class Meta:
@@ -127,6 +161,7 @@ class KPISnapshot(models.Model):
     period_end = models.DateField(verbose_name="统计截止日期")
     issue_metrics = models.JSONField(default=dict, verbose_name="问题指标")
     commit_metrics = models.JSONField(default=dict, verbose_name="Commit 指标")
+    workload_metrics = models.JSONField(default=dict, blank=True, verbose_name="工作量指标")
     scores = models.JSONField(default=dict, verbose_name="评分")
     rankings = models.JSONField(default=dict, verbose_name="排名")
     suggestions = models.JSONField(default=dict, verbose_name="改进建议")

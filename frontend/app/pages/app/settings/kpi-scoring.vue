@@ -116,6 +116,157 @@
         </div>
       </ScoringCard>
 
+      <!-- 工单计件 - 数量梯度 -->
+      <ScoringCard
+        title="工单计件 · 数量梯度"
+        description="小型工单 (< 中型工时阈值) 按累计完成数量分段定价。max_count 留空 = 上不封顶"
+      >
+        <div class="space-y-2">
+          <div class="grid grid-cols-[1fr_1fr_auto] gap-3 items-end text-xs text-gray-500 dark:text-gray-400">
+            <span>累计前 N 个 (空 = ∞)</span>
+            <span>单价 (¥)</span>
+            <span></span>
+          </div>
+          <div
+            v-for="(tier, idx) in pieceRate.count_tiers"
+            :key="idx"
+            class="grid grid-cols-[1fr_1fr_auto] gap-3 items-center"
+          >
+            <UInput
+              type="number"
+              size="sm"
+              :model-value="tier.max_count ?? ''"
+              placeholder="不限"
+              @update:model-value="tier.max_count = ($event === '' || $event == null) ? null : Number($event)"
+              :min="1"
+            />
+            <UInput
+              type="number"
+              size="sm"
+              :model-value="tier.price"
+              @update:model-value="tier.price = Number($event)"
+              :min="0"
+              :step="10"
+            />
+            <UButton
+              size="xs"
+              variant="ghost"
+              color="error"
+              icon="i-heroicons-trash"
+              :disabled="pieceRate.count_tiers.length <= 1"
+              @click="pieceRate.count_tiers.splice(idx, 1)"
+            />
+          </div>
+          <UButton
+            size="xs"
+            variant="outline"
+            color="neutral"
+            icon="i-heroicons-plus"
+            @click="pieceRate.count_tiers.push({ max_count: null, price: 100 })"
+          >
+            添加梯度
+          </UButton>
+        </div>
+      </ScoringCard>
+
+      <!-- 工单计件 - 工时分级 -->
+      <ScoringCard
+        title="工单计件 · 工时分级"
+        description="单工单实际工时落入区间时改用固定价 (覆盖数量梯度)。max_hours 留空 = 上不封顶"
+      >
+        <div class="space-y-2">
+          <div class="grid grid-cols-[1fr_1fr_1fr_1fr_auto] gap-3 items-end text-xs text-gray-500 dark:text-gray-400">
+            <span>标签</span>
+            <span>最小工时</span>
+            <span>最大工时 (空=∞)</span>
+            <span>单价 (¥)</span>
+            <span></span>
+          </div>
+          <div
+            v-for="(br, idx) in pieceRate.hour_brackets"
+            :key="idx"
+            class="grid grid-cols-[1fr_1fr_1fr_1fr_auto] gap-3 items-center"
+          >
+            <UInput
+              size="sm"
+              :model-value="br.label ?? ''"
+              @update:model-value="br.label = String($event)"
+              placeholder="中型"
+            />
+            <UInput
+              type="number"
+              size="sm"
+              :model-value="br.min_hours"
+              @update:model-value="br.min_hours = Number($event)"
+              :min="0"
+              :step="0.5"
+            />
+            <UInput
+              type="number"
+              size="sm"
+              :model-value="br.max_hours ?? ''"
+              placeholder="不限"
+              @update:model-value="br.max_hours = ($event === '' || $event == null) ? null : Number($event)"
+              :min="0"
+              :step="0.5"
+            />
+            <UInput
+              type="number"
+              size="sm"
+              :model-value="br.price"
+              @update:model-value="br.price = Number($event)"
+              :min="0"
+              :step="50"
+            />
+            <UButton
+              size="xs"
+              variant="ghost"
+              color="error"
+              icon="i-heroicons-trash"
+              @click="pieceRate.hour_brackets.splice(idx, 1)"
+            />
+          </div>
+          <UButton
+            size="xs"
+            variant="outline"
+            color="neutral"
+            icon="i-heroicons-plus"
+            @click="pieceRate.hour_brackets.push({ label: '', min_hours: 0, max_hours: null, price: 250 })"
+          >
+            添加分级
+          </UButton>
+        </div>
+      </ScoringCard>
+
+      <!-- 段位阈值 + 保护期 -->
+      <ScoringCard
+        title="段位阈值 & 保护期"
+        description="综合分 ≥ 阈值 即获得对应段位。保护期 = 工单完成后多少天内复发记为重修"
+      >
+        <div class="grid grid-cols-2 lg:grid-cols-3 gap-4">
+          <ScoringField
+            v-for="key in TIER_ORDER"
+            :key="key"
+            :label="tierLabel(key) + ' (≥)'"
+            :model-value="pieceRate.tier_thresholds[key] ?? 0"
+            @update:model-value="pieceRate.tier_thresholds[key] = $event"
+            :step="1"
+            :min="0"
+            :max="100"
+          />
+        </div>
+        <div class="mt-4 pt-4 border-t border-gray-100 dark:border-gray-800 grid grid-cols-2 lg:grid-cols-3 gap-4">
+          <ScoringField
+            label="保护期 (天)"
+            :model-value="pieceRate.protection_days"
+            @update:model-value="pieceRate.protection_days = $event"
+            :step="1"
+            :min="1"
+            :max="90"
+          />
+        </div>
+      </ScoringCard>
+
       <!-- 算法说明 -->
       <div class="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 p-6">
         <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-4">算法说明</h3>
@@ -174,6 +325,17 @@
           <div>
             <h4 class="text-sm font-medium text-gray-800 dark:text-gray-200 mb-1">饱和天花板值</h4>
             <p>各子指标使用线性饱和映射：<code>分数 = min(实际值 / 天花板值 × 100, 100)</code>。例如"日均解决"天花板为 3，当日均解决 1.5 个时得分 50，达到 3 个时得分 100。调高天花板使满分更难获得，调低则更容易。</p>
+          </div>
+
+          <div>
+            <h4 class="text-sm font-medium text-gray-800 dark:text-gray-200 mb-1">工单计件 (Code Arena)</h4>
+            <ul class="list-disc pl-5 space-y-1">
+              <li><b>工时分级优先</b> — 工单的<b>预计工时</b> (<code>estimated_hours</code>，默认 4h，管理员可修改) 若落在工时分级区间，则采用固定价。</li>
+              <li><b>数量梯度</b> — 预计工时落入"短工单"区间 (即未匹配任何分级) 时，按完成顺序累积，落在哪个梯度就用哪个单价。</li>
+              <li><b>段位</b> — 综合分映射到段位：≥ 对应阈值即为该段位。最低阈值始终为青铜。</li>
+              <li><b>保护期</b> — 工单标记完成后 N 天内若状态回退到未完成，记为一次重修 (rework_count)，作为未来"关联惩罚"机制的数据基础。</li>
+              <li><b>拖延度</b> — <code>actual_hours / estimated_hours</code> 的均值。&gt; 1 表示超出预计工时，仅用于考核工作拖延程度，不参与工单规模分级。</li>
+            </ul>
           </div>
 
         </div>
@@ -238,9 +400,51 @@ const CEILING_LABELS: Record<string, string> = {
   helper_count: '协助数量 (个)',
 }
 
+const TIER_ORDER = ['bronze', 'silver', 'gold', 'platinum', 'diamond', 'master'] as const
+const TIER_LABELS: Record<string, string> = {
+  bronze: '青铜',
+  silver: '白银',
+  gold: '黄金',
+  platinum: '铂金',
+  diamond: '钻石',
+  master: '王者',
+}
+
 function dimLabel(key: string) { return DIM_LABELS[key] || key }
 function subLabel(dim: string, key: string) { return SUB_LABELS[dim]?.[key] || key }
 function ceilingLabel(key: string) { return CEILING_LABELS[key] || key }
+function tierLabel(key: string) { return TIER_LABELS[key] || key }
+
+interface PieceRateConfig {
+  count_tiers: Array<{ max_count: number | null; price: number }>
+  hour_brackets: Array<{ label?: string; min_hours: number; max_hours: number | null; price: number }>
+  tier_thresholds: Record<string, number>
+  protection_days: number
+}
+
+const pieceRate = computed<PieceRateConfig>(() => {
+  if (!config.value) {
+    return {
+      count_tiers: [],
+      hour_brackets: [],
+      tier_thresholds: {},
+      protection_days: 7,
+    }
+  }
+  // 缺省时填充骨架，保证模板里可直接索引
+  if (!config.value.piece_rate_config) {
+    config.value.piece_rate_config = {
+      count_tiers: [{ max_count: 20, price: 100 }, { max_count: null, price: 160 }],
+      hour_brackets: [
+        { label: '中型', min_hours: 4, max_hours: 16, price: 250 },
+        { label: '大型', min_hours: 16, max_hours: null, price: 600 },
+      ],
+      tier_thresholds: { bronze: 0, silver: 50, gold: 65, platinum: 75, diamond: 85, master: 95 },
+      protection_days: 7,
+    }
+  }
+  return config.value.piece_rate_config
+})
 
 async function fetchConfig() {
   loading.value = true

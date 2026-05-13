@@ -3,7 +3,7 @@ from rest_framework.response import Response
 from rest_framework.generics import RetrieveUpdateAPIView, ListCreateAPIView, CreateAPIView
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.views import APIView
-from django.contrib.auth import get_user_model
+from django.contrib.auth import get_user_model, login as django_login
 from apps.permissions import FullDjangoModelPermissions
 from .serializers import (
     UserSerializer, MeSerializer, RegisterSerializer,
@@ -90,3 +90,17 @@ class ChangePasswordView(APIView):
         request.user.set_password(serializer.validated_data["new_password"])
         request.user.save()
         return Response({"detail": "密码修改成功"})
+
+
+class AdminSessionView(APIView):
+    """JWT→session 桥接：用 SPA 的 JWT 登录后，写入 Django session cookie，
+    使 /api/admin/ 能识别同源同账号，无需再次登录。"""
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        user = request.user
+        if not user.is_staff:
+            return Response({"detail": "无权访问管理后台"}, status=status.HTTP_403_FORBIDDEN)
+        django_login(request, user, backend="django.contrib.auth.backends.ModelBackend")
+        return Response({"detail": "ok"})

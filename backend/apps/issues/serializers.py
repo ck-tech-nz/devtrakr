@@ -68,7 +68,7 @@ class IssueListSerializer(serializers.ModelSerializer):
             "assignee", "assignee_name", "helpers", "helpers_names", "remark", "cause", "solution",
             "ai_cause", "ai_solution",
             "resolution_hours", "created_at", "updated_at", "github_issues",
-            "estimated_completion", "source",
+            "estimated_completion", "estimated_hours", "source",
         ]
 
     def get_created_by_name(self, obj):
@@ -99,7 +99,7 @@ class IssueDetailSerializer(IssueListSerializer):
         fields = IssueListSerializer.Meta.fields + [
             "description", "estimated_completion",
             "actual_hours", "resolved_at", "github_issues", "attachments",
-            "source_meta",
+            "source_meta", "settlement",
         ]
 
 
@@ -116,7 +116,7 @@ class IssueCreateUpdateSerializer(serializers.ModelSerializer):
         fields = [
             "id", "project", "repo", "title", "description", "priority", "status",
             "labels", "assignee", "helpers", "reporter", "remark", "estimated_completion",
-            "actual_hours", "cause", "solution", "attachment_ids",
+            "estimated_hours", "actual_hours", "cause", "solution", "attachment_ids",
         ]
         read_only_fields = ["id"]
 
@@ -140,9 +140,20 @@ class IssueCreateUpdateSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(f"无效的状态: {value}")
         return value
 
+    def _user_can_edit_estimated_hours(self) -> bool:
+        user = self.context["request"].user
+        if not user.is_authenticated:
+            return False
+        if user.is_superuser:
+            return True
+        return user.groups.filter(name="管理员").exists()
+
     def create(self, validated_data):
         helpers = validated_data.pop("helpers", [])
         attachment_ids = validated_data.pop("attachment_ids", [])
+        # 非管理员创建时忽略客户端传入的 estimated_hours,使用模型默认值 (4h)
+        if "estimated_hours" in validated_data and not self._user_can_edit_estimated_hours():
+            validated_data.pop("estimated_hours")
         validated_data["created_by"] = self.context["request"].user
         issue = super().create(validated_data)
         if helpers:
@@ -171,6 +182,9 @@ class IssueCreateUpdateSerializer(serializers.ModelSerializer):
         user = self.context["request"].user
         old_status = instance.status
         old_assignee = instance.assignee_id
+        # 仅管理员可修改 estimated_hours,其他人静默忽略
+        if "estimated_hours" in validated_data and not self._user_can_edit_estimated_hours():
+            validated_data.pop("estimated_hours")
         validated_data["updated_by"] = user
         issue = super().update(instance, validated_data)
         if helpers is not None:
@@ -186,6 +200,10 @@ class IssueCreateUpdateSerializer(serializers.ModelSerializer):
             if new_status in ("已解决", "已发布", "已关闭") and not issue.resolved_at:
                 issue.resolved_at = timezone.now()
                 issue.save(update_fields=["resolved_at"])
+            # 首次进入完成状态时锁定结算 (已结算的不再重算 → 重修不会双倍计价)
+            if new_status in ("已解决", "已发布", "已关闭") and not issue.settlement:
+                from apps.kpi.settlement import settle_issue
+                settle_issue(issue)
 
         new_assignee = validated_data.get("assignee")
         if "assignee" in validated_data and str(getattr(new_assignee, "id", None)) != str(old_assignee):

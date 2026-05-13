@@ -139,6 +139,36 @@ class TestIssueUpdate:
         auth_client.patch(f"/api/issues/{issue.id}/", {"assignee": str(user.id)})
         assert Activity.objects.filter(action="assigned").exists()
 
+    def test_admin_can_update_estimated_hours(self, auth_client, site_settings):
+        issue = IssueFactory(estimated_hours=4.0)
+        response = auth_client.patch(
+            f"/api/issues/{issue.id}/", {"estimated_hours": 12.5}
+        )
+        assert response.status_code == 200
+        issue.refresh_from_db()
+        assert float(issue.estimated_hours) == 12.5
+
+    def test_non_admin_estimated_hours_change_ignored(self, api_client, site_settings):
+        """非管理员 PATCH estimated_hours 应被静默忽略,其他字段正常更新。"""
+        from django.contrib.auth.models import Group, Permission
+        dev = UserFactory()
+        dev_group, _ = Group.objects.get_or_create(name="开发者")
+        dev_group.permissions.add(
+            Permission.objects.get(content_type__app_label="issues", codename="change_issue")
+        )
+        dev.groups.add(dev_group)
+        api_client.force_authenticate(user=dev)
+
+        issue = IssueFactory(estimated_hours=4.0)
+        response = api_client.patch(
+            f"/api/issues/{issue.id}/",
+            {"estimated_hours": 99.0, "remark": "fyi"},
+        )
+        assert response.status_code == 200
+        issue.refresh_from_db()
+        assert float(issue.estimated_hours) == 4.0  # unchanged
+        assert issue.remark == "fyi"  # 其他字段正常更新
+
 
 class TestIssueDelete:
     def test_soft_delete_issue(self, auth_client, site_settings):

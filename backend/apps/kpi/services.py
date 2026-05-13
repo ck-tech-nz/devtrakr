@@ -11,9 +11,13 @@ from datetime import date
 from django.contrib.auth import get_user_model
 from django.utils import timezone
 
-from apps.kpi.metrics import compute_commit_metrics, compute_issue_metrics
-from apps.kpi.models import KPISnapshot
-from apps.kpi.scoring import compute_rankings, compute_scores
+from apps.kpi.metrics import (
+    compute_commit_metrics,
+    compute_issue_metrics,
+    compute_workload_metrics,
+)
+from apps.kpi.models import KPIScoringConfig, KPISnapshot
+from apps.kpi.scoring import compute_rankings, compute_scores, compute_tier
 from apps.kpi.suggestions import generate_suggestions
 
 User = get_user_model()
@@ -46,19 +50,28 @@ class KPIService:
         """
         users = self._get_target_users(role)
         now = timezone.now()
+        cfg = KPIScoringConfig.get_solo()
+        piece_cfg = cfg.piece_rate_config or {}
 
         # 第一轮：为每个用户计算指标和评分
         user_data: list[dict] = []
         for user in users:
             issue_metrics = compute_issue_metrics(user, period_start, period_end)
             commit_metrics = compute_commit_metrics(user, period_start, period_end)
+            workload_metrics = compute_workload_metrics(
+                user, period_start, period_end, piece_cfg
+            )
             prev_scores = self._get_previous_scores(user, period_start)
             scores = compute_scores(issue_metrics, commit_metrics, prev_scores)
+            scores["tier"] = compute_tier(
+                scores.get("overall", 0), piece_cfg.get("tier_thresholds")
+            )
 
             user_data.append({
                 "user": user,
                 "issue_metrics": issue_metrics,
                 "commit_metrics": commit_metrics,
+                "workload_metrics": workload_metrics,
                 "scores": scores,
                 "prev_scores": prev_scores,
             })
@@ -91,6 +104,7 @@ class KPIService:
                 defaults={
                     "issue_metrics": d["issue_metrics"],
                     "commit_metrics": d["commit_metrics"],
+                    "workload_metrics": d["workload_metrics"],
                     "scores": d["scores"],
                     "rankings": rankings_map.get(user.pk, {}),
                     "suggestions": suggestions,
@@ -109,16 +123,26 @@ class KPIService:
 
     def compute_for_user(self, user, period_start: date, period_end: date) -> dict:
         """为单个用户按需计算 KPI，不保存快照。"""
+        cfg = KPIScoringConfig.get_solo()
+        piece_cfg = cfg.piece_rate_config or {}
+
         issue_metrics = compute_issue_metrics(user, period_start, period_end)
         commit_metrics = compute_commit_metrics(user, period_start, period_end)
+        workload_metrics = compute_workload_metrics(
+            user, period_start, period_end, piece_cfg
+        )
         prev_scores = self._get_previous_scores(user, period_start)
         scores = compute_scores(issue_metrics, commit_metrics, prev_scores)
+        scores["tier"] = compute_tier(
+            scores.get("overall", 0), piece_cfg.get("tier_thresholds")
+        )
         suggestions = generate_suggestions(scores, issue_metrics, commit_metrics, {}, prev_scores)
 
         return {
             "user": user,
             "issue_metrics": issue_metrics,
             "commit_metrics": commit_metrics,
+            "workload_metrics": workload_metrics,
             "scores": scores,
             "suggestions": suggestions,
         }

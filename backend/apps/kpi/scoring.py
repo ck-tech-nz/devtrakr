@@ -226,6 +226,59 @@ def compute_scores(
 
 
 # ---------------------------------------------------------------------------
+# 段位计算
+# ---------------------------------------------------------------------------
+
+TIER_ORDER = ("bronze", "silver", "gold", "platinum", "diamond", "master")
+TIER_LABELS = {
+    "bronze": "青铜",
+    "silver": "白银",
+    "gold": "黄金",
+    "platinum": "铂金",
+    "diamond": "钻石",
+    "master": "王者",
+}
+
+
+def compute_tier(overall_score: float, thresholds: dict | None = None) -> dict:
+    """根据综合分映射段位，返回 {key, label, threshold, next_label, next_threshold}。"""
+    from apps.kpi.models import _default_piece_rate_config
+
+    th = thresholds or _default_piece_rate_config()["tier_thresholds"]
+    # 按 threshold 降序匹配
+    ordered = sorted(
+        ((k, th.get(k, 0)) for k in TIER_ORDER if k in th),
+        key=lambda x: x[1],
+        reverse=True,
+    )
+    current_key = "bronze"
+    current_threshold = 0
+    next_key: str | None = None
+    next_threshold: int | None = None
+    for i, (key, t) in enumerate(ordered):
+        if overall_score >= t:
+            current_key = key
+            current_threshold = t
+            # next tier = 上一档（即更高的段位）
+            if i > 0:
+                next_key, next_threshold = ordered[i - 1]
+            break
+    else:
+        # 低于所有阈值 → 最低段位（已包含 bronze threshold=0 的情况）
+        if ordered:
+            current_key, current_threshold = ordered[-1]
+
+    return {
+        "key": current_key,
+        "label": TIER_LABELS.get(current_key, current_key),
+        "threshold": current_threshold,
+        "next_key": next_key,
+        "next_label": TIER_LABELS.get(next_key) if next_key else None,
+        "next_threshold": next_threshold,
+    }
+
+
+# ---------------------------------------------------------------------------
 # 排名计算
 # ---------------------------------------------------------------------------
 

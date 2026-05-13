@@ -128,12 +128,27 @@ class KPITeamView(APIView):
         developers = []
         for d in user_data:
             u = d["user"]
+            wm = d.get("workload_metrics") or {}
             developers.append({
                 "user_id": u.id,
                 "user_name": u.name,
                 "avatar": u.avatar or "",
                 "scores": d["scores"],
                 "rankings": rankings_map.get(u.pk, {}),
+                "workload": {
+                    "completed_count": wm.get("completed_count", 0),
+                    "small_count": wm.get("small_count", 0),
+                    "medium_count": wm.get("medium_count", 0),
+                    "large_count": wm.get("large_count", 0),
+                    "estimated_earnings": wm.get("estimated_earnings", 0),
+                    "avg_first_response_hours": wm.get("avg_first_response_hours", 0),
+                    "avg_delay_ratio": wm.get("avg_delay_ratio", 0),
+                    "over_estimate_count": wm.get("over_estimate_count", 0),
+                    "total_delay_hours": wm.get("total_delay_hours", 0),
+                    "total_overrun_hours": wm.get("total_overrun_hours", 0),
+                    "rework_count": wm.get("rework_count", 0),
+                    "protection_helper_count": wm.get("protection_helper_count", 0),
+                },
             })
         developers.sort(key=lambda x: x["scores"].get("overall", 0), reverse=True)
 
@@ -145,6 +160,18 @@ class KPITeamView(APIView):
             if d["issue_metrics"].get("avg_resolution_hours") is not None
         ]
         overall_scores = [d["scores"].get("overall", 0) for d in user_data]
+        total_earnings = sum(
+            (d.get("workload_metrics") or {}).get("estimated_earnings", 0) for d in user_data
+        )
+        total_rework = sum(
+            (d.get("workload_metrics") or {}).get("rework_count", 0) for d in user_data
+        )
+        total_tickets = sum(
+            (d.get("workload_metrics") or {}).get("completed_count", 0) for d in user_data
+        )
+        top_tier_dev = max(
+            developers, key=lambda x: x["scores"].get("overall", 0), default=None
+        )
 
         return Response({
             "period_start": period_start.isoformat(),
@@ -160,6 +187,12 @@ class KPITeamView(APIView):
                 "avg_overall_score": (
                     round(sum(overall_scores) / len(overall_scores), 1)
                     if overall_scores else None
+                ),
+                "total_tickets": total_tickets,
+                "total_earnings": total_earnings,
+                "total_rework": total_rework,
+                "top_tier": (
+                    top_tier_dev["scores"].get("tier") if top_tier_dev else None
                 ),
             },
         })
@@ -234,6 +267,25 @@ class KPIUserCommitsView(APIView):
             return Response({"detail": "用户不存在"}, status=status.HTTP_404_NOT_FOUND)
 
         return Response(data["commit_metrics"])
+
+
+class KPIUserWorkloadView(APIView):
+    """GET /api/kpi/users/{user_id}/workload/ — 工单计件、重修、SLA 指标。"""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, user_id):
+        if not _has_kpi_access(request, user_id):
+            return Response({"detail": "权限不足"}, status=status.HTTP_403_FORBIDDEN)
+
+        user, _, data = _compute_user(request, user_id)
+        if not user:
+            return Response({"detail": "用户不存在"}, status=status.HTTP_404_NOT_FOUND)
+
+        payload = dict(data["workload_metrics"])
+        payload["tier"] = data["scores"].get("tier")
+        payload["overall_score"] = data["scores"].get("overall", 0)
+        return Response(payload)
 
 
 class KPIUserTrendsView(APIView):
@@ -325,6 +377,12 @@ class KPIMeCommitsView(KPIUserCommitsView):
         return super().get(request, user_id=request.user.id)
 
 
+class KPIMeWorkloadView(KPIUserWorkloadView):
+    """GET /api/kpi/me/workload/"""
+    def get(self, request):
+        return super().get(request, user_id=request.user.id)
+
+
 class KPIMeTrendsView(KPIUserTrendsView):
     """GET /api/kpi/me/trends/"""
     def get(self, request):
@@ -355,6 +413,7 @@ class KPIScoringConfigView(APIView):
             "quality_formula": cfg.quality_formula,
             "capability_formula": cfg.capability_formula,
             "ceilings": cfg.ceilings,
+            "piece_rate_config": cfg.piece_rate_config,
             "updated_at": cfg.updated_at,
         })
 
@@ -363,6 +422,7 @@ class KPIScoringConfigView(APIView):
         fields = [
             "dimension_weights", "efficiency_formula", "output_formula",
             "quality_formula", "capability_formula", "ceilings",
+            "piece_rate_config",
         ]
         for field in fields:
             if field in request.data:
@@ -375,5 +435,6 @@ class KPIScoringConfigView(APIView):
             "quality_formula": cfg.quality_formula,
             "capability_formula": cfg.capability_formula,
             "ceilings": cfg.ceilings,
+            "piece_rate_config": cfg.piece_rate_config,
             "updated_at": cfg.updated_at,
         })

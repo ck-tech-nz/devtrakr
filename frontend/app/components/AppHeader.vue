@@ -42,6 +42,16 @@ const { breadcrumbs } = useNavigation()
 const { user, logout } = useAuth()
 const { settings, update } = useUserSettings()
 const { resolveAvatarUrl } = useAvatars()
+const { api } = useApi()
+
+async function openAdmin() {
+  try {
+    await api('/api/auth/admin-session/', { method: 'POST', credentials: 'include' })
+  } catch {
+    // 鉴权失败仍打开，由 admin 自身处理登录页
+  }
+  window.open('/api/admin/', '_blank')
+}
 
 const displayName = computed(() => user.value?.name || '用户')
 const displayInitial = computed(() => (user.value?.name || '?').slice(0, 1))
@@ -70,7 +80,7 @@ const userMenuItems = computed(() => {
     items.push([{
       label: '系统管理',
       icon: 'i-heroicons-cog-6-tooth',
-      onSelect: () => window.open('/api/admin/', '_blank'),
+      onSelect: () => openAdmin(),
     }])
   }
   items.push([{

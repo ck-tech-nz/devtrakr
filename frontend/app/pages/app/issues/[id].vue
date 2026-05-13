@@ -243,37 +243,78 @@
         </div>
         <div class="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 p-5 space-y-3">
           <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100">信息</h3>
-          <div class="grid grid-cols-2 gap-3">
-            <div class="text-sm">
-              <span class="text-gray-400 dark:text-gray-500">提出人</span>
-              <p class="text-gray-900 dark:text-gray-100 mt-0.5">{{ issue.reporter || issue.created_by_name || '-' }}</p>
+          <div class="grid grid-cols-2 gap-4">
+            <!-- 左列: 元信息 + 工时 -->
+            <div class="space-y-3">
+              <div class="text-sm">
+                <span class="text-gray-400 dark:text-gray-500">提出人</span>
+                <p class="text-gray-900 dark:text-gray-100 mt-0.5">{{ issue.reporter || issue.created_by_name || '-' }}</p>
+              </div>
+              <div class="text-sm">
+                <span class="text-gray-400 dark:text-gray-500">创建时间</span>
+                <p class="text-gray-900 dark:text-gray-100 mt-0.5">{{ issue.created_at?.slice(0, 10) }}</p>
+              </div>
+              <div v-if="issue.resolved_at" class="text-sm">
+                <span class="text-gray-400 dark:text-gray-500">解决时间</span>
+                <p class="text-gray-900 dark:text-gray-100 mt-0.5">{{ issue.resolved_at.slice(0, 10) }}</p>
+              </div>
+              <div v-if="issue.resolution_hours" class="text-sm">
+                <span class="text-gray-400 dark:text-gray-500">解决耗时</span>
+                <p class="text-gray-900 dark:text-gray-100 mt-0.5">{{ issue.resolution_hours }}h</p>
+              </div>
+              <div class="form-row">
+                <div class="flex items-center justify-between">
+                  <label class="text-gray-400 dark:text-gray-500">预计工时</label>
+                  <UButton
+                    v-if="canEditEstimatedHours && isFieldDirty('estimated_hours')"
+                    size="xs"
+                    variant="soft"
+                    :loading="savingField === 'estimated_hours'"
+                    @click="saveField('estimated_hours')"
+                  >
+                    保存
+                  </UButton>
+                </div>
+                <UInput
+                  v-if="canEditEstimatedHours"
+                  v-model="form.estimated_hours"
+                  type="number"
+                  placeholder="小时"
+                  step="0.5"
+                  min="0"
+                />
+                <p v-else class="text-sm text-gray-900 dark:text-gray-100 mt-0.5">
+                  {{ form.estimated_hours ? `${form.estimated_hours} 小时` : '-' }}
+                </p>
+              </div>
+              <div class="form-row">
+                <div class="flex items-center justify-between">
+                  <label class="text-gray-400 dark:text-gray-500">实际工时</label>
+                  <UButton v-if="isFieldDirty('actual_hours')" size="xs" variant="soft" :loading="savingField === 'actual_hours'" @click="saveField('actual_hours')">保存</UButton>
+                </div>
+                <UInput v-model="form.actual_hours" type="number" placeholder="小时" />
+              </div>
+              <div v-if="issue.settlement" class="text-sm">
+                <span class="text-gray-400 dark:text-gray-500">结算</span>
+                <p class="text-gray-900 dark:text-gray-100 mt-0.5">
+                  <span class="font-medium text-emerald-600 dark:text-emerald-400">¥{{ issue.settlement.price }}</span>
+                  <span class="text-xs text-gray-500 ml-2">{{ issue.settlement.size }}</span>
+                </p>
+                <p class="text-[11px] text-gray-400 mt-0.5">
+                  {{ issue.settlement.settled_at?.slice(0, 10) }} 锁定 · 后续配置变更不影响此单
+                </p>
+              </div>
             </div>
-            <div class="text-sm">
-              <span class="text-gray-400 dark:text-gray-500">创建时间</span>
-              <p class="text-gray-900 dark:text-gray-100 mt-0.5">{{ issue.created_at?.slice(0, 10) }}</p>
-            </div>
-          </div>
-          <div v-if="issue.resolved_at || issue.resolution_hours" class="grid grid-cols-2 gap-3">
-            <div v-if="issue.resolved_at" class="text-sm">
-              <span class="text-gray-400 dark:text-gray-500">解决时间</span>
-              <p class="text-gray-900 dark:text-gray-100 mt-0.5">{{ issue.resolved_at.slice(0, 10) }}</p>
-            </div>
-            <div v-if="issue.resolution_hours" class="text-sm">
-              <span class="text-gray-400 dark:text-gray-500">解决耗时</span>
-              <p class="text-gray-900 dark:text-gray-100 mt-0.5">{{ issue.resolution_hours }}h</p>
-            </div>
-          </div>
-          <div class="grid grid-cols-2 gap-3">
+            <!-- 右列: 预计完成日历 -->
             <div class="form-row">
               <label class="text-gray-400 dark:text-gray-500">预计完成</label>
-              <UInput v-model="form.estimated_completion" type="date" @update:model-value="(v: string) => autoSave('estimated_completion', v)" />
-            </div>
-            <div class="form-row">
-              <div class="flex items-center justify-between">
-                <label class="text-gray-400 dark:text-gray-500">实际工时</label>
-                <UButton v-if="isFieldDirty('actual_hours')" size="xs" variant="soft" :loading="savingField === 'actual_hours'" @click="saveField('actual_hours')">保存</UButton>
-              </div>
-              <UInput v-model="form.actual_hours" type="number" placeholder="小时" />
+              <UCalendar
+                :model-value="calendarValue"
+                size="xs"
+                class="w-fit"
+                :ui="{ cellTrigger: 'data-[selected]:bg-red-500 dark:data-[selected]:bg-red-600' }"
+                @update:model-value="onCalendarUpdate"
+              />
             </div>
           </div>
         </div>
@@ -619,8 +660,31 @@
 <script setup lang="ts">
 definePageMeta({ layout: 'default' })
 
+import { type CalendarDate, parseDate, type DateValue } from '@internationalized/date'
+
 const { api } = useApi()
-const { can } = useAuth()
+const { can, hasGroup, user: authUser } = useAuth()
+const canEditEstimatedHours = computed(() =>
+  hasGroup('管理员') || (authUser.value?.is_superuser ?? false)
+)
+
+const calendarValue = computed<DateValue | undefined>(() => {
+  const v = form.value.estimated_completion
+  if (!v) return undefined
+  try { return parseDate(v) } catch { return undefined }
+})
+
+function onCalendarUpdate(value: unknown) {
+  if (!value || Array.isArray(value)) {
+    form.value.estimated_completion = ''
+    autoSave('estimated_completion', null)
+    return
+  }
+  const d = value as CalendarDate
+  const iso = `${d.year}-${String(d.month).padStart(2, '0')}-${String(d.day).padStart(2, '0')}`
+  form.value.estimated_completion = iso
+  autoSave('estimated_completion', iso)
+}
 const route = useRoute()
 const router = useRouter()
 const { isOnline } = useServiceStatus()
@@ -798,6 +862,7 @@ const form = ref({
   cause: '',
   solution: '',
   estimated_completion: '',
+  estimated_hours: '',
   actual_hours: '',
 })
 
@@ -836,6 +901,7 @@ function populateForm(data: any) {
     cause: data.cause || '',
     solution: data.solution || '',
     estimated_completion: data.estimated_completion || '',
+    estimated_hours: data.estimated_hours != null ? String(data.estimated_hours) : '',
     actual_hours: data.actual_hours != null ? String(data.actual_hours) : '',
   }
   savedForm.value = JSON.parse(JSON.stringify(form.value))
@@ -902,6 +968,7 @@ async function saveField(field: keyof typeof form.value) {
     const body: Record<string, any> = {}
     const val = form.value[field]
     if (field === 'actual_hours') body.actual_hours = val ? Number(val) : null
+    else if (field === 'estimated_hours') body.estimated_hours = val ? Number(val) : null
     else body[field] = val
     await api(`/api/issues/${issue.value.id}/`, { method: 'PATCH', body })
     issue.value = await api<any>(`/api/issues/${route.params.id}/`)
