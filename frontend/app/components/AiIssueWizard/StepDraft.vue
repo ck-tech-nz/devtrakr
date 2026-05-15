@@ -141,6 +141,7 @@ const props = defineProps<{
   modules: string[]
   users: UserChoice[]
   validLabels: string[]
+  attachmentIds: string[]
   submitting: boolean
   submitError: string
   successIssueId: number | null
@@ -209,6 +210,7 @@ function onSubmit() {
       environment: form.value.environment || null,
       original_input: props.draft.description,
     },
+    attachment_ids: props.attachmentIds,
   }
   if (form.value.assignee) body.assignee = form.value.assignee
 

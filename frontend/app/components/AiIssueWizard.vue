@@ -23,6 +23,7 @@
       :modules="modules"
       :users="users"
       :valid-labels="validLabels"
+      :attachment-ids="lastAttachmentIds"
       :submitting="submitting"
       :submit-error="submitError"
       :success-issue-id="successIssueId"
@@ -50,6 +51,7 @@ const modules = ref<string[]>([])
 const users = ref<{ id: string; name: string }[]>([])
 const validLabels = ref<string[]>([])
 const lastAnalyzedProject = ref<string>('')
+const lastAttachmentIds = ref<string[]>([])
 
 const wizard = useAiWizard()
 const submitting = ref(false)
@@ -76,8 +78,9 @@ onMounted(async () => {
   users.value = (usersData || []).map((u: any) => ({ id: String(u.id), name: u.name || u.username }))
 })
 
-function onAnalyze(payload: { description: string; project: string }) {
+function onAnalyze(payload: { description: string; project: string; attachment_ids: string[] }) {
   lastAnalyzedProject.value = payload.project
+  lastAttachmentIds.value = payload.attachment_ids
   wizard.start(payload)
 }
 
