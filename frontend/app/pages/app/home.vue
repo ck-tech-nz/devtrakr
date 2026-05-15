@@ -136,11 +136,22 @@
 
         <!-- 最近动态 -->
         <div v-if="hasActivity" class="section-card">
-          <div class="section-header">
-            <h3 class="section-title">最近动态</h3>
-            <NuxtLink to="/app/issues" class="section-link">查看全部</NuxtLink>
-          </div>
-          <div class="activity-list">
+          <button
+            class="section-header section-toggle"
+            :class="{ 'section-toggle--collapsed': !showActivity }"
+            type="button"
+            @click="showActivity = !showActivity"
+          >
+            <h3 class="section-title">
+              最近动态
+              <span class="section-badge">{{ recentActivity.length }}</span>
+            </h3>
+            <div class="section-toggle-right">
+              <NuxtLink to="/app/issues" class="section-link" @click.stop>查看全部</NuxtLink>
+              <UIcon :name="showActivity ? 'i-heroicons-chevron-up' : 'i-heroicons-chevron-down'" class="w-4 h-4 text-gray-400" />
+            </div>
+          </button>
+          <div v-if="showActivity" class="activity-list">
             <NuxtLink
               v-for="item in recentActivity"
               :key="item.id"
@@ -179,6 +190,7 @@ const stats = ref({
   total_added_this_week: 0,
 })
 const recentActivity = ref<any[]>([])
+const showActivity = ref(false)
 const planData = ref<any>(null)
 const isTester = computed(() => hasGroup('测试'))
 
@@ -397,6 +409,22 @@ onMounted(async () => {
   transition: color 0.15s;
 }
 .section-link:hover { color: #6d28d9; }
+
+/* 可折叠 section header（按钮形态） */
+.section-toggle {
+  width: 100%;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+}
+.section-toggle--collapsed { margin-bottom: 0; }
+.section-toggle:hover .section-title { color: #7c3aed; }
+:root.dark .section-toggle:hover .section-title { color: #c4b5fd; }
+.section-toggle-right { display: flex; align-items: center; gap: 0.625rem; }
 
 /* 待办 / 提及行 */
 .todo-list {
