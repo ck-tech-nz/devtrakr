@@ -108,13 +108,14 @@ watch(() => state.value.open, async (open) => {
 .dialog-body {
   display: flex;
   gap: 1rem;
-  align-items: flex-start;
+  align-items: stretch;
   flex: 1;
   min-height: 0;
   overflow: hidden;
 }
 .dialog-icon {
   flex-shrink: 0;
+  align-self: flex-start;
   width: 2.5rem;
   height: 2.5rem;
   border-radius: 9999px;
@@ -137,6 +138,7 @@ watch(() => state.value.open, async (open) => {
 .dialog-text {
   flex: 1;
   min-width: 0;
+  min-height: 0;
   padding-top: 0.125rem;
   overflow-y: auto;
 }
