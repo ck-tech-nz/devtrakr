@@ -8,6 +8,14 @@ class User(AbstractUser):
     avatar = models.CharField(max_length=50, blank=True, verbose_name="头像")
     settings = models.JSONField(default=dict, blank=True, verbose_name="用户设置")
     is_bot = models.BooleanField(default=False, verbose_name="是否为机器人")
+    default_project = models.ForeignKey(
+        "projects.Project",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+        verbose_name="默认项目",
+    )
 
     class Meta:
         verbose_name = "用户"
