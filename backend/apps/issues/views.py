@@ -566,6 +566,14 @@ class IssueAiDraftView(APIView):
     """
     permission_classes = [IsAuthenticated]
 
+    def perform_content_negotiation(self, request, force=False):
+        # We return StreamingHttpResponse directly for success and let any
+        # error Response use JSONRenderer. Bypass DRF's Accept-header check
+        # since clients send Accept: text/event-stream which won't match
+        # the default registered renderers (JSONRenderer/BrowsableAPIRenderer).
+        from rest_framework.renderers import JSONRenderer
+        return (JSONRenderer(), "application/json")
+
     def post(self, request):
         from django.http import StreamingHttpResponse
         import json as _json

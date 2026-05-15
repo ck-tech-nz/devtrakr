@@ -276,6 +276,40 @@ def test_ai_draft_endpoint_streams_sse_events(api_client, site_settings):
 
 
 @pytest.mark.django_db
+def test_ai_draft_endpoint_accepts_text_event_stream(api_client, site_settings):
+    """Client sending Accept: text/event-stream must not get 406."""
+    from apps.settings.models import SiteSettings
+    from tests.factories import LLMConfigFactory, ProjectFactory, UserFactory
+    from django.contrib.auth.models import Permission
+    LLMConfigFactory(is_default=True, is_active=True)
+    SiteSettings.objects.update(modules=["通知中心"])
+    project = ProjectFactory()
+    user = UserFactory()
+    perm = Permission.objects.get(codename="add_issue")
+    user.user_permissions.add(perm)
+    api_client.force_authenticate(user)
+    api_client.credentials(HTTP_ACCEPT="text/event-stream")
+
+    responses = iter([
+        '{"category": "x", "scope": "y"}',
+        '{"title": "T", "priority": "P2", "module": "通知中心"}',
+        '{"repro_steps": "1.", "expected_behavior": "y", "labels": []}',
+    ])
+    def fake_complete(self, **kwargs):
+        return next(responses)
+
+    with patch("apps.issues.services_ai_wizard.LLMClient.complete", new=fake_complete):
+        resp = api_client.post(
+            "/api/issues/ai-draft/",
+            {"description": "test description", "project": str(project.id)},
+            format="json",
+        )
+        # Must not be 406
+        assert resp.status_code == 200, f"Expected 200, got {resp.status_code}: {resp.content!r}"
+        assert resp["Content-Type"].startswith("text/event-stream")
+
+
+@pytest.mark.django_db
 def test_issue_create_accepts_source_and_source_meta(api_client):
     """The wizard sets source='ai_wizard' and source_meta={module, environment, ...} on the new Issue."""
     from tests.factories import ProjectFactory, UserFactory
