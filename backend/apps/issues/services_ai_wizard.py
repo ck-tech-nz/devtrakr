@@ -146,5 +146,6 @@ class AiWizardService:
             "priority": extract.get("priority", "P2"),
             "module": extract.get("module", ""),
             "labels": generate.get("labels", []),
+            "follow_up_questions": generate.get("follow_up_questions", []),
             "environment": None,
         }

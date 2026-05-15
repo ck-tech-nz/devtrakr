@@ -30,6 +30,14 @@ def test_wizard_generate_template_has_required_placeholders():
     assert "{labels_json}" in p.user_prompt_template
 
 
+@pytest.mark.django_db
+def test_wizard_generate_prompt_was_updated_to_conservative_version():
+    p = Prompt.objects.get(slug="wizard_generate")
+    assert p.temperature <= 0.3, "Conservative version should have low temperature"
+    assert "客服" in p.system_prompt or "忠实" in p.system_prompt, "Should mention faithful collection style"
+    assert "follow_up_questions" in p.system_prompt
+
+
 from unittest.mock import patch
 
 
@@ -123,7 +131,8 @@ def test_generate_returns_parsed_json():
     fake = (
         '{"repro_steps": "1. 点击铃铛\\n2. 看不到列表",'
         ' "expected_behavior": "应展开通知列表",'
-        ' "labels": ["前端", "Bug"]}'
+        ' "labels": ["前端", "Bug"],'
+        ' "follow_up_questions": []}'
     )
     with patch("apps.issues.services_ai_wizard.LLMClient.complete", return_value=fake):
         svc = AiWizardService()
@@ -156,7 +165,7 @@ def test_stream_draft_emits_three_steps_then_draft_and_done(site_settings):
     responses = iter([
         '{"category": "前端 UI", "scope": "通知中心"}',
         '{"title": "T", "priority": "P2", "module": "通知中心"}',
-        '{"repro_steps": "1. 步骤", "expected_behavior": "应正常", "labels": ["前端"]}',
+        '{"repro_steps": "1. 步骤", "expected_behavior": "应正常", "labels": ["前端"], "follow_up_questions": ["浏览器版本？", "复现频率？"]}',
     ])
 
     def fake_complete(self, **kwargs):
@@ -182,6 +191,7 @@ def test_stream_draft_emits_three_steps_then_draft_and_done(site_settings):
     assert "1. 步骤" in draft["repro_steps"]
     assert draft["expected_behavior"] == "应正常"
     assert draft["labels"] == ["前端"]
+    assert draft["follow_up_questions"] == ["浏览器版本？", "复现频率？"]
 
 
 @pytest.mark.django_db
