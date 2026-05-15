@@ -112,6 +112,11 @@ REST_FRAMEWORK = {
         "rest_framework.filters.SearchFilter",
         "rest_framework.filters.OrderingFilter",
     ),
+    # 默认无 throttle,仅在按需 opt-in 的视图上启用
+    "DEFAULT_THROTTLE_RATES": {
+        "ai_wizard": "10/min",
+        "ai_duplicate_check": "30/min",
+    },
 }
 
 SIMPLE_JWT = {

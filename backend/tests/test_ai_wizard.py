@@ -347,3 +347,41 @@ def test_issue_create_accepts_source_and_source_meta(api_client):
     issue = Issue.objects.get(pk=resp.data["id"])
     assert issue.source == "ai_wizard"
     assert issue.source_meta == {"module": "通知中心", "environment": "Chrome / Windows"}
+
+
+@pytest.mark.django_db
+def test_ai_draft_endpoint_throttles_excessive_requests(api_client, site_settings):
+    """User exceeding 10 reqs/min gets 429."""
+    from apps.settings.models import SiteSettings
+    from tests.factories import LLMConfigFactory, ProjectFactory, UserFactory
+    from django.contrib.auth.models import Permission
+    from django.core.cache import cache
+    cache.clear()  # 清理 throttle 计数器,避免与其它测试相互影响
+    LLMConfigFactory(is_default=True, is_active=True)
+    SiteSettings.objects.update(modules=["x"])
+    project = ProjectFactory()
+    user = UserFactory()
+    perm = Permission.objects.get(codename="add_issue")
+    user.user_permissions.add(perm)
+    api_client.force_authenticate(user)
+
+    def fake_complete(self, **kwargs):
+        return '{"category": "x", "scope": "y"}'
+
+    with patch("apps.issues.services_ai_wizard.LLMClient.complete", new=fake_complete):
+        for i in range(10):
+            resp = api_client.post(
+                "/api/issues/ai-draft/",
+                {"description": "test description", "project": str(project.id)},
+                format="json",
+            )
+            assert resp.status_code == 200, f"req {i+1} unexpectedly failed: {resp.status_code}"
+        # 第 11 次请求必须命中限流
+        resp = api_client.post(
+            "/api/issues/ai-draft/",
+            {"description": "test description", "project": str(project.id)},
+            format="json",
+        )
+        assert resp.status_code == 429, f"expected 429 throttled, got {resp.status_code}"
+
+    cache.clear()

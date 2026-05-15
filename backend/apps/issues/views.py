@@ -2,6 +2,7 @@ from datetime import timedelta
 from rest_framework import generics, status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.throttling import UserRateThrottle
 from rest_framework.views import APIView
 from apps.permissions import FullDjangoModelPermissions
 from django_filters.rest_framework import DjangoFilterBackend
@@ -24,6 +25,16 @@ from .serializers import (
 )
 
 User = get_user_model()
+
+
+class AiWizardThrottle(UserRateThrottle):
+    """10/min per user for the AI draft SSE endpoint (each request = 3 LLM calls)."""
+    scope = "ai_wizard"
+
+
+class AiCheckDuplicateThrottle(UserRateThrottle):
+    """30/min per user for duplicate check (lighter, single LLM call)."""
+    scope = "ai_duplicate_check"
 
 
 def _with_ai_fields(qs):
@@ -565,6 +576,7 @@ class IssueAiDraftView(APIView):
     a free-form bug description via the 3-stage AI wizard pipeline.
     """
     permission_classes = [IsAuthenticated]
+    throttle_classes = [AiWizardThrottle]
 
     def perform_content_negotiation(self, request, force=False):
         # We return StreamingHttpResponse directly for success and let any
@@ -608,7 +620,9 @@ class IssueCheckDuplicateView(APIView):
     on configuration or LLM failures: always returns 200 with possibly empty
     candidates so the modal continues to function.
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, FullDjangoModelPermissions]
+    throttle_classes = [AiCheckDuplicateThrottle]
+    queryset = Issue.objects.none()  # FullDjangoModelPermissions 需要 queryset 确定模型
 
     def post(self, request):
         from .serializers import DuplicateCheckInputSerializer
