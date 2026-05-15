@@ -89,3 +89,62 @@ class AiWizardService:
             extract_json=json.dumps(extract, ensure_ascii=False),
             labels_json=json.dumps(labels, ensure_ascii=False),
         )
+
+    def stream_draft(self, description: str):
+        """Generator yielding (event_name, data_dict) tuples for the SSE layer.
+
+        Events:
+          ("step", {"step": N, "label": ..., "status": "done", "result": {...}})
+          ("draft", merged_draft)
+          ("done", {})
+          ("error", {"step": N, "code": ..., "message": ...})  on failure
+        """
+        from apps.settings.models import SiteSettings
+
+        site = SiteSettings.get_solo()
+        modules = list(site.modules or [])
+        labels_dict = site.labels or {}
+        labels_list = list(labels_dict.keys()) if isinstance(labels_dict, dict) else list(labels_dict)
+
+        try:
+            classify = self.classify(description)
+            yield ("step", {
+                "step": 1,
+                "label": "识别问题类型与影响范围",
+                "status": "done",
+                "result": classify,
+            })
+
+            extract = self.extract(description, classify, modules)
+            yield ("step", {
+                "step": 2,
+                "label": "提取关键字段",
+                "status": "done",
+                "result": extract,
+            })
+
+            generate = self.generate(description, classify, extract, labels_list)
+            yield ("step", {
+                "step": 3,
+                "label": "生成复现步骤与预期行为",
+                "status": "done",
+                "result": generate,
+            })
+
+            yield ("draft", self._merge(description, classify, extract, generate))
+            yield ("done", {})
+
+        except AiWizardError as e:
+            yield ("error", {"step": e.step, "code": e.code, "message": e.message})
+
+    def _merge(self, description: str, classify: dict, extract: dict, generate: dict) -> dict:
+        return {
+            "title": extract.get("title", ""),
+            "description": description,  # client decides whether to use AI-rephrased or raw input
+            "repro_steps": generate.get("repro_steps", ""),
+            "expected_behavior": generate.get("expected_behavior", ""),
+            "priority": extract.get("priority", "P2"),
+            "module": extract.get("module", ""),
+            "labels": generate.get("labels", []),
+            "environment": None,
+        }

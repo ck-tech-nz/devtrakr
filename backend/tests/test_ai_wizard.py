@@ -137,3 +137,67 @@ def test_generate_returns_parsed_json():
     assert "1. 点击铃铛" in result["repro_steps"]
     assert result["expected_behavior"] == "应展开通知列表"
     assert result["labels"] == ["前端", "Bug"]
+
+
+@pytest.mark.django_db
+def test_stream_draft_emits_three_steps_then_draft_and_done(site_settings):
+    from apps.issues.services_ai_wizard import AiWizardService
+    from apps.settings.models import SiteSettings
+    from tests.factories import LLMConfigFactory
+    LLMConfigFactory(is_default=True, is_active=True)
+    SiteSettings.objects.update(
+        modules=["通知中心"],
+        labels={
+            "前端": {"foreground": "#fff", "background": "#000", "description": ""},
+            "Bug": {"foreground": "#fff", "background": "#d00", "description": ""},
+        },
+    )
+
+    responses = iter([
+        '{"category": "前端 UI", "scope": "通知中心"}',
+        '{"title": "T", "priority": "P2", "module": "通知中心"}',
+        '{"repro_steps": "1. 步骤", "expected_behavior": "应正常", "labels": ["前端"]}',
+    ])
+
+    def fake_complete(self, **kwargs):
+        return next(responses)
+
+    with patch("apps.issues.services_ai_wizard.LLMClient.complete", new=fake_complete):
+        svc = AiWizardService()
+        events = list(svc.stream_draft(description="点击铃铛没反应"))
+
+    names = [e[0] for e in events]
+    assert names == ["step", "step", "step", "draft", "done"]
+
+    # Step events carry step numbers 1,2,3
+    assert events[0][1]["step"] == 1
+    assert events[1][1]["step"] == 2
+    assert events[2][1]["step"] == 3
+
+    # Draft event merges everything
+    draft = events[3][1]
+    assert draft["title"] == "T"
+    assert draft["priority"] == "P2"
+    assert draft["module"] == "通知中心"
+    assert "1. 步骤" in draft["repro_steps"]
+    assert draft["expected_behavior"] == "应正常"
+    assert draft["labels"] == ["前端"]
+
+
+@pytest.mark.django_db
+def test_stream_draft_yields_error_when_step_fails(site_settings):
+    from apps.issues.services_ai_wizard import AiWizardService
+    from tests.factories import LLMConfigFactory
+    LLMConfigFactory(is_default=True, is_active=True)
+
+    def fake_complete(self, **kwargs):
+        return "not json"
+
+    with patch("apps.issues.services_ai_wizard.LLMClient.complete", new=fake_complete):
+        svc = AiWizardService()
+        events = list(svc.stream_draft(description="x"))
+
+    assert events[-1][0] == "error"
+    err = events[-1][1]
+    assert err["step"] == 1
+    assert err["code"] == "llm_bad_json"
