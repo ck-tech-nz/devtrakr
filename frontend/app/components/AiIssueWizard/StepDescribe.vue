@@ -3,10 +3,20 @@
     <div class="input-wrap">
       <!-- 附件预览行 -->
       <div v-if="attachments.length" class="attach-row">
-        <div v-for="att in attachments" :key="att.id" class="attach-chip">
-          <UIcon :name="isImage(att.file_name) ? 'i-heroicons-photo' : 'i-heroicons-document'" class="w-3.5 h-3.5" />
-          <span class="attach-name">{{ att.file_name }}</span>
-          <button class="attach-remove" @click="removeAttachment(att.id)">
+        <div v-for="att in attachments" :key="att.id" class="attach-chip" :class="{ 'attach-chip--image': isImage(att.file_name) }">
+          <a
+            v-if="isImage(att.file_name)"
+            :href="att.file_url"
+            target="_blank"
+            rel="noopener"
+            class="attach-thumb"
+            :title="att.file_name"
+          >
+            <img :src="att.file_url" :alt="att.file_name" />
+          </a>
+          <UIcon v-else name="i-heroicons-document" class="w-3.5 h-3.5 attach-icon" />
+          <span v-if="!isImage(att.file_name)" class="attach-name">{{ att.file_name }}</span>
+          <button class="attach-remove" :title="`移除 ${att.file_name}`" @click="removeAttachment(att.id)">
             <UIcon name="i-heroicons-x-mark" class="w-3 h-3" />
           </button>
         </div>
@@ -199,24 +209,58 @@ watch(() => props.defaultProjectId, (v) => {
 }
 .attach-chip {
   display: inline-flex; align-items: center; gap: 0.375rem;
-  padding: 0.25rem 0.5rem 0.25rem 0.5rem;
+  padding: 0.25rem 0.5rem;
   border: 1px solid #e5e7eb;
   border-radius: 0.5rem;
   background-color: #f9fafb;
   font-size: 0.75rem;
   color: #4b5563;
   max-width: 16rem;
+  position: relative;
 }
 :root.dark .attach-chip { background-color: #1f2937; border-color: #374151; color: #d1d5db; }
+
+/* Image-mode chip: tighter padding, no filename, thumb fills */
+.attach-chip--image {
+  padding: 0.125rem 0.25rem 0.125rem 0.125rem;
+  gap: 0.25rem;
+}
+
+.attach-thumb {
+  display: block;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 0.375rem;
+  overflow: hidden;
+  flex-shrink: 0;
+  cursor: zoom-in;
+  background-color: #ffffff;
+}
+.attach-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+:root.dark .attach-thumb { background-color: #111827; }
+
+.attach-icon {
+  color: #6b7280;
+  flex-shrink: 0;
+}
+:root.dark .attach-icon { color: #9ca3af; }
+
 .attach-name {
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   max-width: 12rem;
 }
+
 .attach-remove {
   display: flex; align-items: center; justify-content: center;
   width: 1rem; height: 1rem; border-radius: 9999px;
   background-color: transparent; border: 0; cursor: pointer;
   color: #9ca3af;
+  flex-shrink: 0;
 }
 .attach-remove:hover { background-color: #e5e7eb; color: #374151; }
 :root.dark .attach-remove:hover { background-color: #374151; color: #d1d5db; }
