@@ -132,13 +132,25 @@ class DashboardStatsView(APIView):
 
     def get(self, request):
         now = timezone.now()
+        today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
         week_start = now - timedelta(days=now.weekday())
         week_start = week_start.replace(hour=0, minute=0, second=0, microsecond=0)
+        prev_week_start = week_start - timedelta(days=7)
         return Response({
             "total": Issue.objects.count(),
+            # 本周新增数量（用于"总数"卡片的对比文案）
+            "total_added_this_week": Issue.objects.filter(created_at__gte=week_start).count(),
             "pending": Issue.objects.filter(status="待处理").count(),
+            # 昨日及以前创建、仍然待处理的数量（用于和今天的对比）
+            "pending_yesterday": Issue.objects.filter(
+                status="待处理", created_at__lt=today_start
+            ).count(),
             "in_progress": Issue.objects.filter(status="进行中").count(),
             "resolved_this_week": Issue.objects.filter(resolved_at__gte=week_start).count(),
+            # 上一周（周一至周日）解决数量，用于计算同比
+            "resolved_prev_week": Issue.objects.filter(
+                resolved_at__gte=prev_week_start, resolved_at__lt=week_start
+            ).count(),
         })
 
 
