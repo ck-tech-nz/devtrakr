@@ -50,18 +50,22 @@
         />
       </div>
 
-      <!-- 我的待办 + 提及我的 -->
-      <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <!-- 我的待办 + 提及我的（任一为空时另一张卡占满，全为空时整行隐藏） -->
+      <div
+        v-if="hasTodos || hasMentions"
+        class="grid grid-cols-1 gap-4"
+        :class="{ 'lg:grid-cols-2': hasTodos && hasMentions }"
+      >
         <!-- 我的待办 -->
-        <div class="section-card">
+        <div v-if="hasTodos" class="section-card">
           <div class="section-header">
             <h3 class="section-title">
               我的待办
-              <span v-if="myIssues.length" class="section-badge">{{ myIssues.length }}</span>
+              <span class="section-badge">{{ myIssues.length }}</span>
             </h3>
             <NuxtLink to="/app/issues?assignee=me" class="section-link">查看全部</NuxtLink>
           </div>
-          <div v-if="myIssues.length" class="todo-list">
+          <div class="todo-list">
             <NuxtLink
               v-for="issue in myIssues"
               :key="issue.id"
@@ -78,19 +82,18 @@
               <span class="todo-priority" :class="priorityPillClass(issue.priority)">{{ issue.priority }}</span>
             </NuxtLink>
           </div>
-          <p v-else class="section-empty">暂无待办</p>
         </div>
 
         <!-- 提及我的 -->
-        <div class="section-card">
+        <div v-if="hasMentions" class="section-card">
           <div class="section-header">
             <h3 class="section-title">
               提及我的
-              <span v-if="mentions.length" class="section-badge">{{ mentions.length }}</span>
+              <span class="section-badge">{{ mentions.length }}</span>
             </h3>
             <NuxtLink to="/app/notifications" class="section-link">查看全部</NuxtLink>
           </div>
-          <div v-if="mentions.length" class="todo-list">
+          <div class="todo-list">
             <NuxtLink
               v-for="n in mentions"
               :key="n.id"
@@ -102,19 +105,17 @@
               <span class="activity-time">{{ timeAgo(n.created_at) }}</span>
             </NuxtLink>
           </div>
-          <div v-else class="empty-state">
-            <div class="empty-icon-wrap">
-              <UIcon name="i-heroicons-bell" class="empty-icon" />
-            </div>
-            <p class="empty-text">暂无新通知</p>
-          </div>
         </div>
       </div>
 
-      <!-- 我的提升计划 + 最近动态 -->
-      <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <!-- 我的提升计划 + 最近动态（同样的折叠规则） -->
+      <div
+        v-if="hasPlan || hasActivity"
+        class="grid grid-cols-1 gap-4"
+        :class="{ 'lg:grid-cols-2': hasPlan && hasActivity }"
+      >
         <!-- 我的提升计划 -->
-        <div v-if="planData" class="section-card">
+        <div v-if="hasPlan" class="section-card">
           <div class="section-header">
             <h3 class="section-title">我的提升计划</h3>
             <NuxtLink to="/app/ai/my-plan" class="section-link">查看全部</NuxtLink>
@@ -133,23 +134,13 @@
           </div>
         </div>
 
-        <!-- 占位：没有提升计划时让"最近动态"占满 -->
-        <div v-else class="section-card section-card--placeholder" aria-hidden="true">
-          <div class="empty-state">
-            <div class="empty-icon-wrap">
-              <UIcon name="i-heroicons-sparkles" class="empty-icon" />
-            </div>
-            <p class="empty-text">暂无提升计划</p>
-          </div>
-        </div>
-
         <!-- 最近动态 -->
-        <div class="section-card">
+        <div v-if="hasActivity" class="section-card">
           <div class="section-header">
             <h3 class="section-title">最近动态</h3>
             <NuxtLink to="/app/issues" class="section-link">查看全部</NuxtLink>
           </div>
-          <div v-if="recentActivity.length" class="activity-list">
+          <div class="activity-list">
             <NuxtLink
               v-for="item in recentActivity"
               :key="item.id"
@@ -162,12 +153,6 @@
               <span class="activity-message">{{ item.message }}</span>
               <span class="activity-time">{{ item.time }}</span>
             </NuxtLink>
-          </div>
-          <div v-else class="empty-state">
-            <div class="empty-icon-wrap">
-              <UIcon name="i-heroicons-clock" class="empty-icon" />
-            </div>
-            <p class="empty-text">暂无动态</p>
           </div>
         </div>
       </div>
@@ -196,6 +181,12 @@ const stats = ref({
 const recentActivity = ref<any[]>([])
 const planData = ref<any>(null)
 const isTester = computed(() => hasGroup('测试'))
+
+// 空内容折叠：单卡内容为空时让相邻卡占满整行，两张都为空则整行隐藏
+const hasTodos = computed(() => myIssues.value.length > 0)
+const hasMentions = computed(() => mentions.value.length > 0)
+const hasPlan = computed(() => Boolean(planData.value))
+const hasActivity = computed(() => recentActivity.value.length > 0)
 
 // 已解决环比：(本周 - 上周) / 上周 * 100
 const resolvedDelta = computed<number | null>(() => {
@@ -380,13 +371,6 @@ onMounted(async () => {
   background-color: #1f2937;
   border-color: #374151;
 }
-.section-card--placeholder {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 12rem;
-}
-
 .section-header {
   display: flex;
   align-items: center;
@@ -503,41 +487,6 @@ onMounted(async () => {
 }
 :root.dark .todo-priority--verify {
   background-color: rgba(16, 185, 129, 0.15); color: #6ee7b7;
-}
-
-/* 空状态 */
-.section-empty {
-  text-align: center;
-  padding: 1.5rem 0 0.5rem;
-  color: #9ca3af;
-  font-size: 0.8125rem;
-}
-.empty-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding: 2rem 0 1rem;
-  gap: 0.625rem;
-}
-.empty-icon-wrap {
-  width: 2.5rem;
-  height: 2.5rem;
-  border-radius: 9999px;
-  background-color: #f9fafb;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-:root.dark .empty-icon-wrap { background-color: rgba(255, 255, 255, 0.04); }
-.empty-icon {
-  width: 1.25rem;
-  height: 1.25rem;
-  color: #d1d5db;
-}
-:root.dark .empty-icon { color: #4b5563; }
-.empty-text {
-  font-size: 0.8125rem;
-  color: #9ca3af;
 }
 
 /* 最近动态 */
