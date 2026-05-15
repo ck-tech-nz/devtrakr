@@ -43,7 +43,7 @@
             列表
           </button>
         </div>
-        <UButton icon="i-heroicons-plus" size="sm" @click="showCreateModal = true">
+        <UButton icon="i-heroicons-plus" size="sm" @click="openCreateModal">
           <span class="hidden md:inline">新建问题</span>
         </UButton>
       </div>
@@ -368,6 +368,13 @@ const repos = ref<any[]>([])
 const { confirm: showConfirm } = useDialog()
 const showCreateModal = ref(false)
 
+function openCreateModal() {
+  if (!newIssue.value.project && (user.value as any)?.default_project) {
+    newIssue.value.project = String((user.value as any).default_project.id)
+  }
+  showCreateModal.value = true
+}
+
 async function onCreateModalUpdate(v: boolean) {
   if (v) {
     showCreateModal.value = true
@@ -462,7 +469,17 @@ function hasFormContent(): boolean {
 }
 
 function resetCreateForm() {
-  newIssue.value = { project: '', title: '', description: '', priority: 'P2', status: '待处理', labels: [], assignee: defaultAssignee.value, repo: null, reporter: user.value?.name || '' }
+  newIssue.value = {
+    project: String((user.value as any)?.default_project?.id || ''),
+    title: '',
+    description: '',
+    priority: 'P2',
+    status: '待处理',
+    labels: [],
+    assignee: defaultAssignee.value,
+    repo: null,
+    reporter: user.value?.name || '',
+  }
   attachmentIds.value = []
   projectRepos.value = []
   dupCandidates.value = []
