@@ -1,52 +1,43 @@
 <template>
   <div class="step-describe">
-    <div class="chips">
-      <button v-for="chip in chips" :key="chip.label" class="chip" type="button" @click="fillChip(chip.value)">
-        {{ chip.label }}
-      </button>
-    </div>
-
     <div class="input-wrap">
-      <div class="input-header">
-        <USelect
-          v-model="projectId"
-          :items="projectOptions"
-          value-key="value"
-          size="sm"
-          placeholder="选择项目"
-          class="project-select"
-          :ui="{ base: 'min-w-44' }"
-        />
-      </div>
-
       <UTextarea
         v-model="description"
         :rows="3"
-        placeholder="描述你发现的问题：在哪个页面、做了什么操作、出现了什么现象？也可以粘贴截图 (Ctrl+V) 或拖拽文件…"
+        placeholder="描述你发现的问题：在哪个页面、做了什么操作、出现了什么现象？"
         autoresize
+        variant="none"
       />
 
       <div class="toolbar">
         <UButton size="xs" variant="ghost" color="neutral" icon="i-heroicons-plus" />
         <UButton size="xs" variant="ghost" color="neutral" icon="i-heroicons-photo" />
-        <span class="toolbar-hint">拖拽 · Ctrl+V 粘贴 · Enter 分析</span>
-        <div class="toolbar-spacer" />
         <USelect
-          v-model="modelLabel"
-          :items="modelOptions"
+          v-model="projectId"
+          :items="projectOptions"
+          value-key="value"
           size="xs"
-          class="model-select"
-          disabled
+          icon="i-heroicons-folder"
+          placeholder="选择项目"
+          class="project-chip"
         />
+        <div class="toolbar-spacer" />
         <UButton
+          icon="i-heroicons-arrow-up"
+          color="primary"
           size="sm"
-          icon="i-heroicons-magnifying-glass"
           :disabled="!canAnalyze"
+          class="send-btn"
+          title="AI 分析"
           @click="onAnalyze"
-        >
-          AI 分析
-        </UButton>
+        />
       </div>
+    </div>
+
+    <div class="chips">
+      <button v-for="chip in chips" :key="chip.label" class="chip" type="button" @click="fillChip(chip.value)">
+        {{ chip.label }}
+      </button>
     </div>
   </div>
 </template>
@@ -65,13 +56,10 @@ const emit = defineEmits<{
 
 const description = ref('')
 const projectId = ref<string>(props.defaultProjectId ?? '')
-const modelLabel = ref('✦ GPT-4o')
 
 const projectOptions = computed(() =>
   props.projects.map(p => ({ label: p.name, value: String(p.id) })),
 )
-
-const modelOptions = ['✦ GPT-4o', '◆ Claude 3.5', '◉ Gemini 2.0']
 
 const chips = [
   { label: '🖱 按钮无响应', value: '点击提交按钮后页面没有任何反应，按钮无响应' },
@@ -115,19 +103,25 @@ watch(() => props.defaultProjectId, (v) => {
 :root.dark .chip:hover { background-color: #374151; }
 
 .input-wrap {
-  display: flex; flex-direction: column; gap: 0.75rem;
+  display: flex; flex-direction: column;
   border: 1px solid #e5e7eb;
-  border-radius: 0.875rem;
-  padding: 0.875rem;
+  border-radius: 1rem;
+  padding: 0.75rem 1rem;
   background-color: #ffffff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
 }
-:root.dark .input-wrap { border-color: #374151; background-color: #111827; }
+:root.dark .input-wrap { border-color: #374151; background-color: #1f2937; }
 
-.input-header { display: flex; gap: 0.5rem; }
-.project-select :deep(button) { font-size: 0.8125rem; }
-
-.toolbar { display: flex; align-items: center; gap: 0.5rem; }
-.toolbar-hint { font-size: 0.75rem; color: #9ca3af; }
+.toolbar { display: flex; align-items: center; gap: 0.5rem; padding-top: 0.5rem; }
 .toolbar-spacer { flex: 1; }
-.model-select :deep(button) { min-width: 8rem; font-size: 0.75rem; }
+.project-chip :deep(button) {
+  font-size: 0.75rem;
+  background-color: #f9fafb;
+  border-color: #e5e7eb;
+}
+:root.dark .project-chip :deep(button) {
+  background-color: #111827;
+  border-color: #374151;
+}
+.send-btn { border-radius: 9999px !important; }
 </style>
