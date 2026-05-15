@@ -98,6 +98,7 @@ const props = defineProps<{
   initialProjectId: string
   modules: string[]
   users: UserChoice[]
+  validLabels: string[]
   submitting: boolean
   submitError: string
   successIssueId: number | null
@@ -150,12 +151,15 @@ function onSubmit() {
     form.value.expected_behavior.trim() ? `\n\n## 预期行为\n${form.value.expected_behavior.trim()}` : '',
   ].join('')
 
+  // 过滤掉 AI 可能臆造的、不在 SiteSettings.labels 中的标签，避免后端 400
+  const filteredLabels = form.value.labels.filter(l => props.validLabels.includes(l))
+
   const body: any = {
     project: form.value.project,
     title: form.value.title.trim(),
     description: desc,
     priority: form.value.priority,
-    labels: form.value.labels,
+    labels: filteredLabels,
     source: 'ai_wizard',
     source_meta: {
       module: form.value.module || null,

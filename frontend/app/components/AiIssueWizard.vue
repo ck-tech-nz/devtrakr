@@ -54,6 +54,7 @@
       :initial-project-id="lastAnalyzedProject"
       :modules="modules"
       :users="users"
+      :valid-labels="validLabels"
       :submitting="submitting"
       :submit-error="submitError"
       :success-issue-id="successIssueId"
@@ -80,6 +81,7 @@ const defaultProjectId = computed(() => user.value?.default_project?.id || null)
 const projects = ref<{ id: string; name: string }[]>([])
 const modules = ref<string[]>([])
 const users = ref<{ id: string; name: string }[]>([])
+const validLabels = ref<string[]>([])
 const lastAnalyzedProject = ref<string>('')
 
 const wizard = useAiWizard()
@@ -103,6 +105,7 @@ onMounted(async () => {
   ])
   projects.value = (projectData.results || projectData || []).map((p: any) => ({ id: String(p.id), name: p.name }))
   modules.value = settingsData.modules || []
+  validLabels.value = Object.keys(settingsData.labels || {})
   users.value = (usersData || []).map((u: any) => ({ id: String(u.id), name: u.name || u.username }))
 })
 
