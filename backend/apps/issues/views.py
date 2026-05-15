@@ -603,8 +603,19 @@ class IssueAiDraftView(APIView):
 
         def event_stream():
             svc = AiWizardService()
-            for event_name, payload in svc.stream_draft(description=data["description"]):
-                yield f"event: {event_name}\ndata: {_json.dumps(payload, ensure_ascii=False)}\n\n"
+            try:
+                for event_name, payload in svc.stream_draft(description=data["description"]):
+                    if event_name == "_heartbeat":
+                        # SSE 注释行;客户端会忽略,但 yield 在客户端断开后
+                        # 会抛 BrokenPipeError 让生成器停止,避免触发下一次 LLM 调用
+                        yield ": heartbeat\n\n"
+                    else:
+                        yield f"event: {event_name}\ndata: {_json.dumps(payload, ensure_ascii=False)}\n\n"
+            except (BrokenPipeError, ConnectionAbortedError, ConnectionResetError):
+                # 客户端在流中途断开,停止生成器避免空耗 LLM 调用
+                import logging
+                logging.getLogger(__name__).info("SSE client disconnected; stopping draft stream")
+                return
 
         resp = StreamingHttpResponse(event_stream(), content_type="text/event-stream")
         resp["X-Accel-Buffering"] = "no"

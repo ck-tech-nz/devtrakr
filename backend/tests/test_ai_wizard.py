@@ -175,16 +175,18 @@ def test_stream_draft_emits_three_steps_then_draft_and_done(site_settings):
         svc = AiWizardService()
         events = list(svc.stream_draft(description="点击铃铛没反应"))
 
-    names = [e[0] for e in events]
+    # 过滤掉 _heartbeat 内部信号事件,只校验对外可见的事件序列
+    visible = [e for e in events if e[0] != "_heartbeat"]
+    names = [e[0] for e in visible]
     assert names == ["step", "step", "step", "draft", "done"]
 
     # Step events carry step numbers 1,2,3
-    assert events[0][1]["step"] == 1
-    assert events[1][1]["step"] == 2
-    assert events[2][1]["step"] == 3
+    assert visible[0][1]["step"] == 1
+    assert visible[1][1]["step"] == 2
+    assert visible[2][1]["step"] == 3
 
     # Draft event merges everything
-    draft = events[3][1]
+    draft = visible[3][1]
     assert draft["title"] == "T"
     assert draft["priority"] == "P2"
     assert draft["module"] == "通知中心"

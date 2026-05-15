@@ -93,11 +93,13 @@ class AiWizardService:
     def stream_draft(self, description: str):
         """Generator yielding (event_name, data_dict) tuples for the SSE layer.
 
+        Yields ('_heartbeat', None) between stages so the view layer can detect
+        client disconnect via BrokenPipeError before incurring the next LLM call.
+
         Events:
-          ("step", {"step": N, "label": ..., "status": "done", "result": {...}})
-          ("draft", merged_draft)
-          ("done", {})
-          ("error", {"step": N, "code": ..., "message": ...})  on failure
+          ("step", {...}) ("draft", {...}) ("done", {})
+          ("error", {...}) on failure
+          ("_heartbeat", None) — internal signaling, view converts to SSE comment
         """
         from apps.settings.models import SiteSettings
 
@@ -114,6 +116,7 @@ class AiWizardService:
                 "status": "done",
                 "result": classify,
             })
+            yield ("_heartbeat", None)
 
             extract = self.extract(description, classify, modules)
             yield ("step", {
@@ -122,6 +125,7 @@ class AiWizardService:
                 "status": "done",
                 "result": extract,
             })
+            yield ("_heartbeat", None)
 
             generate = self.generate(description, classify, extract, labels_list)
             yield ("step", {
