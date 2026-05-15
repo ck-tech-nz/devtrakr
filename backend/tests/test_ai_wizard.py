@@ -211,8 +211,11 @@ def test_ai_draft_endpoint_requires_authentication(api_client):
 
 @pytest.mark.django_db
 def test_ai_draft_endpoint_validates_description(api_client):
+    from django.contrib.auth.models import Permission
     from tests.factories import UserFactory
     user = UserFactory()
+    perm = Permission.objects.get(codename="add_issue")
+    user.user_permissions.add(perm)
     api_client.force_authenticate(user)
 
     resp = api_client.post("/api/issues/ai-draft/", {"project": 1}, format="json")
@@ -221,14 +224,31 @@ def test_ai_draft_endpoint_validates_description(api_client):
 
 
 @pytest.mark.django_db
+def test_ai_draft_endpoint_requires_add_issue_permission(api_client):
+    """User without issues.add_issue cannot trigger an AI draft."""
+    from tests.factories import UserFactory
+    user = UserFactory()  # no permissions
+    api_client.force_authenticate(user)
+    resp = api_client.post(
+        "/api/issues/ai-draft/",
+        {"description": "x" * 10, "project": 1},
+        format="json",
+    )
+    assert resp.status_code == 403
+
+
+@pytest.mark.django_db
 def test_ai_draft_endpoint_streams_sse_events(api_client, site_settings):
     """Smoke test: SSE response with correct content type and 3 step events + draft + done."""
+    from django.contrib.auth.models import Permission
     from apps.settings.models import SiteSettings
     from tests.factories import LLMConfigFactory, ProjectFactory, UserFactory
     LLMConfigFactory(is_default=True, is_active=True)
     SiteSettings.objects.update(modules=["通知中心"])
     project = ProjectFactory()
     user = UserFactory()
+    perm = Permission.objects.get(codename="add_issue")
+    user.user_permissions.add(perm)
     api_client.force_authenticate(user)
 
     responses = iter([

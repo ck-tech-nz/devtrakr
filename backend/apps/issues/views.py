@@ -557,8 +557,13 @@ class IssueAiDraftView(APIView):
     def post(self, request):
         from django.http import StreamingHttpResponse
         import json as _json
+        from rest_framework.exceptions import PermissionDenied
         from .serializers import AiDraftInputSerializer
         from .services_ai_wizard import AiWizardService
+
+        # AI 草稿仅服务于创建 Issue 的用户——无创建权限的用户无需调用 LLM
+        if not request.user.has_perm("issues.add_issue"):
+            raise PermissionDenied("无权创建问题")
 
         serializer = AiDraftInputSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
