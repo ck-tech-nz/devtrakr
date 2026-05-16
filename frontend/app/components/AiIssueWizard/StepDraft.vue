@@ -25,6 +25,26 @@
         <span class="header-sub">AI 自动分析完成</span>
       </div>
 
+      <!-- Possible duplicates (advisory only — does not block submit) -->
+      <div v-if="duplicates.length" class="dup-panel">
+        <details>
+          <summary>
+            <UIcon name="i-heroicons-exclamation-triangle" class="w-4 h-4" />
+            <span>发现 {{ duplicates.length }} 条可能重复的 Issue</span>
+            <span class="dup-hint">— 点开查看（仅提示，不阻止提交）</span>
+          </summary>
+          <ul class="dup-list">
+            <li v-for="d in duplicates" :key="d.id">
+              <NuxtLink :to="`/app/issues/${d.id}`" target="_blank" class="dup-link">
+                ISS-{{ String(d.id).padStart(3, '0') }} · {{ d.title }}
+                <span class="dup-status">[{{ d.status }}]</span>
+              </NuxtLink>
+              <div v-if="d.reason" class="dup-reason">{{ d.reason }}</div>
+            </li>
+          </ul>
+        </details>
+      </div>
+
       <!-- Title (centered, large) -->
       <div class="field-row">
         <UInput v-model="form.title" :ui="{ base: 'text-center text-lg font-semibold' }" />
@@ -35,7 +55,7 @@
         <UTextarea v-model="form.description" :rows="2" autoresize :ui="{ base: 'text-center text-sm text-gray-500' }" />
       </div>
 
-      <!-- Pills row: priority / module / assignee / environment -->
+      <!-- Pills row: priority / module / assignee -->
       <div class="pills-row">
         <USelect
           v-model="form.priority"
@@ -59,14 +79,6 @@
           size="xs"
           icon="i-heroicons-user"
           placeholder="（不指派）"
-          class="pill-select"
-        />
-        <USelect
-          v-model="form.environment"
-          :items="envOptions"
-          size="xs"
-          icon="i-heroicons-computer-desktop"
-          placeholder="（环境）"
           class="pill-select"
         />
       </div>
@@ -129,7 +141,7 @@
 
 <script setup lang="ts">
 import AiBadge from './AiBadge.vue'
-import type { WizardDraft } from '~/composables/useAiWizard'
+import type { WizardDraft, DuplicateItem } from '~/composables/useAiWizard'
 
 type UserChoice = { id: string; name: string }
 type Project = { id: string; name: string }
@@ -142,6 +154,7 @@ const props = defineProps<{
   users: UserChoice[]
   validLabels: string[]
   attachmentIds: string[]
+  duplicates: DuplicateItem[]
   submitting: boolean
   submitError: string
   successIssueId: number | null
@@ -162,7 +175,6 @@ const form = ref({
   expected_behavior: props.draft.expected_behavior,
   priority: props.draft.priority,
   module: props.draft.module,
-  environment: props.draft.environment ?? '',
   labels: props.draft.labels,
   assignee: String(authUser.value?.id ?? ''),
   project: props.initialProjectId,
@@ -174,8 +186,6 @@ const priorityOptions = [
   { label: '🟡 P2 — 中', value: 'P2' },
   { label: '⚪ P3 — 低', value: 'P3' },
 ]
-
-const envOptions = ['Chrome / Windows', 'Safari / macOS', 'Safari / iOS', 'Chrome / Android', '其他']
 
 const projectOptions = computed(() => props.projects.map(p => ({ label: p.name, value: String(p.id) })))
 const moduleOptions = computed(() => props.modules)
@@ -209,7 +219,7 @@ function onSubmit() {
     source: 'ai_wizard',
     source_meta: {
       module: form.value.module || null,
-      environment: form.value.environment || null,
+      inferred_env: props.draft.inferred_env || null,
       original_input: props.draft.description,
     },
     attachment_ids: props.attachmentIds,
@@ -310,4 +320,27 @@ function onSubmit() {
 .success-iss:hover { color: #6d28d9; text-decoration: underline; }
 .success-sub { font-size: 0.8125rem; color: #6b7280; margin-bottom: 0.5rem; }
 :root.dark .success-sub { color: #9ca3af; }
+
+.dup-panel {
+  background-color: #fef3c7;
+  border: 1px solid #fde68a;
+  border-radius: 0.5rem;
+  padding: 0.5rem 0.875rem;
+  font-size: 0.8125rem;
+}
+:root.dark .dup-panel { background-color: rgba(251, 191, 36, 0.08); border-color: rgba(251, 191, 36, 0.3); }
+.dup-panel summary {
+  display: flex; align-items: center; gap: 0.375rem;
+  cursor: pointer; color: #92400e; font-weight: 500;
+}
+:root.dark .dup-panel summary { color: #fcd34d; }
+.dup-hint { color: #9ca3af; font-weight: 400; margin-left: auto; }
+.dup-list { list-style: none; padding: 0.5rem 0 0 0; margin: 0; display: flex; flex-direction: column; gap: 0.375rem; }
+.dup-list li { padding: 0.25rem 0; border-top: 1px dashed rgba(146, 64, 14, 0.2); }
+.dup-link { color: #1f2937; text-decoration: none; }
+.dup-link:hover { text-decoration: underline; }
+:root.dark .dup-link { color: #e5e7eb; }
+.dup-status { color: #9ca3af; font-size: 0.75rem; margin-left: 0.25rem; }
+.dup-reason { color: #78350f; font-size: 0.75rem; margin-top: 0.125rem; }
+:root.dark .dup-reason { color: #fcd34d; }
 </style>
