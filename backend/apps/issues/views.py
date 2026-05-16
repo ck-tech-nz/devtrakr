@@ -604,7 +604,11 @@ class IssueAiDraftView(APIView):
         def event_stream():
             svc = AiWizardService()
             try:
-                for event_name, payload in svc.stream_draft(description=data["description"]):
+                for event_name, payload in svc.stream_draft(
+                    description=data["description"],
+                    project_id=data["project"].id,
+                    attachment_ids=[str(x) for x in (data.get("attachment_ids") or [])],
+                ):
                     if event_name == "_heartbeat":
                         # SSE 注释行;客户端会忽略,但 yield 在客户端断开后
                         # 会抛 BrokenPipeError 让生成器停止,避免触发下一次 LLM 调用

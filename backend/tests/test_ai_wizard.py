@@ -1018,3 +1018,54 @@ def test_stream_draft_routes_to_v1_when_legacy_flag_set(site_settings, settings)
     # v1 pipeline emits 3 step events
     step_events = [e for e in events if e[0] == "step"]
     assert len(step_events) >= 3
+
+
+@pytest.mark.django_db(transaction=True, serialized_rollback=True)
+def test_ai_draft_endpoint_passes_project_and_attachments_to_service(api_client, site_settings):
+    """The view must forward project_id and attachment_ids to stream_draft."""
+    from django.contrib.auth.models import Permission
+    from apps.settings.models import SiteSettings
+    from tests.factories import LLMConfigFactory, ProjectFactory, UserFactory
+    from unittest.mock import patch
+    LLMConfigFactory(is_default=True, is_active=True)
+    SiteSettings.objects.update(modules=["其他"], labels={})
+    project = ProjectFactory()
+    user = UserFactory()
+    user.user_permissions.add(Permission.objects.get(codename="add_issue"))
+    api_client.force_authenticate(user)
+
+    captured = {}
+
+    def fake_stream(self, description, project_id=None, attachment_ids=None):
+        captured["description"] = description
+        captured["project_id"] = project_id
+        captured["attachment_ids"] = attachment_ids
+        yield ("step", {"step": 1, "label": "x", "status": "running"})
+        yield ("draft", {
+            "title": "T", "description": description,
+            "repro_steps": "", "expected_behavior": "",
+            "priority": "P2", "module": "其他",
+            "labels": [], "follow_up_questions": [],
+            "inferred_env": "",
+        })
+        yield ("done", {})
+
+    with patch(
+        "apps.issues.services_ai_wizard.AiWizardService.stream_draft",
+        new=fake_stream,
+    ):
+        resp = api_client.post(
+            "/api/issues/ai-draft/",
+            {
+                "description": "ok long enough description",
+                "project": str(project.id),
+                "attachment_ids": [],
+            },
+            format="json",
+        )
+        body = b"".join(resp.streaming_content).decode()
+
+    assert resp.status_code == 200
+    assert captured["project_id"] == project.id
+    assert captured["attachment_ids"] == []
+    assert "event: draft" in body
