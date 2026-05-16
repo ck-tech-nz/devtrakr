@@ -1,6 +1,6 @@
 type WizardState = 'idle' | 'analyzing' | 'drafting' | 'error'
 
-type StepStatus = 'pending' | 'done' | 'error'
+type StepStatus = 'pending' | 'running' | 'done' | 'error'
 
 type StepProgress = {
   step: 1 | 2 | 3
@@ -17,13 +17,18 @@ export type WizardDraft = {
   module: string
   labels: string[]
   follow_up_questions: string[]
-  environment: string | null
+  inferred_env: string
+}
+
+export type DuplicateItem = {
+  id: number
+  title: string
+  status: string
+  reason: string
 }
 
 const INITIAL_STEPS: StepProgress[] = [
-  { step: 1, label: '识别问题类型与影响范围', status: 'pending' },
-  { step: 2, label: '提取关键字段', status: 'pending' },
-  { step: 3, label: '生成复现步骤与预期行为', status: 'pending' },
+  { step: 1, label: 'AI 正在理解描述与截图', status: 'pending' },
 ]
 
 async function refreshAccessToken(): Promise<string | null> {
@@ -74,6 +79,7 @@ export function useAiWizard() {
   const steps = ref<StepProgress[]>(structuredClone(INITIAL_STEPS))
   const draft = ref<WizardDraft | null>(null)
   const errorMessage = ref<string>('')
+  const duplicates = ref<DuplicateItem[]>([])
 
   let abortController: AbortController | null = null
 
@@ -82,6 +88,7 @@ export function useAiWizard() {
     steps.value = structuredClone(INITIAL_STEPS)
     draft.value = null
     errorMessage.value = ''
+    duplicates.value = []
     abortController?.abort()
     abortController = null
   }
@@ -180,10 +187,12 @@ export function useAiWizard() {
 
     if (event === 'step') {
       const s = steps.value.find(x => x.step === payload.step)
-      if (s) s.status = 'done'
+      if (s) s.status = (payload.status as StepStatus) || 'done'
     } else if (event === 'draft') {
       draft.value = payload as WizardDraft
       state.value = 'drafting'
+    } else if (event === 'duplicates') {
+      duplicates.value = (payload.items || []) as DuplicateItem[]
     } else if (event === 'error') {
       const s = steps.value.find(x => x.step === payload.step)
       if (s) s.status = 'error'
@@ -198,5 +207,5 @@ export function useAiWizard() {
     abortController = null
   }
 
-  return { state, steps, draft, errorMessage, start, reset, abort }
+  return { state, steps, draft, duplicates, errorMessage, start, reset, abort }
 }
