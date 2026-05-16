@@ -25,7 +25,7 @@
       <UTextarea
         v-model="description"
         :rows="3"
-        placeholder="描述你发现的问题：在哪个页面、做了什么操作、出现了什么现象？"
+        placeholder="描述问题：哪个页面/角色，做了什么，看到什么。可以贴截图——AI 会读取截图内容。"
         autoresize
         variant="none"
         @paste="onPaste"
