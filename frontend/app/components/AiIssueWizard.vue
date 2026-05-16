@@ -18,6 +18,7 @@
     <StepDraft
       v-else-if="currentStep === 3 && wizard.draft.value"
       :draft="wizard.draft.value"
+      :duplicates="wizard.duplicates.value"
       :projects="projects"
       :initial-project-id="lastAnalyzedProject"
       :modules="modules"
