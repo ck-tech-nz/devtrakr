@@ -49,7 +49,16 @@ SCHEMA_ONESHOT = [
 ONESHOT_TIMEOUT_SECONDS = 25
 ONESHOT_RETRY_COUNT = 1   # one retry on bad JSON (total 2 attempts)
 
+MAX_IMAGES = 3
+MAX_IMAGE_BYTES = 2 * 1024 * 1024  # 2 MB
+
 ALLOWED_PRIORITIES = {"P0", "P1", "P2", "P3"}
+
+
+def _read_attachment_bytes(file_key: str) -> bytes:
+    """Module-level indirection so tests can patch the storage read."""
+    from apps.tools.storage import read_object
+    return read_object(file_key)
 
 
 def _validate_shape(step: int, slug: str, data, schema):
@@ -271,6 +280,40 @@ class AiWizardService:
         if not isinstance(raw_q, list):
             raw_q = []
         data["follow_up_questions"] = [str(q)[:100] for q in raw_q if q][:3]
+
+    def _load_image_attachments(self, attachment_ids: list) -> list[tuple[str, bytes]]:
+        """Resolve attachment_ids → up to MAX_IMAGES (mime, bytes) pairs.
+
+        - Filters to image MIME types only
+        - Skips files larger than MAX_IMAGE_BYTES
+        - Silently skips read failures (logs warning) so one bad attachment
+          doesn't abort the whole wizard call
+        """
+        if not attachment_ids:
+            return []
+
+        from apps.tools.models import Attachment
+
+        rows = list(
+            Attachment.objects
+            .filter(id__in=attachment_ids, mime_type__startswith="image/")
+            .order_by("created_at")
+        )
+
+        out: list[tuple[str, bytes]] = []
+        for att in rows:
+            if att.file_size > MAX_IMAGE_BYTES:
+                logger.info("wizard skipping oversize image %s (%d bytes)", att.file_name, att.file_size)
+                continue
+            try:
+                raw = _read_attachment_bytes(att.file_key)
+            except Exception as e:
+                logger.warning("wizard could not read attachment %s: %s", att.file_key, e)
+                continue
+            out.append((att.mime_type, raw))
+            if len(out) >= MAX_IMAGES:
+                break
+        return out
 
     def stream_draft(self, description: str):
         """Generator yielding (event_name, data_dict) tuples for the SSE layer.

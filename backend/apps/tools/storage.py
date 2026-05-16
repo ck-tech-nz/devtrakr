@@ -82,3 +82,18 @@ def delete_object(key: str) -> None:
     """Delete an object from MinIO by its object key."""
     client = get_s3_client()
     client.delete_object(Bucket=settings.MINIO_BUCKET, Key=key)
+
+
+def read_object(key: str) -> bytes:
+    """Fetch the raw bytes of an object stored in MinIO.
+
+    Used by code paths that need to feed the file into an external API
+    (e.g., the AI wizard's multimodal LLM call) instead of returning a
+    public URL.
+    """
+    client = get_s3_client()
+    obj = client.get_object(Bucket=settings.MINIO_BUCKET, Key=key)
+    try:
+        return obj["Body"].read()
+    finally:
+        obj["Body"].close()

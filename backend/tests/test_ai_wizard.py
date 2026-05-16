@@ -689,3 +689,60 @@ def test_oneshot_draft_falls_back_to_text_when_vision_fails(site_settings):
     assert call_log[1] == []
     # The warning is prepended to follow_up_questions
     assert result["follow_up_questions"][0].startswith("AI 未能读取截图")
+
+
+@pytest.mark.django_db
+def test_load_image_attachments_filters_to_images_and_caps_at_three(tmp_path):
+    """Only image MIME types are loaded; max 3 per call; >2MB are skipped."""
+    from apps.issues.services_ai_wizard import AiWizardService
+    from apps.tools.models import Attachment
+    from tests.factories import UserFactory
+    from unittest.mock import patch
+
+    user = UserFactory()
+    # Mix of image and non-image; one image is >2MB
+    attachments = [
+        Attachment.objects.create(
+            uploaded_by=user, file_name="ok1.png", file_key="k1",
+            file_url="/u/1", file_size=1000, mime_type="image/png",
+        ),
+        Attachment.objects.create(
+            uploaded_by=user, file_name="doc.pdf", file_key="k2",
+            file_url="/u/2", file_size=2000, mime_type="application/pdf",
+        ),
+        Attachment.objects.create(
+            uploaded_by=user, file_name="ok2.jpg", file_key="k3",
+            file_url="/u/3", file_size=1500, mime_type="image/jpeg",
+        ),
+        Attachment.objects.create(
+            uploaded_by=user, file_name="ok3.png", file_key="k4",
+            file_url="/u/4", file_size=500, mime_type="image/png",
+        ),
+        Attachment.objects.create(
+            uploaded_by=user, file_name="huge.png", file_key="k5",
+            file_url="/u/5", file_size=5 * 1024 * 1024, mime_type="image/png",
+        ),
+        Attachment.objects.create(
+            uploaded_by=user, file_name="ok4.png", file_key="k6",
+            file_url="/u/6", file_size=600, mime_type="image/png",
+        ),
+    ]
+    ids = [str(a.id) for a in attachments]
+
+    def fake_read(file_key):
+        return b"\x89PNGfake-" + file_key.encode()
+
+    with patch("apps.issues.services_ai_wizard._read_attachment_bytes", side_effect=fake_read):
+        svc = AiWizardService()
+        images = svc._load_image_attachments(ids)
+
+    # Only ok1/ok2/ok3 — the first 3 image-MIME attachments under 2MB (ordered by created_at)
+    assert len(images) == 3
+    mimes = [m for m, _ in images]
+    assert all(m.startswith("image/") for m in mimes)
+    # The first 3 returned should correspond to k1, k3, k4 (skipping k2 PDF, in created_at order)
+    # bytes payload encodes the file_key for traceability
+    keys_seen = [b for _, b in images]
+    assert any(b"k1" in b for b in keys_seen)
+    assert any(b"k3" in b for b in keys_seen)
+    assert any(b"k4" in b for b in keys_seen)
