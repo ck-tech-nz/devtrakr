@@ -3,6 +3,7 @@
     <div class="spinner-row">
       <UIcon name="i-heroicons-cpu-chip" class="w-5 h-5 text-crystal-500 animate-spin" />
       <span class="title">AI 正在分析…</span>
+      <span class="latency-hint">通常 6-8 秒</span>
     </div>
 
     <div class="step-list">
@@ -24,7 +25,7 @@
 </template>
 
 <script setup lang="ts">
-type StepStatus = 'pending' | 'done' | 'error'
+type StepStatus = 'pending' | 'running' | 'done' | 'error'
 type StepProgress = { step: 1 | 2 | 3; label: string; status: StepStatus }
 
 defineProps<{ steps: StepProgress[]; errorMessage: string }>()
@@ -49,4 +50,10 @@ const emit = defineEmits<{ retry: []; back: [] }>()
 
 .error-msg { font-size: 0.8125rem; color: #dc2626; }
 .actions { display: flex; gap: 0.5rem; }
+.latency-hint {
+  font-size: 0.75rem;
+  color: #9ca3af;
+  margin-left: auto;
+}
+:root.dark .latency-hint { color: #6b7280; }
 </style>
