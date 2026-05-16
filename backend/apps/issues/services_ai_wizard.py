@@ -319,12 +319,17 @@ class AiWizardService:
         return out
 
     def stream_draft(self, description: str, project_id=None, attachment_ids=None):
-        """v2 entry. Task 6 will add AI_WIZARD_LEGACY flag dispatch."""
-        yield from self._stream_draft_v2(
-            description=description,
-            project_id=project_id,
-            attachment_ids=attachment_ids or [],
-        )
+        """Dispatch on AI_WIZARD_LEGACY: True → v1 3-stage, False → v2 oneshot."""
+        from django.conf import settings
+        if getattr(settings, "AI_WIZARD_LEGACY", False):
+            # Legacy path keeps its original signature (description only)
+            yield from self._stream_draft_legacy(description)
+        else:
+            yield from self._stream_draft_v2(
+                description=description,
+                project_id=project_id,
+                attachment_ids=attachment_ids or [],
+            )
 
     def _stream_draft_v2(self, description: str, project_id, attachment_ids: list | None = None):
         """v2 generator yielding (event_name, payload) for the SSE layer.

@@ -48,6 +48,8 @@ def test_classify_returns_parsed_json():
 
     from tests.factories import LLMConfigFactory
     LLMConfigFactory(is_default=True, is_active=True)
+    # Re-activate v1 prompts (deactivated by migration 0007, kept for rollback)
+    Prompt.objects.filter(slug__in=("wizard_classify", "wizard_extract", "wizard_generate")).update(is_active=True)
 
     fake = '{"category": "前端 UI", "scope": "通知中心铃铛下拉"}'
     with patch("apps.issues.services_ai_wizard.LLMClient.complete", return_value=fake):
@@ -63,6 +65,7 @@ def test_classify_raises_on_bad_json():
 
     from tests.factories import LLMConfigFactory
     LLMConfigFactory(is_default=True, is_active=True)
+    Prompt.objects.filter(slug__in=("wizard_classify", "wizard_extract", "wizard_generate")).update(is_active=True)
 
     with patch("apps.issues.services_ai_wizard.LLMClient.complete", return_value="not json"):
         svc = AiWizardService()
@@ -88,6 +91,7 @@ def test_extract_returns_parsed_json():
     from apps.issues.services_ai_wizard import AiWizardService
     from tests.factories import LLMConfigFactory
     LLMConfigFactory(is_default=True, is_active=True)
+    Prompt.objects.filter(slug__in=("wizard_classify", "wizard_extract", "wizard_generate")).update(is_active=True)
 
     fake = '{"title": "通知中心铃铛下拉无响应", "priority": "P2", "module": "通知中心"}'
     with patch("apps.issues.services_ai_wizard.LLMClient.complete", return_value=fake):
@@ -109,6 +113,7 @@ def test_extract_passes_modules_into_template():
     from apps.issues.services_ai_wizard import AiWizardService
     from tests.factories import LLMConfigFactory
     LLMConfigFactory(is_default=True, is_active=True)
+    Prompt.objects.filter(slug__in=("wizard_classify", "wizard_extract", "wizard_generate")).update(is_active=True)
 
     captured = {}
     def fake_complete(self, model, system_prompt, user_prompt, temperature, timeout=None):
@@ -128,6 +133,7 @@ def test_generate_returns_parsed_json():
     from apps.issues.services_ai_wizard import AiWizardService
     from tests.factories import LLMConfigFactory
     LLMConfigFactory(is_default=True, is_active=True)
+    Prompt.objects.filter(slug__in=("wizard_classify", "wizard_extract", "wizard_generate")).update(is_active=True)
 
     fake = (
         '{"repro_steps": "1. 点击铃铛\\n2. 看不到列表",'
@@ -150,11 +156,13 @@ def test_generate_returns_parsed_json():
 
 
 @pytest.mark.django_db
-def test_stream_draft_emits_three_steps_then_draft_and_done(site_settings):
+def test_stream_draft_emits_three_steps_then_draft_and_done(site_settings, settings):
+    settings.AI_WIZARD_LEGACY = True
     from apps.issues.services_ai_wizard import AiWizardService
     from apps.settings.models import SiteSettings
     from tests.factories import LLMConfigFactory
     LLMConfigFactory(is_default=True, is_active=True)
+    Prompt.objects.filter(slug__in=("wizard_classify", "wizard_extract", "wizard_generate")).update(is_active=True)
     SiteSettings.objects.update(
         modules=["通知中心"],
         labels={
@@ -198,10 +206,12 @@ def test_stream_draft_emits_three_steps_then_draft_and_done(site_settings):
 
 
 @pytest.mark.django_db
-def test_stream_draft_yields_error_when_step_fails(site_settings):
+def test_stream_draft_yields_error_when_step_fails(site_settings, settings):
+    settings.AI_WIZARD_LEGACY = True
     from apps.issues.services_ai_wizard import AiWizardService
     from tests.factories import LLMConfigFactory
     LLMConfigFactory(is_default=True, is_active=True)
+    Prompt.objects.filter(slug__in=("wizard_classify", "wizard_extract", "wizard_generate")).update(is_active=True)
 
     def fake_complete(self, **kwargs):
         return "not json"
@@ -251,12 +261,14 @@ def test_ai_draft_endpoint_requires_add_issue_permission(api_client):
 
 
 @pytest.mark.django_db
-def test_ai_draft_endpoint_streams_sse_events(api_client, site_settings):
+def test_ai_draft_endpoint_streams_sse_events(api_client, site_settings, settings):
     """Smoke test: SSE response with correct content type and 3 step events + draft + done."""
+    settings.AI_WIZARD_LEGACY = True
     from django.contrib.auth.models import Permission
     from apps.settings.models import SiteSettings
     from tests.factories import LLMConfigFactory, ProjectFactory, UserFactory
     LLMConfigFactory(is_default=True, is_active=True)
+    Prompt.objects.filter(slug__in=("wizard_classify", "wizard_extract", "wizard_generate")).update(is_active=True)
     SiteSettings.objects.update(modules=["通知中心"])
     project = ProjectFactory()
     user = UserFactory()
@@ -454,6 +466,7 @@ def test_classify_raises_on_missing_field():
     from apps.issues.services_ai_wizard import AiWizardService, AiWizardError
     from tests.factories import LLMConfigFactory
     LLMConfigFactory(is_default=True, is_active=True)
+    Prompt.objects.filter(slug__in=("wizard_classify", "wizard_extract", "wizard_generate")).update(is_active=True)
 
     fake = '{"category": "x"}'  # 缺少 scope
     with patch("apps.issues.services_ai_wizard.LLMClient.complete", return_value=fake):
@@ -469,6 +482,7 @@ def test_extract_bounds_invalid_priority_to_p2():
     from apps.issues.services_ai_wizard import AiWizardService
     from tests.factories import LLMConfigFactory
     LLMConfigFactory(is_default=True, is_active=True)
+    Prompt.objects.filter(slug__in=("wizard_classify", "wizard_extract", "wizard_generate")).update(is_active=True)
 
     fake = '{"title": "x", "priority": "HIGH", "module": "x"}'
     with patch("apps.issues.services_ai_wizard.LLMClient.complete", return_value=fake):
@@ -483,6 +497,7 @@ def test_generate_filters_unknown_labels():
     from apps.issues.services_ai_wizard import AiWizardService
     from tests.factories import LLMConfigFactory
     LLMConfigFactory(is_default=True, is_active=True)
+    Prompt.objects.filter(slug__in=("wizard_classify", "wizard_extract", "wizard_generate")).update(is_active=True)
 
     fake = '{"repro_steps": "x", "expected_behavior": "y", "labels": ["前端", "bogus", "Bug"], "follow_up_questions": []}'
     with patch("apps.issues.services_ai_wizard.LLMClient.complete", return_value=fake):
@@ -967,3 +982,39 @@ def test_stream_draft_v2_appends_image_markdown_to_description(site_settings):
     assert "![shot.png](/uploads/2026/05/shot.png)" in draft["description"]
     # PDF must NOT appear as markdown image
     assert "notes.pdf" not in draft["description"]
+
+
+@pytest.mark.django_db(transaction=True, serialized_rollback=True)
+def test_stream_draft_routes_to_v1_when_legacy_flag_set(site_settings, settings):
+    """AI_WIZARD_LEGACY=True routes to the preserved 3-stage pipeline."""
+    settings.AI_WIZARD_LEGACY = True
+    from apps.issues.services_ai_wizard import AiWizardService
+    from apps.settings.models import SiteSettings
+    from tests.factories import LLMConfigFactory, ProjectFactory
+    from unittest.mock import patch
+    LLMConfigFactory(is_default=True, is_active=True)
+    # Re-activate v1 prompts since the rollback path queries them
+    from apps.ai.models import Prompt
+    Prompt.objects.filter(slug__in=("wizard_classify", "wizard_extract", "wizard_generate")).update(is_active=True)
+    SiteSettings.objects.update(modules=["其他"], labels={})
+    project = ProjectFactory()
+
+    responses = iter([
+        '{"category": "x", "scope": "y"}',
+        '{"title": "T", "priority": "P2", "module": "其他"}',
+        '{"repro_steps": "1.", "expected_behavior": "y", "labels": []}',
+    ])
+    def fake_complete(self, **kwargs):
+        return next(responses)
+
+    with patch("apps.issues.services_ai_wizard.LLMClient.complete", new=fake_complete):
+        svc = AiWizardService()
+        events = list(svc.stream_draft(
+            description="x",
+            project_id=project.id,
+            attachment_ids=[],
+        ))
+
+    # v1 pipeline emits 3 step events
+    step_events = [e for e in events if e[0] == "step"]
+    assert len(step_events) >= 3

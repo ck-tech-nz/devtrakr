@@ -149,6 +149,11 @@ MINIO_BUCKET = os.environ.get("MINIO_BUCKET", "devtrack-uploads")
 MINIO_USE_SSL = os.environ.get("MINIO_USE_SSL", "False").lower() in ("true", "1")
 MINIO_PUBLIC_URL = os.environ.get("MINIO_PUBLIC_URL", "/uploads")
 
+# AI Issue Wizard rollback flag — set "True" to fall back to the 3-stage
+# legacy pipeline (wizard_classify/extract/generate). Defaults to False;
+# v1 prompt rows are preserved for the 7-day rollback window post-deploy.
+AI_WIZARD_LEGACY = os.environ.get("AI_WIZARD_LEGACY", "False").lower() in ("true", "1")
+
 REPO_CLONE_DIR = os.environ.get("REPO_CLONE_DIR", "/data/repos")
 BACKUP_DIR = os.environ.get("BACKUP_DIR", "/data/backups")
 
