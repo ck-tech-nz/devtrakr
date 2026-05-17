@@ -72,6 +72,8 @@
           </transition>
         </NuxtLink>
       </template>
+
+      <MyTasksSidebar :expanded="expanded" />
     </nav>
 
     <div v-if="expanded" class="border-t border-gray-50 dark:border-gray-800 py-3 px-3 space-y-1">
