@@ -70,11 +70,18 @@ function cycleTheme() {
 
 const userMenuItems = computed(() => {
   const items: any[][] = [
-    [{
-      label: '个人资料',
-      icon: 'i-heroicons-user-circle',
-      onSelect: () => navigateTo('/app/profile'),
-    }],
+    [
+      {
+        label: '个人资料',
+        icon: 'i-heroicons-user-circle',
+        onSelect: () => navigateTo('/app/profile'),
+      },
+      {
+        label: '我的提升计划',
+        icon: 'i-heroicons-clipboard-document-check',
+        onSelect: () => navigateTo('/app/ai/my-plan'),
+      },
+    ],
   ]
   if (user.value?.is_superuser) {
     items.push([{
