@@ -22,14 +22,15 @@ export function isNavGroup(entry: NavEntry): entry is NavGroup {
 // The group appears at the position of its first matching child in the route list.
 const GROUP_DEFS: { label: string; icon: string; paths: string[] }[] = [
   { label: '项目管理', icon: 'i-heroicons-folder', paths: ['/app/projects', '/app/repos'] },
-  { label: 'AI 分析', icon: 'i-heroicons-cpu-chip', paths: ['/app/ai/team-analysis', '/app/ai/my-plan', '/app/ai/plans'] },
+  { label: '团队效能', icon: 'i-heroicons-chart-bar', paths: ['/app/ai/team-analysis', '/app/ai/plans'] },
   { label: '用户管理', icon: 'i-heroicons-users', paths: ['/app/users', '/app/kpi', '/app/permissions'] },
   { label: '系统管理', icon: 'i-heroicons-cog-6-tooth', paths: ['/app/settings/kpi-scoring', '/app/settings/backups', '/app/api-docs', '/app/about'] },
 ]
 
 export const useNavigation = () => {
-  const { can, user } = useAuth()
+  const { can, hasGroup, user } = useAuth()
   const { routes, loaded } = usePagePerms()
+  const isAdmin = computed(() => user.value?.is_superuser || hasGroup('管理员'))
 
   const navItems = computed<NavItem[]>(() => {
     if (!loaded.value) return []
@@ -50,6 +51,7 @@ export const useNavigation = () => {
     if (!user.value) return []
     const items = navItems.value.filter(item => {
       if (item.meta?.superuserOnly && !user.value?.is_superuser) return false
+      if (item.meta?.adminOnly && !isAdmin.value) return false
       if (item.permission && !can(item.permission)) return false
       return true
     })
