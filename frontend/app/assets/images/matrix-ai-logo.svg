@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 40" width="180" height="40" fill="none">
+  <!-- MATRIX AI wordmark: icon + text -->
+  <!-- Icon mark (scaled to 36x36, centered vertically in 40px height) -->
+  <g transform="translate(2, 2) scale(0.5625)" fill="none" stroke="#6B4DE6" stroke-width="3.2" stroke-linejoin="round">
+    <!-- Center diamond -->
+    <rect x="21.5" y="21.5" width="21" height="21" rx="1" transform="rotate(45 32 32)"/>
+    <!-- Top diamond -->
+    <rect x="21.5" y="6.5" width="21" height="21" rx="1" transform="rotate(45 32 17)"/>
+    <!-- Bottom diamond -->
+    <rect x="21.5" y="36.5" width="21" height="21" rx="1" transform="rotate(45 32 47)"/>
+    <!-- Left diamond -->
+    <rect x="6.5" y="21.5" width="21" height="21" rx="1" transform="rotate(45 17 32)"/>
+    <!-- Right diamond -->
+    <rect x="36.5" y="21.5" width="21" height="21" rx="1" transform="rotate(45 47 32)"/>
+  </g>
+  <!-- Wordmark text -->
+  <text x="44" y="27" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="18" font-weight="700" letter-spacing="1" fill="currentColor">MATRIX</text>
+  <text x="136" y="27" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="18" font-weight="700" letter-spacing="1" fill="#6B4DE6"> AI</text>
+</svg>
