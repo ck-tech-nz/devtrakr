@@ -5,11 +5,22 @@
     @mouseenter="expanded = true"
     @mouseleave="autoCollapse && (expanded = false)"
   >
-    <div class="h-16 flex items-center px-4 border-b border-gray-50 dark:border-gray-800">
+    <div class="h-16 flex items-center px-4 border-b border-gray-50 dark:border-gray-800 gap-2">
       <img src="~/assets/images/logo-icon.svg" alt="DevTrakr" class="w-8 h-8 flex-shrink-0" />
       <transition name="fade">
-        <span v-if="expanded" class="ml-3 font-semibold text-gray-900 dark:text-gray-100 whitespace-nowrap">DevTrakr</span>
+        <span v-if="expanded" class="font-semibold text-gray-900 dark:text-gray-100 whitespace-nowrap">DevTrakr</span>
       </transition>
+      <div class="flex-1" />
+      <button
+        class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 flex-shrink-0 p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800"
+        :title="autoCollapse ? '取消自动收起' : '启用自动收起'"
+        @click.stop="autoCollapse = !autoCollapse"
+      >
+        <UIcon
+          :name="autoCollapse ? 'i-heroicons-chevron-double-left' : 'i-heroicons-chevron-double-right'"
+          class="w-4 h-4"
+        />
+      </button>
     </div>
 
     <nav class="flex-1 overflow-y-auto py-4 px-2 space-y-0.5">
@@ -89,21 +100,6 @@
       </button>
     </div>
 
-    <div class="border-t border-gray-50 dark:border-gray-800 py-3 px-3">
-      <button
-        class="flex items-center w-full text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 py-1"
-        :class="expanded ? 'justify-between' : 'justify-center'"
-        @click="autoCollapse = !autoCollapse"
-      >
-        <transition name="fade">
-          <span v-if="expanded" class="whitespace-nowrap">自动收起</span>
-        </transition>
-        <UIcon
-          :name="autoCollapse ? 'i-heroicons-chevron-double-left' : 'i-heroicons-chevron-double-right'"
-          class="w-4 h-4 flex-shrink-0"
-        />
-      </button>
-    </div>
   </aside>
 </template>
 
