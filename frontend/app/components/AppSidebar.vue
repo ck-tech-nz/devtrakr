@@ -5,12 +5,15 @@
     @mouseenter="expanded = true"
     @mouseleave="autoCollapse && (expanded = false)"
   >
-    <div class="h-16 flex items-center px-4 border-b border-gray-50 dark:border-gray-800 gap-2">
+    <div
+      class="h-16 border-b border-gray-50 dark:border-gray-800 flex"
+      :class="expanded ? 'items-center px-4 gap-2' : 'flex-col items-center justify-center px-2 gap-1'"
+    >
       <img src="~/assets/images/logo-icon.svg" alt="DevTrakr" class="w-8 h-8 flex-shrink-0" />
       <transition name="fade">
         <span v-if="expanded" class="font-semibold text-gray-900 dark:text-gray-100 whitespace-nowrap">DevTrakr</span>
       </transition>
-      <div class="flex-1" />
+      <div v-if="expanded" class="flex-1" />
       <button
         class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 flex-shrink-0 p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800"
         :title="autoCollapse ? '取消自动收起' : '启用自动收起'"
