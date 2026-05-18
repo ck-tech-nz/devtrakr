@@ -442,3 +442,63 @@ class TestPruneTask:
 
         assert not UptimeCheck.objects.filter(pk=old.pk).exists()
         assert UptimeCheck.objects.filter(pk=recent.pk).exists()
+
+
+class TestUptimeMonitorDetailAPI:
+    def test_retrieve_authenticated(self, regular_client):
+        monitor = UptimeMonitorFactory()
+        response = regular_client.get(f"/api/uptime/monitors/{monitor.pk}/")
+        assert response.status_code == 200
+        assert response.data["name"] == monitor.name
+
+    def test_retrieve_unauthenticated_forbidden(self, api_client):
+        monitor = UptimeMonitorFactory()
+        response = api_client.get(f"/api/uptime/monitors/{monitor.pk}/")
+        assert response.status_code in (401, 403)
+
+    def test_update_non_superuser_forbidden(self, regular_client):
+        monitor = UptimeMonitorFactory()
+        response = regular_client.patch(f"/api/uptime/monitors/{monitor.pk}/", {"name": "x"})
+        assert response.status_code == 403
+
+    def test_update_superuser_ok(self, superuser_client):
+        monitor = UptimeMonitorFactory()
+        response = superuser_client.patch(
+            f"/api/uptime/monitors/{monitor.pk}/", {"name": "renamed"}, format="json",
+        )
+        assert response.status_code == 200
+        monitor.refresh_from_db()
+        assert monitor.name == "renamed"
+
+    def test_delete_non_superuser_forbidden(self, regular_client):
+        monitor = UptimeMonitorFactory()
+        response = regular_client.delete(f"/api/uptime/monitors/{monitor.pk}/")
+        assert response.status_code == 403
+
+    def test_delete_superuser_ok(self, superuser_client):
+        monitor = UptimeMonitorFactory()
+        response = superuser_client.delete(f"/api/uptime/monitors/{monitor.pk}/")
+        assert response.status_code == 204
+        assert not UptimeMonitor.objects.filter(pk=monitor.pk).exists()
+
+
+class TestUptimeChecksAPI:
+    def test_returns_recent_checks_newest_first(self, regular_client):
+        monitor = UptimeMonitorFactory()
+        now = timezone.now()
+        UptimeCheckFactory(monitor=monitor, checked_at=now - timedelta(minutes=2), is_up=True)
+        UptimeCheckFactory(monitor=monitor, checked_at=now - timedelta(minutes=1), is_up=False)
+        UptimeCheckFactory(monitor=monitor, checked_at=now, is_up=True)
+
+        response = regular_client.get(f"/api/uptime/monitors/{monitor.pk}/checks/")
+        assert response.status_code == 200
+        results = response.data
+        assert len(results) == 3
+        assert results[0]["is_up"] is True  # newest
+
+    def test_limit_param(self, regular_client):
+        monitor = UptimeMonitorFactory()
+        for i in range(10):
+            UptimeCheckFactory(monitor=monitor, checked_at=timezone.now() - timedelta(minutes=i))
+        response = regular_client.get(f"/api/uptime/monitors/{monitor.pk}/checks/?limit=5")
+        assert len(response.data) == 5
