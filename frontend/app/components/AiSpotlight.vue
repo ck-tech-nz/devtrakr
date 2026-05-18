@@ -239,6 +239,11 @@ onBeforeUnmount(() => { clear() })
   filter: blur(20px) saturate(115%);
   z-index: -2;
   pointer-events: none;
+  animation: bg-mesh-swell 12s ease-in-out infinite alternate;
+}
+@keyframes bg-mesh-swell {
+  0% { transform: scale(1) rotate(0deg); opacity: 0.8; }
+  100% { transform: scale(1.1) rotate(3deg); opacity: 1; }
 }
 
 /* SVG noise grain */
@@ -412,9 +417,11 @@ onBeforeUnmount(() => { clear() })
 }
 .demo-card {
   position: relative;
-  background: linear-gradient(180deg, #ffffff 0%, #fdfcff 100%);
+  background: rgba(255, 255, 255, 0.65);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
   border-radius: 20px;
-  border: 1px solid rgba(124, 58, 237, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.9);
   padding: 18px 18px 20px;
   box-shadow:
     0 1px 0 rgba(255,255,255,0.9) inset,
@@ -643,12 +650,13 @@ onBeforeUnmount(() => { clear() })
   font-style: italic;
   font-size: 13px;
   color: #6d28d9;
-  background: rgba(255, 255, 255, 0.85);
+  background: rgba(255, 255, 255, 0.65);
   padding: 4px 10px;
   border-radius: 999px;
-  border: 1px solid rgba(124, 58, 237, 0.18);
-  box-shadow: 0 4px 10px -4px rgba(76, 29, 149, 0.12);
-  backdrop-filter: blur(4px);
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  box-shadow: 0 8px 24px -6px rgba(76, 29, 149, 0.2);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   animation: drift 6s ease-in-out infinite;
   pointer-events: none;
 }
@@ -711,7 +719,7 @@ onBeforeUnmount(() => { clear() })
 :root.dark .caps { color: #c8c3e0; }
 :root.dark .badge { background: rgba(76, 29, 149, 0.25); color: #ddd6fe; border-color: rgba(196, 181, 253, 0.25); }
 :root.dark .badge-sep { color: #7c3aed; }
-:root.dark .demo-card { background: linear-gradient(180deg, #1a1432 0%, #211a3a 100%); border-color: rgba(167, 139, 250, 0.18); }
+:root.dark .demo-card { background: rgba(26, 20, 50, 0.65); backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px); border-color: rgba(167, 139, 250, 0.25); box-shadow: 0 1px 0 rgba(255,255,255,0.05) inset, 0 24px 48px -24px rgba(76, 29, 149, 0.4); }
 :root.dark .card-stage { background: #15102b; border-color: #2a2148; }
 :root.dark .card-stage.is-active { background: #1c1638; border-color: #4c1d95; }
 :root.dark .input-box { background: #0f0a1f; border-color: #2a2148; }
@@ -723,7 +731,7 @@ onBeforeUnmount(() => { clear() })
 :root.dark .row.inview { background: linear-gradient(90deg, rgba(76, 29, 149, 0.25), transparent 90%); }
 :root.dark .row-v { color: #ede9fe; }
 :root.dark .assignee { color: #ede9fe; }
-:root.dark .float-tag { background: rgba(26, 20, 50, 0.85); color: #c4b5fd; border-color: rgba(167, 139, 250, 0.2); }
+:root.dark .float-tag { background: rgba(26, 20, 50, 0.65); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); color: #c4b5fd; border-color: rgba(167, 139, 250, 0.35); box-shadow: 0 8px 24px -6px rgba(0, 0, 0, 0.6); }
 :root.dark .duplicate-note { background: rgba(6, 95, 70, 0.18); border-color: #047857; color: #6ee7b7; }
 :root.dark .bg-mark { opacity: 0.06; }
 :root.dark .bg-grain { opacity: 0.18; }
