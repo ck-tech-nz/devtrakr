@@ -1,4 +1,5 @@
 import logging
+from datetime import timedelta
 from enum import Enum
 from django.conf import settings
 from django.contrib.auth import get_user_model
@@ -89,3 +90,65 @@ def fire_failure(monitor, *, latest_error: str):
         NotificationRecipient.objects.create(notification=notification, user_id=user_id)
 
     logger.info("Uptime monitor %s went down. Issue #%s created.", monitor.pk, issue.pk)
+
+
+def _format_duration_zh(delta) -> str:
+    total_seconds = int(delta.total_seconds())
+    if total_seconds < 60:
+        return f"{total_seconds} 秒"
+    minutes = total_seconds // 60
+    if minutes < 60:
+        return f"{minutes} 分钟"
+    hours = minutes // 60
+    if hours < 24:
+        return f"{hours} 小时 {minutes % 60} 分钟"
+    days = hours // 24
+    return f"{days} 天 {hours % 24} 小时"
+
+
+def fire_recovery(monitor):
+    """Close the active incident Issue (if any), add an Activity row, notify project members."""
+    from apps.issues.models import Issue, Activity
+    from apps.notifications.models import Notification, NotificationRecipient
+    from apps.projects.models import ProjectMember
+
+    bot = _get_bot_user()
+    now = timezone.now()
+    duration = now - monitor.outage_started_at if monitor.outage_started_at else timedelta()
+    duration_human = _format_duration_zh(duration)
+
+    issue = monitor.active_incident_issue
+    if issue is not None and issue.status not in ("已解决", "已关闭"):
+        issue.status = "已解决"
+        issue.resolved_at = now
+        issue.save(update_fields=["status", "resolved_at", "updated_at"])
+        Activity.objects.create(
+            user=bot, issue=issue, action="resolved",
+            detail=f"监控已恢复,故障持续 {duration_human}",
+        )
+
+    monitor.active_incident_issue = None
+    monitor.outage_started_at = None
+    monitor.last_status = "up"
+    monitor.last_up_at = now
+    monitor.consecutive_failures = 0
+    monitor.save(update_fields=[
+        "active_incident_issue", "outage_started_at", "last_status",
+        "last_up_at", "consecutive_failures", "updated_at",
+    ])
+
+    notification = Notification.objects.create(
+        notification_type=Notification.Type.SYSTEM,
+        title=f"监控 {monitor.name} 已恢复",
+        content=f"故障持续 {duration_human}",
+        source_user=bot,
+        source_issue=issue,
+        target_type=Notification.TargetType.USER,
+    )
+    member_ids = list(
+        ProjectMember.objects.filter(project=monitor.project).values_list("user_id", flat=True)
+    )
+    for user_id in member_ids:
+        NotificationRecipient.objects.create(notification=notification, user_id=user_id)
+
+    logger.info("Uptime monitor %s recovered after %s.", monitor.pk, duration_human)

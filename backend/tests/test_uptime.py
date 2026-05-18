@@ -97,3 +97,84 @@ class TestFireFailure:
         )
         with pytest.raises(Exception):
             fire_failure(monitor, latest_error="timeout")
+
+
+from apps.uptime.services import fire_recovery
+from apps.issues.models import Activity
+
+
+class TestFireRecovery:
+    def _setup_in_outage(self):
+        bot = UserFactory(username="bot")
+        project = ProjectFactory()
+        member = UserFactory()
+        ProjectMember.objects.create(project=project, user=member, role="开发者")
+        existing_issue = Issue.objects.create(
+            project=project, title="[监控告警] api-prod 不可达",
+            description="...", priority="P1", status="待处理",
+            created_by=bot, reporter="",
+        )
+        monitor = UptimeMonitorFactory(
+            project=project, name="api-prod",
+            last_status="down", consecutive_failures=5,
+            outage_started_at=timezone.now() - timedelta(minutes=15),
+            active_incident_issue=existing_issue,
+        )
+        return bot, project, member, monitor, existing_issue
+
+    def test_closes_issue_with_resolved_status(self, site_settings):
+        bot, project, member, monitor, issue = self._setup_in_outage()
+        fire_recovery(monitor)
+        issue.refresh_from_db()
+        assert issue.status == "已解决"
+        assert issue.resolved_at is not None
+
+    def test_adds_activity_comment_with_duration(self, site_settings):
+        bot, project, member, monitor, issue = self._setup_in_outage()
+        fire_recovery(monitor)
+        activity = Activity.objects.get(issue=issue, action="resolved", user=bot)
+        assert "恢复" in activity.detail
+        assert "15" in activity.detail  # 15 minute outage
+
+    def test_clears_monitor_outage_state(self, site_settings):
+        bot, project, member, monitor, issue = self._setup_in_outage()
+        fire_recovery(monitor)
+        monitor.refresh_from_db()
+        assert monitor.active_incident_issue is None
+        assert monitor.outage_started_at is None
+        assert monitor.last_status == "up"
+        assert monitor.last_up_at is not None
+        assert monitor.consecutive_failures == 0
+
+    def test_sends_recovery_notification(self, site_settings):
+        bot, project, member, monitor, issue = self._setup_in_outage()
+        fire_recovery(monitor)
+        notification = Notification.objects.get()
+        assert "恢复" in notification.title
+        recipients = list(notification.recipients.values_list("user_id", flat=True))
+        assert member.id in recipients
+
+    def test_active_issue_already_closed_still_sends_notification(self, site_settings):
+        bot, project, member, monitor, issue = self._setup_in_outage()
+        issue.status = "已关闭"
+        issue.save()
+        fire_recovery(monitor)
+        notification = Notification.objects.get()
+        assert "恢复" in notification.title
+        monitor.refresh_from_db()
+        assert monitor.active_incident_issue is None
+        assert monitor.last_status == "up"
+
+    def test_no_active_issue_still_clears_state(self, site_settings):
+        bot = UserFactory(username="bot")
+        project = ProjectFactory()
+        monitor = UptimeMonitorFactory(
+            project=project, last_status="down", consecutive_failures=3,
+            outage_started_at=timezone.now() - timedelta(minutes=5),
+            active_incident_issue=None,
+        )
+        fire_recovery(monitor)
+        monitor.refresh_from_db()
+        assert monitor.last_status == "up"
+        assert monitor.last_up_at is not None
+        assert monitor.outage_started_at is None
