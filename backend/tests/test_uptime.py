@@ -9,6 +9,7 @@ from apps.issues.models import Issue
 from apps.notifications.models import Notification, NotificationRecipient
 from apps.projects.models import ProjectMember
 from tests.factories import ProjectFactory, UserFactory
+from apps.uptime.models import UptimeMonitor
 
 pytestmark = pytest.mark.django_db
 
@@ -502,3 +503,57 @@ class TestUptimeChecksAPI:
             UptimeCheckFactory(monitor=monitor, checked_at=timezone.now() - timedelta(minutes=i))
         response = regular_client.get(f"/api/uptime/monitors/{monitor.pk}/checks/?limit=5")
         assert len(response.data) == 5
+
+
+class TestProjectMonitorsAPI:
+    def test_list_for_project(self, regular_client):
+        project = ProjectFactory()
+        UptimeMonitorFactory(project=project)
+        UptimeMonitorFactory(project=project)
+        UptimeMonitorFactory()  # other project
+        response = regular_client.get(f"/api/projects/{project.pk}/monitors/")
+        assert response.status_code == 200
+        assert len(response.data) == 2
+
+    def test_create_non_superuser_forbidden(self, regular_client):
+        project = ProjectFactory()
+        response = regular_client.post(
+            f"/api/projects/{project.pk}/monitors/",
+            {"name": "m1", "url": "https://example.com/", "expected_status": "200",
+             "interval_minutes": 1, "timeout_secs": 20, "method": "GET"},
+            format="json",
+        )
+        assert response.status_code == 403
+
+    def test_create_superuser_ok(self, superuser_client):
+        project = ProjectFactory()
+        response = superuser_client.post(
+            f"/api/projects/{project.pk}/monitors/",
+            {"name": "m1", "url": "https://example.com/health", "expected_status": "200",
+             "interval_minutes": 1, "timeout_secs": 20, "method": "GET", "is_enabled": True,
+             "expected_body": ""},
+            format="json",
+        )
+        assert response.status_code == 201
+        monitor = UptimeMonitor.objects.get(name="m1")
+        assert monitor.project_id == project.pk
+
+    def test_create_invalid_url(self, superuser_client):
+        project = ProjectFactory()
+        response = superuser_client.post(
+            f"/api/projects/{project.pk}/monitors/",
+            {"name": "m1", "url": "example.com", "expected_status": "200",
+             "interval_minutes": 1, "timeout_secs": 20, "method": "GET", "expected_body": ""},
+            format="json",
+        )
+        assert response.status_code == 400
+
+    def test_create_invalid_expected_status(self, superuser_client):
+        project = ProjectFactory()
+        response = superuser_client.post(
+            f"/api/projects/{project.pk}/monitors/",
+            {"name": "m1", "url": "https://example.com/", "expected_status": "2xx",
+             "interval_minutes": 1, "timeout_secs": 20, "method": "GET", "expected_body": ""},
+            format="json",
+        )
+        assert response.status_code == 400
