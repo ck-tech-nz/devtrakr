@@ -175,7 +175,6 @@ onMounted(() => {
 </script>
 
 <style scoped>
-<style scoped>
 /* ────────── Custom Additions ────────── */
 .page-mesh {
   position: absolute; inset: 0;
