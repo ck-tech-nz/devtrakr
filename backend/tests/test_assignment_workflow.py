@@ -1,7 +1,9 @@
 import pytest
 from django.db import IntegrityError
+from django.contrib.auth import get_user_model
 from apps.issues.models import Issue, IssueAssignment, IssueStatus, AssignmentAction
-from tests.factories import IssueFactory, UserFactory
+from apps.projects.models import ProjectMember
+from tests.factories import IssueFactory, UserFactory, ProjectFactory
 
 
 @pytest.mark.django_db
@@ -73,3 +75,64 @@ class TestSeedMigration:
         assert issue.status == "待分配"
         assert issue.assignments.count() == 1
         assert issue.assignments.first().to_user == u
+
+
+User = get_user_model()
+
+
+@pytest.mark.django_db
+class TestResolveProjectManager:
+    def test_returns_manager_user(self):
+        project = ProjectFactory()
+        mgr = UserFactory()
+        ProjectMember.objects.create(project=project, user=mgr, is_manager=True)
+        from apps.issues.services import _resolve_project_manager
+        assert _resolve_project_manager(project) == mgr
+
+    def test_returns_none_when_no_manager(self):
+        project = ProjectFactory()
+        ProjectMember.objects.create(project=project, user=UserFactory(), is_manager=False)
+        from apps.issues.services import _resolve_project_manager
+        assert _resolve_project_manager(project) is None
+
+
+@pytest.mark.django_db
+class TestAssignIssue:
+    def test_assign_unassigned_issue_moves_to_pending_confirmation(self):
+        mgr = UserFactory()
+        project = ProjectFactory()
+        ProjectMember.objects.create(project=project, user=mgr, is_manager=True)
+        target = UserFactory()
+        ProjectMember.objects.create(project=project, user=target)
+        issue = IssueFactory(project=project, status="待分配", assignee=None, manager=mgr)
+
+        from apps.issues.services import assign_issue
+        ev = assign_issue(issue, actor=mgr, to_user=target)
+
+        issue.refresh_from_db()
+        assert issue.assignee == target
+        assert issue.status == "待确认"
+        assert ev.action == "assign"
+        assert ev.to_user == target
+        assert ev.from_user is None
+        assert ev.actor == mgr
+
+    def test_assign_requires_actor_to_be_manager(self):
+        project = ProjectFactory()
+        mgr = UserFactory()
+        ProjectMember.objects.create(project=project, user=mgr, is_manager=True)
+        other = UserFactory()
+        target = UserFactory()
+        issue = IssueFactory(project=project, status="待分配", assignee=None, manager=mgr)
+
+        from apps.issues.services import assign_issue
+        from rest_framework.exceptions import PermissionDenied
+        with pytest.raises(PermissionDenied):
+            assign_issue(issue, actor=other, to_user=target)
+
+    def test_assign_rejects_from_in_progress(self):
+        mgr = UserFactory()
+        issue = IssueFactory(status="进行中", assignee=UserFactory(), manager=mgr)
+        from apps.issues.services import assign_issue, InvalidTransition
+        with pytest.raises(InvalidTransition):
+            assign_issue(issue, actor=mgr, to_user=UserFactory())

@@ -9,7 +9,7 @@ import time
 
 from apps.ai.client import LLMClient
 from apps.ai.models import LLMConfig, Prompt
-from .models import Issue
+from .models import Issue, IssueAssignment, AssignmentAction, IssueStatus, Activity
 
 
 logger = logging.getLogger(__name__)
@@ -107,3 +107,67 @@ def check_duplicates(project_id, title, description):
         project_id, len(candidates), len(out), elapsed_ms,
     )
     return out
+
+
+# ---------------------------------------------------------------------------
+# Assignment service layer
+# ---------------------------------------------------------------------------
+
+from django.db import transaction
+from rest_framework.exceptions import PermissionDenied
+
+
+class InvalidTransition(Exception):
+    """Raised when an issue cannot move from its current status via the requested action."""
+
+    def __init__(self, message: str, current_status: str | None = None):
+        super().__init__(message)
+        self.message = message
+        self.current_status = current_status
+
+
+def _resolve_project_manager(project):
+    """Return the User who is project manager, or None."""
+    from apps.projects.models import ProjectMember
+    pm = ProjectMember.objects.filter(project=project, is_manager=True).select_related("user").first()
+    return pm.user if pm else None
+
+
+def _is_project_member(user, project) -> bool:
+    from apps.projects.models import ProjectMember
+    if not user or not user.is_authenticated:
+        return False
+    return ProjectMember.objects.filter(project=project, user=user).exists()
+
+
+@transaction.atomic
+def assign_issue(issue, actor, to_user, *, action=AssignmentAction.ASSIGN, reason=""):
+    """Manager assigns 待分配 → 待确认. Also used internally for ai_assign and
+    the create-with-assignee path."""
+    if action == AssignmentAction.ASSIGN and issue.status != IssueStatus.UNASSIGNED.value:
+        raise InvalidTransition(
+            f"只有「待分配」可被指派,当前 {issue.status}", current_status=issue.status,
+        )
+    # AI_ASSIGN reuses this function but can come from any pre-assignment state during creation.
+    # Permission: ASSIGN requires manager; AI_ASSIGN passes actor=None (system).
+    if action == AssignmentAction.ASSIGN:
+        if actor is None or issue.manager_id != getattr(actor, "id", None):
+            raise PermissionDenied("仅项目经理可指派")
+
+    event = IssueAssignment.objects.create(
+        issue=issue,
+        action=action,
+        from_user=None,
+        to_user=to_user,
+        actor=actor,
+        reason=reason,
+    )
+    issue.assignee = to_user
+    issue.status = IssueStatus.PENDING_CONFIRMATION.value
+    issue.save(update_fields=["assignee", "status", "updated_at"])
+
+    Activity.objects.create(
+        user=actor, issue=issue, action="assigned",
+        detail=f"指派给 {to_user.name or to_user.username}",
+    )
+    return event
