@@ -183,7 +183,7 @@
 
     <!-- Mobile Card List -->
     <div v-else-if="isMobile && viewMode === 'table'" class="space-y-2">
-      <IssueCard v-for="issue in issues" :key="issue.id" :issue="issue" />
+      <IssueCard v-for="issue in issues" :key="issue.id" :issue="issue" @changed="fetchIssues" @request-transfer="openTransfer($event)" />
       <div class="flex items-center justify-between pt-2">
         <span class="text-xs text-gray-400 dark:text-gray-500">共 {{ totalCount }} 条</span>
         <div class="flex items-center space-x-2">
