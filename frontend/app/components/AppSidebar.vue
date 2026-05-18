@@ -6,10 +6,10 @@
     @mouseleave="autoCollapse && (expanded = false)"
   >
     <div
-      class="h-16 border-b border-gray-50 dark:border-gray-800 flex"
-      :class="expanded ? 'items-center px-4 gap-2' : 'flex-col items-center justify-center px-2 gap-1'"
+      class="h-16 border-b border-gray-50 dark:border-gray-800 flex items-center"
+      :class="expanded ? 'px-4 gap-2' : 'justify-center px-2'"
     >
-      <img src="~/assets/images/logo-icon.svg" alt="DevTrakr" class="w-8 h-8 flex-shrink-0" />
+      <img v-if="expanded" src="~/assets/images/logo-icon.svg" alt="DevTrakr" class="w-8 h-8 flex-shrink-0" />
       <transition name="fade">
         <span v-if="expanded" class="font-semibold text-gray-900 dark:text-gray-100 whitespace-nowrap">DevTrakr</span>
       </transition>
@@ -19,10 +19,10 @@
         :title="autoCollapse ? '取消自动收起' : '启用自动收起'"
         @click.stop="autoCollapse = !autoCollapse"
       >
-        <UIcon
-          :name="autoCollapse ? 'i-heroicons-chevron-double-left' : 'i-heroicons-chevron-double-right'"
-          class="w-4 h-4"
-        />
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect width="18" height="18" x="3" y="3" rx="2" />
+          <path d="M9 3v18" />
+        </svg>
       </button>
     </div>
 
