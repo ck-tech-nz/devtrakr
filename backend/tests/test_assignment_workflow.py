@@ -300,3 +300,57 @@ class TestInvariant:
         chain = [(a.id, "assign"), (a.id, "confirm"), (b.id, "transfer"), (c.id, "transfer")]
         actual = [(ev.to_user_id, ev.action) for ev in issue.assignments.all()]
         assert actual == chain
+
+
+from apps.issues.services import create_issue, auto_assign_issue
+
+
+@pytest.mark.django_db
+class TestCreateIssue:
+    def test_create_without_assignee_stays_unassigned(self):
+        mgr = UserFactory()
+        project = ProjectFactory()
+        ProjectMember.objects.create(project=project, user=mgr, is_manager=True)
+
+        issue = create_issue(
+            project=project, actor=UserFactory(),
+            title="t", description="d",
+            priority="P2", assignee=None,
+        )
+        assert issue.status == "待分配"
+        assert issue.assignee is None
+        assert issue.manager == mgr  # snapshotted
+        assert issue.assignments.count() == 0
+
+    def test_create_with_assignee_moves_to_pending_confirmation(self):
+        mgr = UserFactory()
+        project = ProjectFactory()
+        ProjectMember.objects.create(project=project, user=mgr, is_manager=True)
+        target = UserFactory()
+        ProjectMember.objects.create(project=project, user=target)
+
+        issue = create_issue(
+            project=project, actor=mgr,
+            title="t", description="d", priority="P2",
+            assignee=target,
+        )
+        assert issue.status == "待确认"
+        assert issue.assignee == target
+        assert issue.assignments.count() == 1
+        assert issue.assignments.first().action == "assign"
+
+    def test_create_without_project_manager_keeps_manager_null(self):
+        project = ProjectFactory()
+        issue = create_issue(
+            project=project, actor=UserFactory(),
+            title="t", description="d", priority="P2", assignee=None,
+        )
+        assert issue.manager is None
+
+
+@pytest.mark.django_db
+class TestAutoAssignStub:
+    def test_phase1_stub_returns_none(self):
+        # Phase 1 stub: until Phase 2 is implemented, returns None always
+        issue = IssueFactory(status="待分配", assignee=None)
+        assert auto_assign_issue(issue) is None

@@ -140,20 +140,13 @@ def _is_project_member(user, project) -> bool:
     return ProjectMember.objects.filter(project=project, user=user).exists()
 
 
-@transaction.atomic
-def assign_issue(issue, actor, to_user, *, action=AssignmentAction.ASSIGN, reason=""):
-    """Manager assigns 待分配 → 待确认. Also used internally for ai_assign and
-    the create-with-assignee path."""
-    if action == AssignmentAction.ASSIGN and issue.status != IssueStatus.UNASSIGNED.value:
-        raise InvalidTransition(
-            f"只有「待分配」可被指派,当前 {issue.status}", current_status=issue.status,
-        )
-    # AI_ASSIGN reuses this function but can come from any pre-assignment state during creation.
-    # Permission: ASSIGN requires manager; AI_ASSIGN passes actor=None (system).
-    if action == AssignmentAction.ASSIGN:
-        if actor is None or issue.manager_id != getattr(actor, "id", None):
-            raise PermissionDenied("仅项目经理可指派")
+def _do_assign(issue, *, actor, to_user, action, reason):
+    """Internal helper: write the assignment event + flip assignee/status.
 
+    Used by create_issue (which enforces its own permission boundary) and
+    assign_issue (which enforces manager-only). Callers are responsible for
+    all permission and status guards before calling this.
+    """
     event = IssueAssignment.objects.create(
         issue=issue,
         action=action,
@@ -171,6 +164,19 @@ def assign_issue(issue, actor, to_user, *, action=AssignmentAction.ASSIGN, reaso
         detail=f"指派给 {to_user.name or to_user.username}",
     )
     return event
+
+
+@transaction.atomic
+def assign_issue(issue, actor, to_user, *, action=AssignmentAction.ASSIGN, reason=""):
+    """Manager assigns 待分配 → 待确认."""
+    if action == AssignmentAction.ASSIGN and issue.status != IssueStatus.UNASSIGNED.value:
+        raise InvalidTransition(
+            f"只有「待分配」可被指派,当前 {issue.status}", current_status=issue.status,
+        )
+    if action == AssignmentAction.ASSIGN:
+        if actor is None or issue.manager_id != getattr(actor, "id", None):
+            raise PermissionDenied("仅项目经理可指派")
+    return _do_assign(issue, actor=actor, to_user=to_user, action=action, reason=reason)
 
 
 @transaction.atomic
@@ -267,3 +273,43 @@ def transfer_issue(issue, actor, to_user, reason: str):
         detail=f"转给 {to_user.name or to_user.username}: {reason[:80]}",
     )
     return event
+
+
+def auto_assign_issue(issue):
+    """Phase 1 stub. Phase 2 implements real LLM-based selection.
+
+    Returns IssueAssignment on success, None on any failure or skip.
+    """
+    return None
+
+
+@transaction.atomic
+def create_issue(*, project, actor, title, description, priority,
+                 assignee=None, **extra_fields):
+    """Unified entry point for creating an Issue. Both the manual create
+    form (POST /api/issues/) and the AI-wizard commit path route through
+    this so workflow rules are enforced exactly once.
+
+    Behavior:
+      - assignee provided → status=待确认, writes an `assign` event
+      - assignee=None → calls auto_assign_issue(); on None, leaves status=待分配
+    """
+    issue = Issue.objects.create(
+        project=project,
+        manager=_resolve_project_manager(project),
+        title=title,
+        description=description,
+        priority=priority,
+        status=IssueStatus.UNASSIGNED.value,
+        created_by=actor,
+        **extra_fields,
+    )
+
+    if assignee is not None:
+        # Bypass the manager-only permission check by calling internal helper
+        _do_assign(issue, actor=actor, to_user=assignee,
+                   action=AssignmentAction.ASSIGN, reason="")
+    else:
+        auto_assign_issue(issue)  # Phase 1 = no-op
+
+    return issue
