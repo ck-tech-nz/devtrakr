@@ -22,6 +22,7 @@ from .serializers import (
     IssueListSerializer, IssueDetailSerializer,
     IssueCreateUpdateSerializer, BatchUpdateSerializer,
     ActivitySerializer,
+    IssueTransferInputSerializer, IssueAssignInputSerializer,
 )
 from .services import claim_issue, confirm_issue, transfer_issue, assign_issue, InvalidTransition
 
@@ -671,7 +672,6 @@ class IssueTransferView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request, pk):
-        from .serializers import IssueTransferInputSerializer
         issue = _get_issue_or_404(pk)
         if not issue:
             return Response({"detail": "问题不存在"}, status=status.HTTP_404_NOT_FOUND)
@@ -694,7 +694,6 @@ class IssueAssignView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request, pk):
-        from .serializers import IssueAssignInputSerializer
         issue = _get_issue_or_404(pk)
         if not issue:
             return Response({"detail": "问题不存在"}, status=status.HTTP_404_NOT_FOUND)

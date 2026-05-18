@@ -2,6 +2,17 @@ import pytest
 from django.db import IntegrityError
 from django.contrib.auth import get_user_model
 from apps.issues.models import Issue, IssueAssignment, IssueStatus, AssignmentAction
+from apps.issues.services import (
+    _resolve_project_manager,
+    assign_issue,
+    claim_issue,
+    confirm_issue,
+    transfer_issue,
+    create_issue,
+    auto_assign_issue,
+    InvalidTransition,
+)
+from apps.issues.serializers import IssueListSerializer
 from apps.projects.models import ProjectMember
 from rest_framework.exceptions import PermissionDenied
 from tests.factories import IssueFactory, UserFactory, ProjectFactory
@@ -87,13 +98,11 @@ class TestResolveProjectManager:
         project = ProjectFactory()
         mgr = UserFactory()
         ProjectMember.objects.create(project=project, user=mgr, is_manager=True)
-        from apps.issues.services import _resolve_project_manager
         assert _resolve_project_manager(project) == mgr
 
     def test_returns_none_when_no_manager(self):
         project = ProjectFactory()
         ProjectMember.objects.create(project=project, user=UserFactory(), is_manager=False)
-        from apps.issues.services import _resolve_project_manager
         assert _resolve_project_manager(project) is None
 
 
@@ -107,7 +116,6 @@ class TestAssignIssue:
         ProjectMember.objects.create(project=project, user=target)
         issue = IssueFactory(project=project, status="待分配", assignee=None, manager=mgr)
 
-        from apps.issues.services import assign_issue
         ev = assign_issue(issue, actor=mgr, to_user=target)
 
         issue.refresh_from_db()
@@ -126,20 +134,14 @@ class TestAssignIssue:
         target = UserFactory()
         issue = IssueFactory(project=project, status="待分配", assignee=None, manager=mgr)
 
-        from apps.issues.services import assign_issue
-        from rest_framework.exceptions import PermissionDenied
         with pytest.raises(PermissionDenied):
             assign_issue(issue, actor=other, to_user=target)
 
     def test_assign_rejects_from_in_progress(self):
         mgr = UserFactory()
         issue = IssueFactory(status="进行中", assignee=UserFactory(), manager=mgr)
-        from apps.issues.services import assign_issue, InvalidTransition
         with pytest.raises(InvalidTransition):
             assign_issue(issue, actor=mgr, to_user=UserFactory())
-
-
-from apps.issues.services import claim_issue, confirm_issue, InvalidTransition
 
 
 @pytest.mark.django_db
@@ -204,9 +206,6 @@ class TestConfirmIssue:
         issue = IssueFactory(status="进行中", assignee=u)
         with pytest.raises(InvalidTransition):
             confirm_issue(issue, actor=u)
-
-
-from apps.issues.services import transfer_issue, assign_issue
 
 
 @pytest.mark.django_db
@@ -302,9 +301,6 @@ class TestInvariant:
         assert actual == chain
 
 
-from apps.issues.services import create_issue, auto_assign_issue
-
-
 @pytest.mark.django_db
 class TestCreateIssue:
     def test_create_without_assignee_stays_unassigned(self):
@@ -354,9 +350,6 @@ class TestAutoAssignStub:
         # Phase 1 stub: until Phase 2 is implemented, returns None always
         issue = IssueFactory(status="待分配", assignee=None)
         assert auto_assign_issue(issue) is None
-
-
-from apps.issues.serializers import IssueListSerializer
 
 
 @pytest.mark.django_db
