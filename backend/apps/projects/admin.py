@@ -6,6 +6,8 @@ from .models import Project, ProjectMember
 class ProjectMemberInline(TabularInline):
     model = ProjectMember
     extra = 1
+    fields = ("user", "is_manager")
+    list_editable = ("is_manager",)
 
 
 @admin.register(Project)
