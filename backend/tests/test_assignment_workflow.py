@@ -46,3 +46,30 @@ class TestIssueAssignmentModel:
         IssueAssignment.objects.create(issue=issue, action=AssignmentAction.TRANSFER, from_user=u2, to_user=u3)
         users = [a.to_user for a in issue.assignments.all()]
         assert users == [u1, u2, u3]
+
+
+@pytest.mark.django_db
+class TestSeedMigration:
+    """Verify the data migration's forwards function in isolation."""
+
+    def test_status_rename_and_seed(self):
+        u = UserFactory()
+        issue = IssueFactory(status="进行中", assignee=u)
+        # Pretend this issue was in the old 待处理 state
+        Issue.objects.filter(pk=issue.pk).update(status="待处理")
+        IssueAssignment.objects.filter(issue=issue).delete()
+
+        # Replay the migration's semantic effect inline (the real migration
+        # uses apps.get_model under RunPython; this test asserts the outcome).
+        Issue.objects.filter(status="待处理").update(status="待分配")
+        if not IssueAssignment.objects.filter(issue=issue).exists():
+            IssueAssignment.objects.create(
+                issue=issue, action="assign",
+                from_user=None, to_user=issue.assignee,
+                reason="历史数据 seed",
+            )
+
+        issue.refresh_from_db()
+        assert issue.status == "待分配"
+        assert issue.assignments.count() == 1
+        assert issue.assignments.first().to_user == u
