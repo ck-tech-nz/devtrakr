@@ -16,14 +16,25 @@ USER_PROMPT = """【问题】
 
 
 def forwards(apps, schema_editor):
+    """Seed the auto-assign Prompt. Inherit llm_model from an existing active
+    prompt so a fresh install does not pin a model name that the deployment's
+    LLMConfig may not accept. The admin can adjust via the LLM admin UI later.
+    """
     Prompt = apps.get_model("ai", "Prompt")
+
+    template = (
+        Prompt.objects.filter(slug="wizard_extract", is_active=True).first()
+        or Prompt.objects.filter(is_active=True).exclude(llm_model="").order_by("id").first()
+    )
+    llm_model = template.llm_model if template else ""
+
     Prompt.objects.update_or_create(
         slug="issue_auto_assign",
         defaults={
             "name": "工单自动分配",
             "system_prompt": SYSTEM_PROMPT,
             "user_prompt_template": USER_PROMPT,
-            "llm_model": "deepseek-v4-flash",
+            "llm_model": llm_model,
             "temperature": 0.2,
             "is_active": True,
         },
