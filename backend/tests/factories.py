@@ -1,6 +1,7 @@
 import factory
 from faker import Faker
 from django.contrib.auth import get_user_model
+from django.contrib.auth.models import Group
 from apps.settings.models import SiteSettings
 from apps.projects.models import Project, ProjectMember
 from apps.issues.models import Issue, Activity
@@ -54,13 +55,21 @@ class ProjectFactory(factory.django.DjangoModelFactory):
     status = "进行中"
 
 
+class GroupFactory(factory.django.DjangoModelFactory):
+    class Meta:
+        model = Group
+        django_get_or_create = ("name",)
+
+    name = factory.Sequence(lambda n: f"角色{n}")
+
+
 class ProjectMemberFactory(factory.django.DjangoModelFactory):
     class Meta:
         model = ProjectMember
 
     project = factory.SubFactory(ProjectFactory)
     user = factory.SubFactory(UserFactory)
-    role = "member"
+    role = None
 
 
 class IssueFactory(factory.django.DjangoModelFactory):
