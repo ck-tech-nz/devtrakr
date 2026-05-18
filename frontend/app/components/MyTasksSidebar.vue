@@ -49,7 +49,7 @@
 
       <NuxtLink
         v-if="totalCount > 0"
-        :to="`/app/issues?assignee=${userId}`"
+        to="/app/issues"
         class="flex items-center h-8 pl-9 pr-2 rounded-lg text-xs text-crystal-600 dark:text-crystal-400 hover:bg-crystal-50 dark:hover:bg-crystal-950"
       >
         查看全部 →
@@ -65,7 +65,6 @@ const { user, can } = useAuth()
 const { tasks, totalCount, load } = useMyTasks()
 
 const visible = computed(() => !!user.value && can('issues.view_issue'))
-const userId = computed(() => user.value?.id)
 const open = ref(true)
 
 const displayTasks = computed(() => tasks.value)
