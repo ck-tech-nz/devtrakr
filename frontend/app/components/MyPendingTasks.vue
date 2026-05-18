@@ -70,7 +70,8 @@ const collapsed = ref(false)
 const closingId = ref<number | null>(null)
 
 function statusColor(status: string) {
-  if (status === '待处理') return 'warning'
+  if (status === '待分配') return 'warning'
+  if (status === '待确认') return 'warning'
   if (status === '进行中') return 'info'
   if (status === '已解决') return 'success'
   if (status === '已发布') return 'success'

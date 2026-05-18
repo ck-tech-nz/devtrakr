@@ -75,7 +75,8 @@ function toggle() {
 }
 
 function dotColor(status: string) {
-  if (status === '待处理') return 'bg-amber-400'
+  if (status === '待分配') return 'bg-amber-400'
+  if (status === '待确认') return 'bg-amber-400'
   if (status === '进行中') return 'bg-blue-400'
   if (status === '已发布') return 'bg-emerald-400'
   return 'bg-gray-300'

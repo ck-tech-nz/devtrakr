@@ -122,7 +122,7 @@ const issueTemplates = [
 ]
 
 const priorities = ['P0', 'P1', 'P2', 'P3'] as const
-const statuses = ['待分配', '进行中', '已解决', '已关闭'] as const
+const statuses = ['待分配', '待确认', '进行中', '已解决', '已关闭'] as const
 const assignees = ['u1', 'u2', 'u3', 'u4', 'u5', 'u6', 'u7', 'u8', 'u9', 'u10']
 const reporters = ['u1', 'u2', 'u5', 'u10']
 

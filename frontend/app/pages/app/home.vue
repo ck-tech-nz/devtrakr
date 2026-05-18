@@ -23,7 +23,7 @@
           to="/app/issues?status=已解决"
         />
         <DashboardStatCard
-          label="待处理"
+          label="待分配"
           :value="stats.pending"
           icon="i-heroicons-clock"
           tone="warning"
@@ -31,7 +31,7 @@
           delta-label="较昨日"
           delta-unit="absolute"
           positive-direction="down"
-          to="/app/issues?status=待处理"
+          to="/app/issues?status=待分配"
         />
         <DashboardStatCard
           label="进行中"
@@ -212,7 +212,7 @@ const resolvedDelta = computed<number | null>(() => {
   return Math.round(((cur - prev) / prev) * 100)
 })
 
-// 待处理日环比：当前总数 - 昨日之前留存数（绝对差）
+// 待分配日环比：当前总数 - 昨日之前留存数（绝对差）
 const pendingDelta = computed<number | null>(() => {
   const cur = stats.value.pending
   const prev = stats.value.pending_yesterday

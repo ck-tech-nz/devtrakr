@@ -36,9 +36,9 @@ const props = defineProps<{
   deltaLabel?: string
   // delta 数值的展示单位："percent" | "absolute"
   deltaUnit?: 'percent' | 'absolute'
-  // 当 delta > 0 时是否视为正面：解决数上涨为正面（绿色），待处理上涨为负面（红色）
+  // 当 delta > 0 时是否视为正面：解决数上涨为正面（绿色），待分配上涨为负面（红色）
   positiveDirection?: 'up' | 'down'
-  // 点击跳转目标（如 "/app/issues?status=待处理"）；为空时不可点击
+  // 点击跳转目标（如 "/app/issues?status=待分配"）；为空时不可点击
   to?: string
 }>()
 

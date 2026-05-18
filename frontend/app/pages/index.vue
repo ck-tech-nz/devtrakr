@@ -95,7 +95,7 @@
               <div class="col col-amber">
                 <div class="col-h">
                   <span class="col-dot" />
-                  <span>待处理</span>
+                  <span>待分配</span>
                   <span class="col-c">2</span>
                 </div>
                 <div class="card"><span class="card-id">ISS-104</span>页面优化</div>

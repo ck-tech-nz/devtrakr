@@ -22,9 +22,9 @@ export function useMyTasks() {
     try {
       const uid = user.value.id
       const fetches: Promise<any>[] = [
-        api<any>(`/api/issues/?assignee=${uid}&status=待处理&page_size=20`),
+        api<any>(`/api/issues/?assignee=${uid}&status=待分配&page_size=20`),
         api<any>(`/api/issues/?assignee=${uid}&status=进行中&page_size=20`),
-        api<any>(`/api/issues/?helpers=${uid}&status=待处理&page_size=20`),
+        api<any>(`/api/issues/?helpers=${uid}&status=待分配&page_size=20`),
         api<any>(`/api/issues/?helpers=${uid}&status=进行中&page_size=20`),
       ]
       if (isTester.value) {

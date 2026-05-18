@@ -216,7 +216,7 @@ function onSubmit() {
     title: form.value.title.trim(),
     description: desc,
     priority: form.value.priority,
-    status: '待处理',
+    status: '待分配',
     labels: filteredLabels,
     source: 'ai_wizard',
     source_meta: {
