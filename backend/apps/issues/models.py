@@ -12,11 +12,20 @@ class Priority(models.TextChoices):
 
 class IssueStatus(models.TextChoices):
     UNPLANNED = '未计划', '未计划'
-    PENDING = '待处理', '待处理'
+    UNASSIGNED = '待分配', '待分配'
+    PENDING_CONFIRMATION = '待确认', '待确认'
     IN_PROGRESS = '进行中', '进行中'
     RESOLVED = '已解决', '已解决'
     PUBLISHED = '已发布', '已发布'
     CLOSED = '已关闭', '已关闭'
+
+
+class AssignmentAction(models.TextChoices):
+    CLAIM = 'claim', '接单'
+    ASSIGN = 'assign', '指派'
+    AI_ASSIGN = 'ai_assign', 'AI分配'
+    TRANSFER = 'transfer', '转单'
+    CONFIRM = 'confirm', '确认'
 
 
 class IssueManager(models.Manager):
@@ -53,6 +62,12 @@ class Issue(models.Model):
     assignee = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
         related_name="assigned_issues", verbose_name="负责人",
+    )
+    manager = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="managed_issues",
+        verbose_name="项目经理快照",
+        help_text="创建时快照,后续 project.manager 变更不影响此字段",
     )
     helpers = models.ManyToManyField(
         settings.AUTH_USER_MODEL,
@@ -122,3 +137,36 @@ class Activity(models.Model):
 
     def __str__(self):
         return f"{self.user} {self.action} {self.issue}"
+
+
+class IssueAssignment(models.Model):
+    issue = models.ForeignKey(
+        Issue, on_delete=models.CASCADE, related_name='assignments',
+    )
+    action = models.CharField(max_length=20, choices=AssignmentAction.choices)
+    from_user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='+',
+        verbose_name="转出方",
+    )
+    to_user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='+',
+        verbose_name="接收方",
+    )
+    actor = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='+',
+        verbose_name="操作人",
+    )
+    reason = models.TextField(blank=True, default='', verbose_name="原因")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "分配事件"
+        verbose_name_plural = "分配事件"
+        ordering = ['created_at']
+        indexes = [models.Index(fields=['issue', '-created_at'])]
+
+    def __str__(self):
+        return f"{self.issue_id} {self.action} → {self.to_user_id}"
