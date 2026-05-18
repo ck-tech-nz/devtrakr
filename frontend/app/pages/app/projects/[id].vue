@@ -149,19 +149,24 @@
           @drop="onKanbanDrop"
         >
           <template #card="{ item }">
-            <NuxtLink :to="`/app/issues/${item.id}`" class="block">
+            <div class="block">
               <div class="flex items-center justify-between mb-1.5">
-                <span class="text-xs text-gray-400 dark:text-gray-500">#{{ item.id }}</span>
+                <NuxtLink :to="`/app/issues/${item.id}`" class="text-xs text-gray-400 dark:text-gray-500 hover:text-crystal-500">#{{ item.id }}</NuxtLink>
                 <UBadge :color="item.priority === 'P0' ? 'error' : item.priority === 'P1' ? 'warning' : item.priority === 'P2' ? 'warning' : 'neutral'" variant="subtle" size="xs">{{ item.priority }}</UBadge>
               </div>
-              <p class="text-sm text-gray-900 dark:text-gray-100 font-medium line-clamp-2">{{ item.title }}</p>
-              <div class="mt-2 flex items-center">
-                <div class="w-5 h-5 rounded-full bg-crystal-100 dark:bg-crystal-900 flex items-center justify-center">
-                  <span class="text-crystal-600 dark:text-crystal-400 text-[10px] font-medium">{{ (item.assignee_name || '?').slice(0, 1) }}</span>
-                </div>
-                <span class="ml-1.5 text-xs text-gray-400 dark:text-gray-500">{{ item.assignee_name || '-' }}</span>
+              <NuxtLink :to="`/app/issues/${item.id}`" class="block">
+                <p class="text-sm text-gray-900 dark:text-gray-100 font-medium line-clamp-2">{{ item.title }}</p>
+              </NuxtLink>
+              <div class="mt-2">
+                <StatusCell
+                  :issue="item"
+                  :self-user-id="selfUserId"
+                  @changed="refreshIssues"
+                  @request-transfer="openTransfer(item)"
+                  @request-assign="openAssign(item)"
+                />
               </div>
-            </NuxtLink>
+            </div>
           </template>
         </SharedKanbanBoard>
 
@@ -181,10 +186,13 @@
               <UBadge :color="row.original.priority === 'P0' ? 'error' : row.original.priority === 'P1' ? 'warning' : row.original.priority === 'P2' ? 'warning' : 'neutral'" variant="subtle" size="xs">{{ row.original.priority }}</UBadge>
             </template>
             <template #status-cell="{ row }">
-              <UBadge :color="row.original.status === '未计划' ? 'secondary' : row.original.status === '待处理' ? 'warning' : row.original.status === '进行中' ? 'info' : row.original.status === '已解决' ? 'success' : row.original.status === '已发布' ? 'primary' : 'neutral'" variant="subtle" size="xs">{{ row.original.status }}</UBadge>
-            </template>
-            <template #assignee_name-cell="{ row }">
-              {{ row.original.assignee_name || '-' }}
+              <StatusCell
+                :issue="row.original"
+                :self-user-id="selfUserId"
+                @changed="refreshIssues"
+                @request-transfer="openTransfer(row.original)"
+                @request-assign="openAssign(row.original)"
+              />
             </template>
             <template #created_at-cell="{ row }">
               {{ row.original.created_at ? row.original.created_at.slice(0, 10) : '-' }}
@@ -239,18 +247,61 @@
         </div>
       </template>
     </UModal>
+
+    <TransferDialog
+      v-if="transferDialog.issueId !== null && transferDialog.projectId !== null"
+      v-model="transferDialog.open"
+      :issue-id="transferDialog.issueId"
+      :project-id="transferDialog.projectId"
+      :self-user-id="selfUserId"
+      @transferred="refreshIssues"
+    />
+    <AssignDialog
+      v-if="assignDialog.issueId !== null && assignDialog.projectId !== null"
+      v-model="assignDialog.open"
+      :issue-id="assignDialog.issueId"
+      :project-id="assignDialog.projectId"
+      @assigned="refreshIssues"
+    />
   </div>
 
   <div v-else class="text-center py-20 text-sm text-gray-400 dark:text-gray-500">项目不存在</div>
 </template>
 
 <script setup lang="ts">
+import { ISSUE_STATUS_OPTIONS, kanbanColor, KANBAN_DEFAULT_COLUMNS, KANBAN_COMPLETED_LEFT, KANBAN_COMPLETED_RIGHT } from '~/constants/issueStatus'
+import StatusCell from '~/components/issue/StatusCell.vue'
+import TransferDialog from '~/components/issue/TransferDialog.vue'
+import AssignDialog from '~/components/issue/AssignDialog.vue'
+
 definePageMeta({ layout: 'default' })
 
 const { api } = useApi()
-const { can } = useAuth()
+const { can, user } = useAuth()
 const { confirm: dialogConfirm, alert: dialogAlert } = useDialog()
 const route = useRoute()
+
+const selfUserId = computed(() => Number(user.value?.id ?? 0))
+
+const transferDialog = ref<{ open: boolean; issueId: number | null; projectId: number | null }>({
+  open: false, issueId: null, projectId: null,
+})
+const assignDialog = ref<{ open: boolean; issueId: number | null; projectId: number | null }>({
+  open: false, issueId: null, projectId: null,
+})
+
+function openTransfer(issue: any) {
+  transferDialog.value = { open: true, issueId: issue.id, projectId: issue.project }
+}
+function openAssign(issue: any) {
+  assignDialog.value = { open: true, issueId: issue.id, projectId: issue.project }
+}
+
+async function refreshIssues() {
+  const id = route.params.id
+  const issuesData = await api<any>(`/api/projects/${id}/issues/`)
+  projectIssues.value = issuesData.results || issuesData || []
+}
 const { settings, update: updateSettings } = useUserSettings()
 
 const loading = ref(true)
@@ -272,7 +323,10 @@ const filterStatus = ref('_all')
 const filterAssignee = ref('_all')
 
 const priorityOptions = [{ label: '全部', value: '_all' }, { label: 'P0', value: 'P0' }, { label: 'P1', value: 'P1' }, { label: 'P2', value: 'P2' }, { label: 'P3', value: 'P3' }]
-const statusOptions = [{ label: '全部', value: '_all' }, { label: '未计划', value: '未计划' }, { label: '待处理', value: '待处理' }, { label: '进行中', value: '进行中' }, { label: '已解决', value: '已解决' }, { label: '已发布', value: '已发布' }, { label: '已关闭', value: '已关闭' }]
+const statusOptions = [
+  { label: '全部', value: '_all' },
+  ...ISSUE_STATUS_OPTIONS,
+]
 const assigneeOptions = computed(() => [{ label: '全部', value: '_all' }, ...users.value.map(u => ({ label: u.name || u.username, value: String(u.id) }))])
 
 const roleOptions = computed(() => [
@@ -320,14 +374,17 @@ async function onStatusChange({ issueId, newStatus }: { issueId: number, newStat
   }
 }
 
-const kanbanColumns = computed(() => [
-  { key: '未计划', label: '未计划', color: '#8b5cf6', items: filteredIssues.value.filter(i => i.status === '未计划') },
-  { key: '待处理', label: '待处理', color: '#f59e0b', items: filteredIssues.value.filter(i => i.status === '待处理') },
-  { key: '进行中', label: '进行中', color: '#3b82f6', items: filteredIssues.value.filter(i => i.status === '进行中') },
-  { key: '已解决', label: '已解决', color: '#10b981', items: filteredIssues.value.filter(i => i.status === '已解决') },
-  { key: '已发布', label: '已发布', color: '#14b8a6', items: filteredIssues.value.filter(i => i.status === '已发布') },
-  { key: '已关闭', label: '已关闭', color: '#6b7280', items: filteredIssues.value.filter(i => i.status === '已关闭') },
-])
+const kanbanColumns = computed(() => {
+  const baseKeys = KANBAN_DEFAULT_COLUMNS
+  // Always include all columns for the project view (no showCompleted toggle here)
+  const keys = [...KANBAN_COMPLETED_LEFT, ...baseKeys, ...KANBAN_COMPLETED_RIGHT]
+  return keys.map(key => ({
+    key,
+    label: key,
+    color: kanbanColor(key),
+    items: filteredIssues.value.filter(i => i.status === key),
+  }))
+})
 
 function onKanbanDrop({ itemId, toColumn }: { itemId: string | number; fromColumn: string; toColumn: string }) {
   onStatusChange({ issueId: itemId as number, newStatus: toColumn })
@@ -457,7 +514,6 @@ const tableColumns = [
   { accessorKey: 'title', header: '标题' },
   { accessorKey: 'priority', header: '优先级' },
   { accessorKey: 'status', header: '状态' },
-  { accessorKey: 'assignee_name', header: '负责人' },
   { accessorKey: 'created_at', header: '创建时间' },
 ]
 
