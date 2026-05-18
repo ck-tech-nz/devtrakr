@@ -275,12 +275,86 @@ def transfer_issue(issue, actor, to_user, reason: str):
     return event
 
 
-def auto_assign_issue(issue):
-    """Phase 1 stub. Phase 2 implements real LLM-based selection.
+AUTO_ASSIGN_PROMPT_SLUG = "issue_auto_assign"
 
-    Returns IssueAssignment on success, None on any failure or skip.
+
+def _build_members_block(members) -> str:
+    """Format project members for the LLM prompt.
+
+    Each line: - id=<user_id>, 姓名=<name>, 角色=<role>, 描述="<desc>"
+    personal_description is sanitized: newlines → space, quotes → ', truncated to 500 chars.
     """
-    return None
+    lines = []
+    for m in members:
+        role = m.role.name if m.role_id else "未设置"
+        desc = (m.personal_description or "").replace("\n", " ").replace('"', "'")[:500]
+        name = m.user.name or m.user.username
+        lines.append(f'- id={m.user_id}, 姓名={name}, 角色={role}, 描述="{desc}"')
+    return "\n".join(lines)
+
+
+def auto_assign_issue(issue):
+    """Phase 2: use LLM to pick the best assignee from members with personal_description.
+
+    Returns IssueAssignment on success, None on any failure or skip (never raises).
+    """
+    from apps.projects.models import ProjectMember
+
+    members = list(
+        ProjectMember.objects.filter(project=issue.project)
+        .exclude(personal_description="")
+        .select_related("user", "role")
+    )
+    if not members:
+        logger.info("auto_assign: no members with descriptions for issue %s", issue.pk)
+        return None
+
+    prompt = Prompt.objects.filter(slug=AUTO_ASSIGN_PROMPT_SLUG, is_active=True).first()
+    if not prompt:
+        logger.warning("auto_assign: prompt '%s' not configured", AUTO_ASSIGN_PROMPT_SLUG)
+        return None
+
+    llm_config = prompt.llm_config or LLMConfig.objects.filter(is_default=True, is_active=True).first()
+    if not llm_config:
+        logger.warning("auto_assign: no active LLM config")
+        return None
+
+    try:
+        labels = issue.labels if isinstance(issue.labels, list) else []
+        user_prompt = prompt.user_prompt_template.format(
+            title=issue.title,
+            description=(issue.description or "")[:1000],
+            labels=", ".join(labels),
+            priority=issue.priority,
+            members_block=_build_members_block(members),
+        )
+        raw = LLMClient(llm_config).complete(
+            model=prompt.llm_model,
+            system_prompt=prompt.system_prompt,
+            user_prompt=user_prompt,
+            temperature=prompt.temperature,
+            timeout=15,
+        )
+        parsed = json.loads(raw)
+        target_id = int(parsed["assignee_id"])
+        reason = str(parsed.get("reason", ""))[:500]
+    except (json.JSONDecodeError, KeyError, ValueError, TypeError):
+        logger.warning("auto_assign: bad LLM response", exc_info=True)
+        return None
+    except Exception:
+        logger.warning("auto_assign: LLM call failed", exc_info=True)
+        return None
+
+    valid_member_ids = {m.user_id for m in members}
+    if target_id not in valid_member_ids:
+        logger.info("auto_assign: LLM picked id=%s not in project members %s", target_id, valid_member_ids)
+        return None
+
+    target_user = next(m.user for m in members if m.user_id == target_id)
+    return _do_assign(
+        issue, actor=None, to_user=target_user,
+        action=AssignmentAction.AI_ASSIGN, reason=reason,
+    )
 
 
 @transaction.atomic
@@ -310,6 +384,6 @@ def create_issue(*, project, actor, title, description, priority,
         _do_assign(issue, actor=actor, to_user=assignee,
                    action=AssignmentAction.ASSIGN, reason="")
     else:
-        auto_assign_issue(issue)  # Phase 1 = no-op
+        auto_assign_issue(issue)
 
     return issue
