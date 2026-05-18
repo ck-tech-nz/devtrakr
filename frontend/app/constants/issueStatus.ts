@@ -31,7 +31,9 @@ export const KANBAN_DEFAULT_COLUMNS: IssueStatusValue[] = [
 export const KANBAN_COMPLETED_LEFT: IssueStatusValue[] = [ISSUE_STATUS.UNPLANNED]
 export const KANBAN_COMPLETED_RIGHT: IssueStatusValue[] = [ISSUE_STATUS.CLOSED]
 
-export function statusColor(status: string): string {
+type BadgeColor = 'primary' | 'secondary' | 'success' | 'info' | 'warning' | 'error' | 'neutral'
+
+export function statusColor(status: string): BadgeColor {
   switch (status) {
     case ISSUE_STATUS.UNPLANNED: return 'secondary'
     case ISSUE_STATUS.UNASSIGNED: return 'warning'
