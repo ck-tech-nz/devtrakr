@@ -2,8 +2,6 @@
   <aside
     class="h-screen bg-white dark:bg-gray-900 border-r border-gray-100 dark:border-gray-800 hidden md:flex flex-col transition-all duration-300 ease-in-out flex-shrink-0 relative z-30"
     :class="expanded ? 'w-60' : 'w-16'"
-    @mouseenter="expanded = true"
-    @mouseleave="autoCollapse && (expanded = false)"
   >
     <div
       class="h-16 border-b border-gray-50 dark:border-gray-800 flex items-center"
@@ -16,8 +14,8 @@
       <div v-if="expanded" class="flex-1" />
       <button
         class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 flex-shrink-0 p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800"
-        :title="autoCollapse ? '取消自动收起' : '启用自动收起'"
-        @click.stop="autoCollapse = !autoCollapse"
+        :title="expanded ? '收起侧边栏' : '展开侧边栏'"
+        @click.stop="expanded = !expanded"
       >
         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <rect width="18" height="18" x="3" y="3" rx="2" />
@@ -137,10 +135,9 @@ import type { NavItem, NavGroup } from '~/composables/useNavigation'
 const { groupedNavItems, currentPath } = useNavigation()
 const { isOnline, toggle, getLabel } = useServiceStatus()
 const { settings, update } = useUserSettings()
-const expanded = ref(!settings.value.sidebar_auto_collapse)
-const autoCollapse = computed({
-  get: () => settings.value.sidebar_auto_collapse,
-  set: (v: boolean) => update('sidebar_auto_collapse', v),
+const expanded = computed({
+  get: () => !settings.value.sidebar_auto_collapse,
+  set: (v: boolean) => update('sidebar_auto_collapse', !v),
 })
 
 // Track which groups are open
