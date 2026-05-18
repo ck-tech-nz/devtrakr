@@ -7,6 +7,7 @@ from apps.issues.models import Issue, Activity
 from apps.repos.models import Repo, GitHubIssue, Commit, GitAuthorAlias
 from apps.ai.models import LLMConfig, Prompt, Analysis
 from apps.tools.models import Attachment
+from apps.uptime.models import UptimeMonitor, UptimeCheck
 from django.utils import timezone as tz
 
 fake = Faker("zh_CN")
@@ -280,3 +281,28 @@ class NotificationRecipientFactory(factory.django.DjangoModelFactory):
     user = factory.SubFactory(UserFactory)
     is_read = False
     is_deleted = False
+
+
+class UptimeMonitorFactory(factory.django.DjangoModelFactory):
+    class Meta:
+        model = UptimeMonitor
+
+    project = factory.SubFactory(ProjectFactory)
+    name = factory.Sequence(lambda n: f"monitor-{n}")
+    url = factory.Sequence(lambda n: f"https://example{n}.com/health")
+    method = "GET"
+    expected_status = "200"
+    interval_minutes = 1
+    timeout_secs = 20
+    is_enabled = True
+
+
+class UptimeCheckFactory(factory.django.DjangoModelFactory):
+    class Meta:
+        model = UptimeCheck
+
+    monitor = factory.SubFactory(UptimeMonitorFactory)
+    checked_at = factory.LazyFunction(tz.now)
+    is_up = True
+    status_code = 200
+    response_ms = 100
