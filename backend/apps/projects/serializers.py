@@ -17,7 +17,8 @@ class ProjectMemberSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = ProjectMember
-        fields = ["user_id", "user_name", "avatar", "role", "role_id", "personal_description"]
+        fields = ["user_id", "user_name", "avatar", "role", "role_id",
+                  "personal_description", "is_manager"]
 
 
 class ProjectMemberCreateSerializer(serializers.Serializer):
@@ -28,6 +29,7 @@ class ProjectMemberCreateSerializer(serializers.Serializer):
     personal_description = serializers.CharField(
         allow_blank=True, required=False, default=""
     )
+    is_manager = serializers.BooleanField(required=False, default=False)
 
     def validate_user_id(self, value):
         if not User.objects.filter(id=value).exists():
@@ -42,7 +44,7 @@ class ProjectMemberUpdateSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = ProjectMember
-        fields = ["role_id", "personal_description"]
+        fields = ["role_id", "personal_description", "is_manager"]
 
 
 class ProjectListSerializer(serializers.ModelSerializer):

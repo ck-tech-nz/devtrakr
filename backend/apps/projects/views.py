@@ -4,6 +4,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
+from django.db import IntegrityError
 from django.shortcuts import get_object_or_404
 from apps.permissions import FullDjangoModelPermissions
 from .models import Project, ProjectMember
@@ -58,6 +59,7 @@ class ProjectMemberListCreateView(generics.ListCreateAPIView):
             user_id=serializer.validated_data["user_id"],
             role=serializer.validated_data.get("role_id"),
             personal_description=serializer.validated_data.get("personal_description", ""),
+            is_manager=serializer.validated_data.get("is_manager", False),
         )
         return Response(
             ProjectMemberSerializer(member).data,
@@ -80,7 +82,13 @@ class ProjectMemberDetailView(generics.GenericAPIView):
         member = self.get_object()
         serializer = self.get_serializer(member, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
-        serializer.save()
+        try:
+            serializer.save()
+        except IntegrityError:
+            return Response(
+                {"detail": "该项目已有项目经理"},
+                status=status.HTTP_409_CONFLICT,
+            )
         return Response(ProjectMemberSerializer(member).data)
 
     def delete(self, request, *args, **kwargs):
