@@ -254,3 +254,85 @@ class TestPerformCheck:
             result = perform_check(monitor)
         assert result.response_ms is not None
         assert result.response_ms >= 0
+
+
+from apps.uptime.tasks import check_monitor
+from apps.uptime.http_check import CheckResult
+from apps.uptime.models import UptimeMonitor, UptimeCheck
+
+
+class TestCheckMonitorTask:
+    def test_writes_check_record(self, site_settings):
+        UserFactory(username="bot")
+        monitor = UptimeMonitorFactory(last_status="up", consecutive_failures=0)
+        with patch("apps.uptime.tasks.perform_check",
+                   return_value=CheckResult(is_up=True, status_code=200, response_ms=80, error="")):
+            check_monitor(monitor.pk)
+        assert UptimeCheck.objects.filter(monitor=monitor).count() == 1
+        check = UptimeCheck.objects.get(monitor=monitor)
+        assert check.is_up is True
+        assert check.status_code == 200
+        assert check.response_ms == 80
+
+    def test_advances_next_check_at(self, site_settings):
+        UserFactory(username="bot")
+        monitor = UptimeMonitorFactory(interval_minutes=5, next_check_at=None)
+        with patch("apps.uptime.tasks.perform_check",
+                   return_value=CheckResult(is_up=True, status_code=200, response_ms=50, error="")):
+            check_monitor(monitor.pk)
+        monitor.refresh_from_db()
+        assert monitor.next_check_at is not None
+        delta = monitor.next_check_at - timezone.now()
+        assert timedelta(minutes=4, seconds=50) < delta < timedelta(minutes=5, seconds=10)
+
+    def test_third_consecutive_failure_fires_failure(self, site_settings):
+        UserFactory(username="bot")
+        project = ProjectFactory()
+        monitor = UptimeMonitorFactory(
+            project=project, last_status="up", consecutive_failures=2,
+        )
+        with patch("apps.uptime.tasks.perform_check",
+                   return_value=CheckResult(is_up=False, status_code=500, response_ms=10, error="status 500")):
+            check_monitor(monitor.pk)
+        monitor.refresh_from_db()
+        assert monitor.last_status == "down"
+        assert monitor.active_incident_issue is not None
+        assert monitor.consecutive_failures == 3
+
+    def test_recovery_from_down_to_up(self, site_settings):
+        bot = UserFactory(username="bot")
+        project = ProjectFactory()
+        issue = Issue.objects.create(
+            project=project, title="x", description="x", priority="P1",
+            status="待处理", created_by=bot, reporter="",
+        )
+        monitor = UptimeMonitorFactory(
+            project=project, last_status="down", consecutive_failures=5,
+            outage_started_at=timezone.now() - timedelta(minutes=10),
+            active_incident_issue=issue,
+        )
+        with patch("apps.uptime.tasks.perform_check",
+                   return_value=CheckResult(is_up=True, status_code=200, response_ms=70, error="")):
+            check_monitor(monitor.pk)
+        monitor.refresh_from_db()
+        assert monitor.last_status == "up"
+        assert monitor.consecutive_failures == 0
+        assert monitor.active_incident_issue is None
+
+    def test_disabled_monitor_skipped_silently(self, site_settings):
+        monitor = UptimeMonitorFactory(is_enabled=False)
+        with patch("apps.uptime.tasks.perform_check") as mocked:
+            check_monitor(monitor.pk)
+        mocked.assert_not_called()
+        assert UptimeCheck.objects.filter(monitor=monitor).count() == 0
+
+    def test_first_failure_does_not_fire(self, site_settings):
+        UserFactory(username="bot")
+        monitor = UptimeMonitorFactory(last_status="up", consecutive_failures=0)
+        with patch("apps.uptime.tasks.perform_check",
+                   return_value=CheckResult(is_up=False, status_code=500, response_ms=10, error="status 500")):
+            check_monitor(monitor.pk)
+        monitor.refresh_from_db()
+        assert monitor.consecutive_failures == 1
+        assert monitor.last_status == "up"
+        assert monitor.active_incident_issue is None
