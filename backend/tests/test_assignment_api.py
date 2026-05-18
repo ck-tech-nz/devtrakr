@@ -1,6 +1,7 @@
 """Tests for claim/confirm/transfer/assign API endpoints."""
 import pytest
 from tests.factories import UserFactory, IssueFactory, ProjectFactory, ProjectMemberFactory
+from apps.issues.models import IssueAssignment
 
 
 @pytest.mark.django_db
@@ -105,3 +106,44 @@ class TestAssignAPI:
             format="json",
         )
         assert resp.status_code == 403
+
+
+@pytest.mark.django_db
+class TestIssueDetailAssignments:
+    def test_detail_includes_assignments_list(self, auth_client):
+        """GET /api/issues/{id}/ 返回按时间升序的 assignments 列表。"""
+        to_user1 = UserFactory(name="张三")
+        to_user2 = UserFactory(name="李四")
+        actor = UserFactory(name="王五")
+        issue = IssueFactory(status="进行中")
+
+        assignment1 = IssueAssignment.objects.create(
+            issue=issue,
+            action="claim",
+            to_user=to_user1,
+            actor=actor,
+            reason="",
+        )
+        assignment2 = IssueAssignment.objects.create(
+            issue=issue,
+            action="transfer",
+            from_user=to_user1,
+            to_user=to_user2,
+            actor=actor,
+            reason="需要专业支持",
+        )
+
+        resp = auth_client.get(f"/api/issues/{issue.pk}/")
+        assert resp.status_code == 200
+
+        assignments = resp.data["assignments"]
+        assert len(assignments) == 2
+
+        # 按 created_at 升序（模型 Meta.ordering）
+        assert assignments[0]["action"] == "claim"
+        assert assignments[0]["to_user_name"] == "张三"
+        assert assignments[0]["reason"] == ""
+
+        assert assignments[1]["action"] == "transfer"
+        assert assignments[1]["to_user_name"] == "李四"
+        assert assignments[1]["reason"] == "需要专业支持"

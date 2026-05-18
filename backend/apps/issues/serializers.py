@@ -11,7 +11,7 @@ from apps.repos.serializers import GitHubIssueBriefSerializer
 from apps.tools.models import Attachment
 from apps.tools.serializers import AttachmentSerializer
 from apps.notifications.services import create_mention_notifications
-from .models import Issue, IssueStatus, Activity
+from .models import Issue, IssueStatus, Activity, IssueAssignment
 
 User = get_user_model()
 
@@ -148,15 +148,47 @@ class IssueListSerializer(serializers.ModelSerializer):
         return obj.manager_id == user.id
 
 
+class IssueAssignmentSerializer(serializers.ModelSerializer):
+    from_user_name = serializers.SerializerMethodField()
+    to_user_name = serializers.SerializerMethodField()
+    actor_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = IssueAssignment
+        fields = [
+            "id", "action", "reason", "created_at",
+            "from_user", "from_user_name",
+            "to_user", "to_user_name",
+            "actor", "actor_name",
+        ]
+        read_only_fields = fields
+
+    def get_from_user_name(self, obj):
+        if obj.from_user:
+            return obj.from_user.name or obj.from_user.username
+        return None
+
+    def get_to_user_name(self, obj):
+        if obj.to_user:
+            return obj.to_user.name or obj.to_user.username
+        return None
+
+    def get_actor_name(self, obj):
+        if obj.actor:
+            return obj.actor.name or obj.actor.username
+        return None
+
+
 class IssueDetailSerializer(IssueListSerializer):
     github_issues = GitHubIssueBriefSerializer(many=True, read_only=True)
     attachments = AttachmentSerializer(many=True, read_only=True)
+    assignments = IssueAssignmentSerializer(many=True, read_only=True)
 
     class Meta(IssueListSerializer.Meta):
         fields = IssueListSerializer.Meta.fields + [
             "description", "estimated_completion",
             "actual_hours", "resolved_at", "github_issues", "attachments",
-            "source_meta", "settlement",
+            "source_meta", "settlement", "assignments",
         ]
 
 
