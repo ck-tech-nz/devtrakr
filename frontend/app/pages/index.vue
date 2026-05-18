@@ -1,6 +1,9 @@
 <template>
-  <div class="w-full max-w-5xl mx-auto px-6">
-    <div class="flex flex-col md:flex-row items-center gap-12 md:gap-16 min-h-[70vh]">
+  <div class="w-full max-w-5xl mx-auto px-6 self-start py-10 md:py-14">
+    <!-- AI Spotlight: latest feature -->
+    <AiSpotlight class="mb-16 md:mb-20" />
+
+    <div class="flex flex-col md:flex-row items-center gap-12 md:gap-16">
       <!-- Left: Branding + CTAs -->
       <div class="flex-1 flex flex-col items-start">
         <div class="flex items-center gap-3 mb-6">
