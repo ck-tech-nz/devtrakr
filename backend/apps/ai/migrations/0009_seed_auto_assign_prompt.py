@@ -23,7 +23,7 @@ def forwards(apps, schema_editor):
             "name": "工单自动分配",
             "system_prompt": SYSTEM_PROMPT,
             "user_prompt_template": USER_PROMPT,
-            "llm_model": "gpt-4o",
+            "llm_model": "deepseek-v4-flash",
             "temperature": 0.2,
             "is_active": True,
         },
