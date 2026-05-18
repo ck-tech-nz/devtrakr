@@ -1,5 +1,6 @@
 <template>
   <div v-if="visible" class="pt-2">
+    <hr class="my-2 border-gray-100 dark:border-gray-800" />
     <button
       class="relative flex items-center w-full h-10 px-2 rounded-lg transition-colors"
       :class="open
@@ -10,7 +11,7 @@
       <UIcon name="i-heroicons-inbox-stack" class="w-5 h-5 flex-shrink-0" />
       <transition name="fade">
         <span v-if="expanded" class="ml-3 text-sm font-medium whitespace-nowrap flex-1 text-left flex items-center gap-2">
-          我的待办
+          All Tasks
           <span
             v-if="totalCount > 0"
             class="text-[10px] bg-crystal-50 dark:bg-crystal-950 text-crystal-600 dark:text-crystal-400 px-1.5 py-0.5 rounded-full"
@@ -65,9 +66,9 @@ const { tasks, totalCount, load } = useMyTasks()
 
 const visible = computed(() => !!user.value && can('issues.view_issue'))
 const userId = computed(() => user.value?.id)
-const open = ref(false)
+const open = ref(true)
 
-const displayTasks = computed(() => tasks.value.slice(0, 5))
+const displayTasks = computed(() => tasks.value)
 
 function toggle() {
   open.value = !open.value

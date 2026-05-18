@@ -22,13 +22,13 @@ export function useMyTasks() {
     try {
       const uid = user.value.id
       const fetches: Promise<any>[] = [
-        api<any>(`/api/issues/?assignee=${uid}&status=待处理&page_size=8`),
-        api<any>(`/api/issues/?assignee=${uid}&status=进行中&page_size=8`),
-        api<any>(`/api/issues/?helpers=${uid}&status=待处理&page_size=8`),
-        api<any>(`/api/issues/?helpers=${uid}&status=进行中&page_size=8`),
+        api<any>(`/api/issues/?assignee=${uid}&status=待处理&page_size=20`),
+        api<any>(`/api/issues/?assignee=${uid}&status=进行中&page_size=20`),
+        api<any>(`/api/issues/?helpers=${uid}&status=待处理&page_size=20`),
+        api<any>(`/api/issues/?helpers=${uid}&status=进行中&page_size=20`),
       ]
       if (isTester.value) {
-        fetches.push(api<any>(`/api/issues/?status=已发布&page_size=8`))
+        fetches.push(api<any>(`/api/issues/?status=已发布&page_size=20`))
       }
       const results = await Promise.all(fetches)
       const seen = new Set<number>()
@@ -45,7 +45,7 @@ export function useMyTasks() {
         total += (res.count ?? items.length) - batchDup
       }
       totalCount.value = total
-      tasks.value = merged.slice(0, 8)
+      tasks.value = merged.slice(0, 20)
     } catch (e) {
       console.error('Failed to load my tasks:', e)
     } finally {
