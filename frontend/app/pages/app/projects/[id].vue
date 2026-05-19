@@ -55,6 +55,9 @@
       <div v-else class="text-sm text-gray-400 dark:text-gray-500">暂无成员</div>
     </div>
 
+    <!-- Uptime Monitors -->
+    <ProjectsUptimeMonitorsSection :project-id="Number(route.params.id)" />
+
     <!-- Issues View -->
     <div>
       <div class="flex items-center justify-between mb-3">
