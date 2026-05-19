@@ -3,9 +3,6 @@
     <!-- AI 问题向导 -->
     <AiIssueWizard @created="onIssueCreated" />
 
-    <!-- 系统监控状态(横跨所有项目) -->
-    <UptimeMonitorsHomeWidget />
-
     <!-- 加载中 -->
     <div v-if="loading" class="flex items-center justify-center py-20">
       <div class="text-sm text-gray-400 dark:text-gray-500">加载中...</div>
@@ -114,6 +111,9 @@
           </div>
         </div>
       </div>
+
+      <!-- 系统监控状态(只显示生产环境) -->
+      <UptimeMonitorsHomeWidget />
 
       <!-- 我的提升计划 + 最近动态（同样的折叠规则） -->
       <div

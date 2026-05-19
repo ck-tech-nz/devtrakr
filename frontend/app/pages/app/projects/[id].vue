@@ -98,6 +98,9 @@
       <div v-else class="text-sm text-gray-400 dark:text-gray-500">暂无成员</div>
     </div>
 
+    <!-- Uptime Monitors -->
+    <ProjectsUptimeMonitorsSection :project-id="Number(route.params.id)" />
+
     <!-- Issues View (collapsible) -->
     <div>
       <button
@@ -201,9 +204,6 @@
         </div>
       </div>
     </div>
-
-    <!-- Uptime Monitors -->
-    <ProjectsUptimeMonitorsSection :project-id="Number(route.params.id)" />
 
     <!-- Add / Edit Member Modal -->
     <UModal v-model:open="showMemberModal" :title="memberModalTitle" :ui="{ width: 'sm:max-w-md' }">
