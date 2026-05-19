@@ -42,12 +42,32 @@ class ProjectMember(models.Model):
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="project_memberships"
     )
-    role = models.CharField(max_length=20, verbose_name="角色")
+    role = models.ForeignKey(
+        "auth.Group",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="project_memberships",
+        verbose_name="角色",
+    )
+    personal_description = models.TextField(
+        blank=True, default="", verbose_name="个人描述"
+    )
+    is_manager = models.BooleanField(default=False, verbose_name="项目经理")
 
     class Meta:
         verbose_name = "项目成员"
         verbose_name_plural = "项目成员"
         unique_together = ("project", "user")
+        constraints = [
+            models.UniqueConstraint(
+                fields=["project"],
+                condition=models.Q(is_manager=True),
+                name="one_manager_per_project",
+            ),
+        ]
 
     def __str__(self):
-        return f"{self.user} - {self.project} ({self.role})"
+        role_name = self.role.name if self.role_id else "-"
+        flag = " [经理]" if self.is_manager else ""
+        return f"{self.user} - {self.project} ({role_name}){flag}"

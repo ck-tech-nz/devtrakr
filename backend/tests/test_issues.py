@@ -18,9 +18,9 @@ class TestIssueList:
         assert response.data["count"] == 1
 
     def test_filter_by_status(self, auth_client, site_settings):
-        IssueFactory(status="待处理")
+        IssueFactory(status="待分配")
         IssueFactory(status="进行中")
-        response = auth_client.get("/api/issues/?status=待处理")
+        response = auth_client.get("/api/issues/?status=待分配")
         assert response.data["count"] == 1
 
     def test_filter_by_assignee(self, auth_client, site_settings):
@@ -85,7 +85,7 @@ class TestIssueCreate:
             "project": str(project.id),
             "title": "新Issue",
             "priority": "P1",
-            "status": "待处理",
+            "status": "待分配",
             "labels": ["前端", "Bug"],
         }, format="json")
         assert response.status_code == 201
@@ -98,7 +98,7 @@ class TestIssueCreate:
             "project": str(project.id),
             "title": "新Issue",
             "priority": "P1",
-            "status": "待处理",
+            "status": "待分配",
             "labels": ["不存在的标签"],
         }, format="json")
         assert response.status_code == 400
@@ -111,7 +111,7 @@ class TestIssueCreate:
             "project": str(project.id),
             "title": "新Issue",
             "priority": "P1",
-            "status": "待处理",
+            "status": "待分配",
             "labels": [],
         }, format="json")
         assert Activity.objects.filter(action="created").count() == 1
@@ -128,7 +128,7 @@ class TestIssueUpdate:
 
     def test_update_status_creates_activity(self, auth_client, site_settings):
         from apps.issues.models import Activity
-        issue = IssueFactory(status="待处理")
+        issue = IssueFactory(status="待分配")
         auth_client.patch(f"/api/issues/{issue.id}/", {"status": "已解决"})
         assert Activity.objects.filter(action="resolved").exists()
 
@@ -244,7 +244,7 @@ class TestMentionNotification:
             "title": "测试提及",
             "description": f"请 @[{user2.name}](user:{user2.id}) 看看",
             "priority": "P2",
-            "status": "待处理",
+            "status": "待分配",
             "labels": ["前端"],
         }, format="json")
         assert response.status_code == 201

@@ -85,6 +85,9 @@ watch(() => state.value.open, async (open) => {
   padding: 1rem;
   background-color: rgba(15, 23, 42, 0.55);
   backdrop-filter: blur(2px);
+  /* Reka UI's modal sets body { pointer-events: none } when open.
+     AppDialog is teleported to body, so it must opt back in. */
+  pointer-events: auto;
 }
 :root.dark .dialog-overlay {
   background-color: rgba(0, 0, 0, 0.65);

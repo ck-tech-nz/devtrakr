@@ -343,7 +343,7 @@ def _empty_commit_metrics() -> dict:
 # ---------------------------------------------------------------------------
 
 RESOLVED_ACTIONS = ("resolved", "closed")
-NON_RESOLVED_STATUSES = ("未计划", "待处理", "进行中")
+NON_RESOLVED_STATUSES = ("未计划", "待分配", "待确认", "进行中")
 
 
 def _price_for_hours(hours: float, hour_brackets: list[dict]) -> int | None:

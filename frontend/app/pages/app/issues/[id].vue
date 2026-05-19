@@ -510,6 +510,20 @@
             </div>
           </div>
         </div>
+
+        <!-- 分配流转 -->
+        <div v-if="issue?.assignments?.length" class="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 p-5 space-y-3">
+          <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100">分配流转</h3>
+          <ol class="space-y-1.5 text-sm">
+            <li v-for="a in issue.assignments" :key="a.id" class="flex flex-wrap gap-x-2 gap-y-0.5">
+              <span class="text-gray-400 dark:text-gray-500 text-xs">{{ formatAssignmentDate(a.created_at) }}</span>
+              <span class="font-medium text-gray-700 dark:text-gray-300">{{ assignmentActionLabel(a.action) }}</span>
+              <span v-if="a.from_user_name" class="text-gray-500 dark:text-gray-400">from {{ a.from_user_name }}</span>
+              <span class="text-gray-500 dark:text-gray-400">→ {{ a.to_user_name }}</span>
+              <span v-if="a.reason" class="text-gray-400 dark:text-gray-500 italic">— {{ a.reason }}</span>
+            </li>
+          </ol>
+        </div>
       </div>
     </div>
 
@@ -956,7 +970,8 @@ const form = ref({
 const priorityItems = PRIORITY_ITEMS
 const statusItems = [
   { label: '未计划', value: '未计划', activeClass: 'bg-violet-500 text-white dark:bg-violet-600 dark:text-white' },
-  { label: '待处理', value: '待处理', activeClass: 'bg-amber-500 text-white dark:bg-amber-600 dark:text-white' },
+  { label: '待分配', value: '待分配', activeClass: 'bg-amber-500 text-white dark:bg-amber-600 dark:text-white' },
+  { label: '待确认', value: '待确认', activeClass: 'bg-yellow-500 text-white dark:bg-yellow-600 dark:text-white' },
   { label: '进行中', value: '进行中', activeClass: 'bg-blue-500 text-white dark:bg-blue-600 dark:text-white' },
   { label: '已解决', value: '已解决', activeClass: 'bg-emerald-500 text-white dark:bg-emerald-600 dark:text-white' },
   { label: '已发布', value: '已发布', activeClass: 'bg-teal-500 text-white dark:bg-teal-600 dark:text-white' },
@@ -1323,6 +1338,20 @@ function removeAttachmentFromDescription(fileUrl: string) {
 
 function insertAttachmentToDescription(attachment: any) {
   form.value.description = (form.value.description || '') + `\n![${attachment.file_name}](${attachment.file_url})`
+}
+
+function assignmentActionLabel(a: string): string {
+  return ({
+    claim: '接单',
+    assign: '指派',
+    ai_assign: 'AI 分配',
+    transfer: '转单',
+    confirm: '确认',
+  } as Record<string, string>)[a] || a
+}
+
+function formatAssignmentDate(s: string): string {
+  return new Date(s).toLocaleString('zh-CN')
 }
 </script>
 

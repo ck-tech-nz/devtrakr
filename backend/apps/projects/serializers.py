@@ -1,5 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
+from django.contrib.auth.models import Group
 from .models import Project, ProjectMember
 
 User = get_user_model()
@@ -9,20 +10,41 @@ class ProjectMemberSerializer(serializers.ModelSerializer):
     user_id = serializers.IntegerField(source="user.id", read_only=True)
     user_name = serializers.CharField(source="user.name", read_only=True)
     avatar = serializers.URLField(source="user.avatar", read_only=True)
+    role = serializers.CharField(source="role.name", read_only=True, allow_null=True)
+    role_id = serializers.PrimaryKeyRelatedField(
+        source="role", queryset=Group.objects.all(), allow_null=True, required=False
+    )
 
     class Meta:
         model = ProjectMember
-        fields = ["user_id", "user_name", "avatar", "role"]
+        fields = ["user_id", "user_name", "avatar", "role", "role_id",
+                  "personal_description", "is_manager"]
 
 
 class ProjectMemberCreateSerializer(serializers.Serializer):
     user_id = serializers.IntegerField()
-    role = serializers.ChoiceField(choices=["owner", "admin", "member"])
+    role_id = serializers.PrimaryKeyRelatedField(
+        queryset=Group.objects.all(), allow_null=True, required=False
+    )
+    personal_description = serializers.CharField(
+        allow_blank=True, required=False, default=""
+    )
+    is_manager = serializers.BooleanField(required=False, default=False)
 
     def validate_user_id(self, value):
         if not User.objects.filter(id=value).exists():
             raise serializers.ValidationError("用户不存在")
         return value
+
+
+class ProjectMemberUpdateSerializer(serializers.ModelSerializer):
+    role_id = serializers.PrimaryKeyRelatedField(
+        source="role", queryset=Group.objects.all(), allow_null=True, required=False
+    )
+
+    class Meta:
+        model = ProjectMember
+        fields = ["role_id", "personal_description", "is_manager"]
 
 
 class ProjectListSerializer(serializers.ModelSerializer):

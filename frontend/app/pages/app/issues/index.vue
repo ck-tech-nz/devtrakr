@@ -43,7 +43,7 @@
             列表
           </button>
         </div>
-        <UButton icon="i-heroicons-plus" size="sm" @click="showCreateModal = true">
+        <UButton icon="i-heroicons-plus" size="sm" @click="openCreateModal">
           <span class="hidden md:inline">新建问题</span>
         </UButton>
       </div>
@@ -183,7 +183,7 @@
 
     <!-- Mobile Card List -->
     <div v-else-if="isMobile && viewMode === 'table'" class="space-y-2">
-      <IssueCard v-for="issue in issues" :key="issue.id" :issue="issue" />
+      <IssueCard v-for="issue in issues" :key="issue.id" :issue="issue" @changed="fetchIssues" @request-transfer="openTransfer($event)" />
       <div class="flex items-center justify-between pt-2">
         <span class="text-xs text-gray-400 dark:text-gray-500">共 {{ totalCount }} 条</span>
         <div class="flex items-center space-x-2">
@@ -264,15 +264,13 @@
           <UBadge :color="priorityColor(row.original.priority)" variant="subtle" size="sm">{{ priorityLabel(row.original.priority) }}</UBadge>
         </template>
         <template #status-cell="{ row }">
-          <div class="flex flex-col items-start gap-1">
-            <UBadge :color="statusColor(row.original.status)" variant="solid" size="sm">{{ row.original.status }}</UBadge>
-            <UBadge v-if="analyzingIssueIds.has(row.original.id)" color="info" variant="subtle" size="sm" class="whitespace-nowrap">
-              <UIcon name="i-heroicons-cpu-chip" class="w-3.5 h-3.5 animate-spin mr-0.5" />AI 分析中
-            </UBadge>
-          </div>
-        </template>
-        <template #assignee_name-cell="{ row }">
-          <span class="block truncate" :title="row.original.assignee_name">{{ row.original.assignee_name || '-' }}</span>
+          <StatusCell
+            :issue="row.original"
+            :self-user-id="selfUserId"
+            @changed="fetchIssues"
+            @request-transfer="openTransfer(row.original)"
+            @request-assign="openAssign(row.original)"
+          />
         </template>
         <template #reporter-cell="{ row }">
           <span class="block truncate" :title="row.original.reporter || row.original.created_by_name">{{ row.original.reporter || row.original.created_by_name || '-' }}</span>
@@ -327,16 +325,55 @@
         </div>
       </div>
     </div>
+
+    <TransferDialog
+      v-if="transferDialog.issueId !== null && transferDialog.projectId !== null"
+      v-model="transferDialog.open"
+      :issue-id="transferDialog.issueId"
+      :project-id="transferDialog.projectId"
+      :self-user-id="selfUserId"
+      @transferred="fetchIssues"
+    />
+    <AssignDialog
+      v-if="assignDialog.issueId !== null && assignDialog.projectId !== null"
+      v-model="assignDialog.open"
+      :issue-id="assignDialog.issueId"
+      :project-id="assignDialog.projectId"
+      @assigned="fetchIssues"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
+import { ISSUE_STATUS, ISSUE_STATUS_OPTIONS, kanbanColor, KANBAN_DEFAULT_COLUMNS, KANBAN_COMPLETED_LEFT, KANBAN_COMPLETED_RIGHT, statusColor as statusColorFn } from '~/constants/issueStatus'
+import StatusCell from '~/components/issue/StatusCell.vue'
+import TransferDialog from '~/components/issue/TransferDialog.vue'
+import AssignDialog from '~/components/issue/AssignDialog.vue'
+
 definePageMeta({ layout: 'default' })
 
 const { api } = useApi()
 const { user, can } = useAuth()
 const { isMobile } = useMobile()
+
+const selfUserId = computed(() => Number(user.value?.id ?? 0))
+
+const transferDialog = ref<{ open: boolean; issueId: number | null; projectId: number | null }>({
+  open: false, issueId: null, projectId: null,
+})
+const assignDialog = ref<{ open: boolean; issueId: number | null; projectId: number | null }>({
+  open: false, issueId: null, projectId: null,
+})
+
+function openTransfer(issue: any) {
+  transferDialog.value = { open: true, issueId: issue.id, projectId: issue.project }
+}
+function openAssign(issue: any) {
+  assignDialog.value = { open: true, issueId: issue.id, projectId: issue.project }
+}
 const { settings, update: updateSettings } = useUserSettings()
+const route = useRoute()
+const toast = useToast()
 
 const viewMode = computed({
   get: () => settings.value.issues_view_mode,
@@ -346,11 +383,11 @@ const showCompleted = ref(false)
 const page = ref(1)
 const pageSize = 15
 
-// Filters
-const filterAssignee = ref('')
-const filterPriority = ref('')
-const filterStatus = ref('')
-const searchQuery = ref('')
+// Filters：初始值从 URL query 读取，使外部链接（如首页统计卡片）可预填筛选条件
+const filterAssignee = ref<string>(typeof route.query.assignee === 'string' ? route.query.assignee : '')
+const filterPriority = ref<string>(typeof route.query.priority === 'string' ? route.query.priority : '')
+const filterStatus = ref<string>(typeof route.query.status === 'string' ? route.query.status : '')
+const searchQuery = ref<string>(typeof route.query.search === 'string' ? route.query.search : '')
 const rowSelection = ref<Record<string, boolean>>({})
 const showBatchDeleteConfirm = ref(false)
 const batchDeleting = ref(false)
@@ -367,6 +404,13 @@ const repos = ref<any[]>([])
 // Create issue modal state
 const { confirm: showConfirm } = useDialog()
 const showCreateModal = ref(false)
+
+function openCreateModal() {
+  if (!newIssue.value.project && user.value?.default_project) {
+    newIssue.value.project = String(user.value.default_project.id)
+  }
+  showCreateModal.value = true
+}
 
 async function onCreateModalUpdate(v: boolean) {
   if (v) {
@@ -394,7 +438,7 @@ const newIssue = ref({
   title: '',
   description: '',
   priority: 'P2',
-  status: '待处理',
+  status: ISSUE_STATUS.UNASSIGNED,
   labels: [] as string[],
   assignee: defaultAssignee.value,
   repo: null as string | null,
@@ -456,13 +500,23 @@ function hasFormContent(): boolean {
     || attachmentIds.value.length > 0
     || n.repo
     || n.priority !== 'P2'
-    || n.status !== '待处理'
+    || n.status !== ISSUE_STATUS.UNASSIGNED
     || n.assignee !== '_none'
   )
 }
 
 function resetCreateForm() {
-  newIssue.value = { project: '', title: '', description: '', priority: 'P2', status: '待处理', labels: [], assignee: defaultAssignee.value, repo: null, reporter: user.value?.name || '' }
+  newIssue.value = {
+    project: String(user.value?.default_project?.id || ''),
+    title: '',
+    description: '',
+    priority: 'P2',
+    status: ISSUE_STATUS.UNASSIGNED,
+    labels: [],
+    assignee: defaultAssignee.value,
+    repo: null,
+    reporter: user.value?.name || '',
+  }
   attachmentIds.value = []
   projectRepos.value = []
   dupCandidates.value = []
@@ -499,12 +553,12 @@ const projectRepoOptions = computed(() => projectRepos.value.map(r => ({ label: 
 
 const projectOptions = computed(() => projects.value.map(p => ({ label: p.name, value: String(p.id) })))
 const createPriorityOptions = PRIORITY_ITEMS.map(p => ({ label: `${p.value} ${p.label}`, value: p.value }))
-const createStatusOptions = [{ label: '未计划', value: '未计划' }, { label: '待处理', value: '待处理' }, { label: '进行中', value: '进行中' }, { label: '已解决', value: '已解决' }, { label: '已发布', value: '已发布' }, { label: '已关闭', value: '已关闭' }]
+const createStatusOptions: { label: string; value: string }[] = ISSUE_STATUS_OPTIONS
 const createAssigneeOptions = computed(() => [{ label: '无', value: '_none' }, ...users.value.map(u => ({ label: u.name || u.username, value: String(u.id) }))])
 
 const filterAssigneeOptions = computed(() => users.value.map(u => ({ label: u.name || u.username, value: String(u.id) })))
 const filterPriorityOptions = PRIORITY_ITEMS.map(p => ({ label: `${p.value} ${p.label}`, value: p.value }))
-const filterStatusOptions = [{ label: '未计划', value: '未计划' }, { label: '待处理', value: '待处理' }, { label: '进行中', value: '进行中' }, { label: '已解决', value: '已解决' }, { label: '已发布', value: '已发布' }, { label: '已关闭', value: '已关闭' }]
+const filterStatusOptions: { label: string; value: string }[] = ISSUE_STATUS_OPTIONS
 
 function closeCreateModal() {
   onCreateModalUpdate(false)
@@ -534,7 +588,11 @@ async function handleCreateIssue() {
     if (newIssue.value.assignee && newIssue.value.assignee !== '_none') body.assignee = newIssue.value.assignee
     if (newIssue.value.repo) body.repo = newIssue.value.repo
     if (newIssue.value.reporter) body.reporter = newIssue.value.reporter
-    await api('/api/issues/', { method: 'POST', body, format: 'json' })
+    const created = await api<any>('/api/issues/', { method: 'POST', body, format: 'json' })
+    const msg = created?.assignee
+      ? `已创建，分配给 ${created.assignee_name || '该成员'}`
+      : '已创建，等待人工接单'
+    toast.add({ title: msg, color: 'success' })
     resetCreateForm()
     showCreateModal.value = false
     await fetchIssues()
@@ -561,7 +619,6 @@ const columns = computed(() => {
     { id: 'select', header: '', cell: '' },
     { accessorKey: 'id', header: 'ID' },
     { accessorKey: 'title', header: '标题' },
-    { accessorKey: 'assignee_name', header: '负责人' },
     { accessorKey: 'cause', header: '原因分析' },
     { accessorKey: 'solution', header: '解决方案' },
     { accessorKey: 'remark', header: '备注' },
@@ -596,17 +653,16 @@ async function onStatusChange({ issueId, newStatus }: { issueId: number, newStat
 }
 
 const kanbanColumns = computed(() => {
-  const cols = [
-    { key: '待处理', label: '待处理', color: '#f59e0b', items: issues.value.filter(i => i.status === '待处理') },
-    { key: '进行中', label: '进行中', color: '#3b82f6', items: issues.value.filter(i => i.status === '进行中') },
-    { key: '已解决', label: '已解决', color: '#10b981', items: issues.value.filter(i => i.status === '已解决') },
-    { key: '已发布', label: '已发布', color: '#14b8a6', items: issues.value.filter(i => i.status === '已发布') },
-  ]
-  if (showCompleted.value) {
-    cols.unshift({ key: '未计划', label: '未计划', color: '#8b5cf6', items: issues.value.filter(i => i.status === '未计划') })
-    cols.push({ key: '已关闭', label: '已关闭', color: '#6b7280', items: issues.value.filter(i => i.status === '已关闭') })
-  }
-  return cols
+  const baseKeys = KANBAN_DEFAULT_COLUMNS
+  const keys = showCompleted.value
+    ? [...KANBAN_COMPLETED_LEFT, ...baseKeys, ...KANBAN_COMPLETED_RIGHT]
+    : baseKeys
+  return keys.map(key => ({
+    key,
+    label: key,
+    color: kanbanColor(key),
+    items: issues.value.filter(i => i.status === key),
+  }))
 })
 
 function onKanbanDrop({ itemId, toColumn }: { itemId: string | number; fromColumn: string; toColumn: string }) {
@@ -684,9 +740,7 @@ function issueDuration(issue: any): { pct: number; color: string; label: string 
   return { pct, color, label }
 }
 
-function statusColor(s: string) {
-  return s === '未计划' ? 'secondary' : s === '待处理' ? 'warning' : s === '进行中' ? 'info' : s === '已解决' ? 'success' : s === '已发布' ? 'primary' : 'neutral'
-}
+const statusColor = statusColorFn
 
 async function fetchIssues() {
   loading.value = true
@@ -954,20 +1008,19 @@ async function checkAnalyzingIssues() {
 }
 /*
  * Issues table: fixed layout so we control column widths.
- * Columns: select | ID | 标题 | 负责人 | 原因分析 | 解决方案 | 备注 | 优先级 | 状态 | 提出人 | 历时 | 预计完成
+ * Columns: select | ID | 标题 | 原因分析 | 解决方案 | 备注 | 优先级 | 状态 | 提出人 | 历时 | 预计完成
  * Narrow cols get fixed width; 标题/原因/方案 share remaining space.
  */
 .issues-table :deep(table) { table-layout: fixed; width: 100%; }
 .issues-table :deep(:is(th, td):nth-child(1)) { width: 2.5%; }   /* select */
 .issues-table :deep(:is(th, td):nth-child(2)) { width: 3.5%; }   /* ID */
 /* 3: 标题 — auto */
-.issues-table :deep(:is(th, td):nth-child(4)) { width: 6%; }     /* 负责人 */
-/* 5: 原因分析 — auto */
-/* 6: 解决方案 — auto */
-.issues-table :deep(:is(th, td):nth-child(7)) { width: 4.5%; }   /* 备注 */
-.issues-table :deep(:is(th, td):nth-child(8)) { width: 4.5%; }   /* 优先级 */
-.issues-table :deep(:is(th, td):nth-child(9)) { width: 5.5%; }   /* 状态 */
-.issues-table :deep(:is(th, td):nth-child(10)) { width: 6%; }    /* 提出人 */
-.issues-table :deep(:is(th, td):nth-child(11)) { width: 7%; }    /* 历时 */
-.issues-table :deep(:is(th, td):nth-child(12)) { width: 5%; }    /* 预计完成 */
+/* 4: 原因分析 — auto */
+/* 5: 解决方案 — auto */
+.issues-table :deep(:is(th, td):nth-child(6)) { width: 4.5%; }   /* 备注 */
+.issues-table :deep(:is(th, td):nth-child(7)) { width: 4.5%; }   /* 优先级 */
+.issues-table :deep(:is(th, td):nth-child(8)) { width: 8%; }     /* 状态 */
+.issues-table :deep(:is(th, td):nth-child(9)) { width: 6%; }     /* 提出人 */
+.issues-table :deep(:is(th, td):nth-child(10)) { width: 7%; }    /* 历时 */
+.issues-table :deep(:is(th, td):nth-child(11)) { width: 5%; }    /* 预计完成 */
 </style>

@@ -8,8 +8,8 @@ pytestmark = pytest.mark.django_db
 
 class TestDashboardStats:
     def test_stats(self, auth_client, site_settings):
-        IssueFactory(status="待处理")
-        IssueFactory(status="待处理")
+        IssueFactory(status="待分配")
+        IssueFactory(status="待分配")
         IssueFactory(status="进行中")
         IssueFactory(status="已解决", resolved_at=timezone.now())
         response = auth_client.get("/api/dashboard/stats/")

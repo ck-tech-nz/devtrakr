@@ -1,16 +1,24 @@
+import json
 import re
 from rest_framework import serializers
+from django.db import transaction
 from django.utils import timezone
 from django.conf import settings as django_settings
 from django.contrib.auth import get_user_model
 from apps.settings.models import SiteSettings
+from apps.projects.models import Project
 from apps.repos.serializers import GitHubIssueBriefSerializer
 from apps.tools.models import Attachment
 from apps.tools.serializers import AttachmentSerializer
 from apps.notifications.services import create_mention_notifications
-from .models import Issue, IssueStatus, Activity
+from .models import Issue, IssueStatus, Activity, IssueAssignment
 
 User = get_user_model()
+
+# Issue 的 source 字段必须从此白名单中取值,防止前端伪造来源
+ALLOWED_ISSUE_SOURCES = ("ai_wizard", "github", "external_api")
+# source_meta 序列化后的 JSON 字节上限,防止滥用作为大容量存储
+SOURCE_META_MAX_BYTES = 4096
 
 
 def _sync_attachments(issue, user):
@@ -51,12 +59,17 @@ class IssueListSerializer(serializers.ModelSerializer):
     created_by_name = serializers.SerializerMethodField()
     updated_by_name = serializers.SerializerMethodField()
     assignee_name = serializers.CharField(source="assignee.name", read_only=True, default=None)
+    manager_name = serializers.SerializerMethodField()
     helpers = serializers.PrimaryKeyRelatedField(many=True, read_only=True)
     helpers_names = serializers.SerializerMethodField()
     resolution_hours = serializers.SerializerMethodField()
     github_issues = GitHubIssueLinkSerializer(many=True, read_only=True)
     ai_cause = serializers.CharField(read_only=True, default='')
     ai_solution = serializers.CharField(read_only=True, default='')
+    can_claim = serializers.SerializerMethodField()
+    can_confirm = serializers.SerializerMethodField()
+    can_transfer = serializers.SerializerMethodField()
+    can_assign = serializers.SerializerMethodField()
 
     class Meta:
         model = Issue
@@ -65,10 +78,12 @@ class IssueListSerializer(serializers.ModelSerializer):
             "status", "labels", "reporter",
             "created_by", "created_by_name",
             "updated_by", "updated_by_name",
-            "assignee", "assignee_name", "helpers", "helpers_names", "remark", "cause", "solution",
+            "assignee", "assignee_name", "manager", "manager_name",
+            "helpers", "helpers_names", "remark", "cause", "solution",
             "ai_cause", "ai_solution",
             "resolution_hours", "created_at", "updated_at", "github_issues",
             "estimated_completion", "estimated_hours", "source",
+            "can_claim", "can_confirm", "can_transfer", "can_assign",
         ]
 
     def get_created_by_name(self, obj):
@@ -90,16 +105,90 @@ class IssueListSerializer(serializers.ModelSerializer):
             return round(delta.total_seconds() / 3600, 1)
         return None
 
+    def get_manager_name(self, obj):
+        if obj.manager:
+            return obj.manager.name or obj.manager.username
+        return None
+
+    def _request_user(self):
+        request = self.context.get("request")
+        return getattr(request, "user", None) if request else None
+
+    def get_can_claim(self, obj):
+        from apps.projects.models import ProjectMember
+        user = self._request_user()
+        if not user or not user.is_authenticated:
+            return False
+        if obj.status != "待分配":
+            return False
+        return ProjectMember.objects.filter(project=obj.project, user=user).exists()
+
+    def get_can_confirm(self, obj):
+        user = self._request_user()
+        if not user or not user.is_authenticated:
+            return False
+        if obj.status != "待确认":
+            return False
+        return obj.assignee_id == user.id
+
+    def get_can_transfer(self, obj):
+        user = self._request_user()
+        if not user or not user.is_authenticated:
+            return False
+        if obj.status not in ("待确认", "进行中"):
+            return False
+        return obj.assignee_id == user.id or obj.manager_id == user.id
+
+    def get_can_assign(self, obj):
+        user = self._request_user()
+        if not user or not user.is_authenticated:
+            return False
+        if obj.status != "待分配":
+            return False
+        return obj.manager_id == user.id
+
+
+class IssueAssignmentSerializer(serializers.ModelSerializer):
+    from_user_name = serializers.SerializerMethodField()
+    to_user_name = serializers.SerializerMethodField()
+    actor_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = IssueAssignment
+        fields = [
+            "id", "action", "reason", "created_at",
+            "from_user", "from_user_name",
+            "to_user", "to_user_name",
+            "actor", "actor_name",
+        ]
+        read_only_fields = fields
+
+    def get_from_user_name(self, obj):
+        if obj.from_user:
+            return obj.from_user.name or obj.from_user.username
+        return None
+
+    def get_to_user_name(self, obj):
+        if obj.to_user:
+            return obj.to_user.name or obj.to_user.username
+        return None
+
+    def get_actor_name(self, obj):
+        if obj.actor:
+            return obj.actor.name or obj.actor.username
+        return None
+
 
 class IssueDetailSerializer(IssueListSerializer):
     github_issues = GitHubIssueBriefSerializer(many=True, read_only=True)
     attachments = AttachmentSerializer(many=True, read_only=True)
+    assignments = IssueAssignmentSerializer(many=True, read_only=True)
 
     class Meta(IssueListSerializer.Meta):
         fields = IssueListSerializer.Meta.fields + [
             "description", "estimated_completion",
             "actual_hours", "resolved_at", "github_issues", "attachments",
-            "source_meta", "settlement",
+            "source_meta", "settlement", "assignments",
         ]
 
 
@@ -117,6 +206,7 @@ class IssueCreateUpdateSerializer(serializers.ModelSerializer):
             "id", "project", "repo", "title", "description", "priority", "status",
             "labels", "assignee", "helpers", "reporter", "remark", "estimated_completion",
             "estimated_hours", "actual_hours", "cause", "solution", "attachment_ids",
+            "source", "source_meta",
         ]
         read_only_fields = ["id"]
 
@@ -140,6 +230,27 @@ class IssueCreateUpdateSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(f"无效的状态: {value}")
         return value
 
+    def validate_source(self, value):
+        if not value:
+            return value
+        if value not in ALLOWED_ISSUE_SOURCES:
+            raise serializers.ValidationError(
+                f"无效的 source: {value}. 必须是 {ALLOWED_ISSUE_SOURCES} 之一"
+            )
+        return value
+
+    def validate_source_meta(self, value):
+        if not value:
+            return value
+        if not isinstance(value, dict):
+            raise serializers.ValidationError("source_meta 必须是对象")
+        size = len(json.dumps(value, ensure_ascii=False).encode("utf-8"))
+        if size > SOURCE_META_MAX_BYTES:
+            raise serializers.ValidationError(
+                f"source_meta 过大（{size} 字节，上限 {SOURCE_META_MAX_BYTES}）"
+            )
+        return value
+
     def _user_can_edit_estimated_hours(self) -> bool:
         user = self.context["request"].user
         if not user.is_authenticated:
@@ -148,34 +259,45 @@ class IssueCreateUpdateSerializer(serializers.ModelSerializer):
             return True
         return user.groups.filter(name="管理员").exists()
 
+    @transaction.atomic
     def create(self, validated_data):
+        from .services import create_issue
         helpers = validated_data.pop("helpers", [])
         attachment_ids = validated_data.pop("attachment_ids", [])
         # 非管理员创建时忽略客户端传入的 estimated_hours,使用模型默认值 (4h)
         if "estimated_hours" in validated_data and not self._user_can_edit_estimated_hours():
             validated_data.pop("estimated_hours")
-        validated_data["created_by"] = self.context["request"].user
-        issue = super().create(validated_data)
+
+        actor = self.context["request"].user
+        assignee = validated_data.pop("assignee", None)
+        # 客户端传入的 status 由工作流决定,忽略
+        validated_data.pop("status", None)
+        project = validated_data.pop("project")
+        title = validated_data.pop("title")
+        description = validated_data.pop("description", "")
+        priority = validated_data.pop("priority")
+
+        issue = create_issue(
+            project=project, actor=actor,
+            title=title, description=description, priority=priority,
+            assignee=assignee,
+            **validated_data,
+        )
         if helpers:
             issue.helpers.set(helpers)
-        Activity.objects.create(
-            user=self.context["request"].user,
-            issue=issue,
-            action="created",
-        )
+        Activity.objects.create(user=actor, issue=issue, action="created")
         if attachment_ids:
-            atts = Attachment.objects.filter(
-                id__in=attachment_ids, uploaded_by=self.context["request"].user,
-            )
+            atts = Attachment.objects.filter(id__in=attachment_ids, uploaded_by=actor)
             issue.attachments.add(*atts)
         create_mention_notifications(
             issue=issue,
             old_description="",
             new_description=issue.description,
-            actor=self.context["request"].user,
+            actor=actor,
         )
         return issue
 
+    @transaction.atomic
     def update(self, instance, validated_data):
         old_description = instance.description
         helpers = validated_data.pop("helpers", None)
@@ -233,3 +355,20 @@ class DuplicateCheckInputSerializer(serializers.Serializer):
     project = serializers.IntegerField()
     title = serializers.CharField()
     description = serializers.CharField(required=False, allow_blank=True, default="")
+
+
+class AiDraftInputSerializer(serializers.Serializer):
+    description = serializers.CharField(min_length=5, max_length=4000)
+    project = serializers.PrimaryKeyRelatedField(queryset=Project.objects.all())
+    attachment_ids = serializers.ListField(
+        child=serializers.UUIDField(), required=False, default=list,
+    )
+
+
+class IssueTransferInputSerializer(serializers.Serializer):
+    to_user = serializers.PrimaryKeyRelatedField(queryset=User.objects.all())
+    reason = serializers.CharField(max_length=500)
+
+
+class IssueAssignInputSerializer(serializers.Serializer):
+    to_user = serializers.PrimaryKeyRelatedField(queryset=User.objects.all())

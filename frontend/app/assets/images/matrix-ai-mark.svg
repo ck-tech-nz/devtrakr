@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" fill="none">
+  <!-- MATRIX AI geometric diamond-chain mark -->
+  <!-- 5-diamond lattice pattern: center + top + bottom + left + right -->
+  <!-- Each diamond is a rotated square, drawn as outline -->
+  <g fill="none" stroke="#6B4DE6" stroke-width="3.2" stroke-linejoin="round">
+    <!-- Center diamond -->
+    <rect x="21.5" y="21.5" width="21" height="21" rx="1" transform="rotate(45 32 32)"/>
+    <!-- Top diamond -->
+    <rect x="21.5" y="6.5" width="21" height="21" rx="1" transform="rotate(45 32 17)"/>
+    <!-- Bottom diamond -->
+    <rect x="21.5" y="36.5" width="21" height="21" rx="1" transform="rotate(45 32 47)"/>
+    <!-- Left diamond -->
+    <rect x="6.5" y="21.5" width="21" height="21" rx="1" transform="rotate(45 17 32)"/>
+    <!-- Right diamond -->
+    <rect x="36.5" y="21.5" width="21" height="21" rx="1" transform="rotate(45 47 32)"/>
+  </g>
+</svg>

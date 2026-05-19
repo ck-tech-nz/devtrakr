@@ -51,7 +51,7 @@ class TestAttachmentSync:
             "title": "测试问题",
             "description": "截图: ![img](http://minio:9000/devtrack-uploads/2026/03/27/abc.png)",
             "priority": "P1",
-            "status": "待处理",
+            "status": "待分配",
             "labels": [],
             "attachment_ids": [str(att.id)],
         }, format="json")
@@ -71,7 +71,7 @@ class TestAttachmentSync:
             "title": "附件测试",
             "description": "![a](/uploads/2026/04/02/a.png)",
             "priority": "P1",
-            "status": "待处理",
+            "status": "待分配",
             "labels": [],
             "attachment_ids": [str(att1.id), str(att2.id), str(other_user_att.id)],
         }, format="json")

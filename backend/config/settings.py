@@ -113,6 +113,11 @@ REST_FRAMEWORK = {
         "rest_framework.filters.SearchFilter",
         "rest_framework.filters.OrderingFilter",
     ),
+    # 默认无 throttle,仅在按需 opt-in 的视图上启用
+    "DEFAULT_THROTTLE_RATES": {
+        "ai_wizard": "10/min",
+        "ai_duplicate_check": "30/min",
+    },
 }
 
 SIMPLE_JWT = {
@@ -145,6 +150,11 @@ MINIO_BUCKET = os.environ.get("MINIO_BUCKET", "devtrack-uploads")
 MINIO_USE_SSL = os.environ.get("MINIO_USE_SSL", "False").lower() in ("true", "1")
 MINIO_PUBLIC_URL = os.environ.get("MINIO_PUBLIC_URL", "/uploads")
 
+# AI Issue Wizard rollback flag — set "True" to fall back to the 3-stage
+# legacy pipeline (wizard_classify/extract/generate). Defaults to False;
+# v1 prompt rows are preserved for the 7-day rollback window post-deploy.
+AI_WIZARD_LEGACY = os.environ.get("AI_WIZARD_LEGACY", "False").lower() in ("true", "1")
+
 REPO_CLONE_DIR = os.environ.get("REPO_CLONE_DIR", "/data/repos")
 BACKUP_DIR = os.environ.get("BACKUP_DIR", "/data/backups")
 
@@ -173,9 +183,9 @@ PAGE_PERMS = {
         {"path": "/app/dashboard", "label": "项目概览", "icon": "i-heroicons-squares-2x2", "permission": "issues.view_dashboard", "sort_order": 1},
         {"path": "/app/projects", "label": "项目管理", "icon": "i-heroicons-folder-open", "permission": "projects.view_project", "sort_order": 2},
         {"path": "/app/repos", "label": "GitHub 仓库", "icon": "i-heroicons-code-bracket", "permission": "repos.view_repo", "sort_order": 3, "meta": {"serviceKey": "github"}},
-        {"path": "/app/ai/team-analysis", "label": "团队分析", "icon": "i-heroicons-cpu-chip", "permission": "ai.view_analysis", "sort_order": 4, "meta": {"serviceKey": "ai"}},
-        {"path": "/app/ai/my-plan", "label": "我的提升计划", "icon": "i-heroicons-clipboard-document-check", "permission": None, "sort_order": 5},
-        {"path": "/app/ai/plans", "label": "团队计划管理", "icon": "i-heroicons-clipboard-document-list", "permission": "kpi.change_improvementplan", "sort_order": 6},
+        {"path": "/app/ai/team-analysis", "label": "团队分析", "icon": "i-heroicons-cpu-chip", "permission": "ai.view_analysis", "sort_order": 4, "meta": {"serviceKey": "ai", "adminOnly": True}},
+        {"path": "/app/ai/my-plan", "label": "我的提升计划", "icon": "i-heroicons-clipboard-document-check", "permission": None, "sort_order": 5, "show_in_nav": False},
+        {"path": "/app/ai/plans", "label": "团队计划管理", "icon": "i-heroicons-clipboard-document-list", "permission": "kpi.change_improvementplan", "sort_order": 6, "meta": {"adminOnly": True}},
         {"path": "/app/users", "label": "用户管理", "icon": "i-heroicons-users", "permission": "users.view_user", "sort_order": 7},
         {"path": "/app/kpi", "label": "KPI 分析", "icon": "i-heroicons-chart-bar-square", "permission": "kpi.view_kpisnapshot", "sort_order": 8},
         {"path": "/app/notifications/manage", "label": "通知管理", "icon": "i-heroicons-bell-alert", "permission": "notifications.view_notification", "sort_order": 9},

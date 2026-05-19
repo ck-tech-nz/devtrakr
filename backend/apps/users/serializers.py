@@ -12,13 +12,28 @@ class UserSerializer(serializers.ModelSerializer):
         fields = ["id", "username", "name", "email", "github_id", "avatar"]
 
 
+class _ProjectPrimaryKeyField(serializers.PrimaryKeyRelatedField):
+    """PK field with lazy queryset to avoid import-at-class-load on apps.projects."""
+
+    def get_queryset(self):
+        from apps.projects.models import Project
+        return Project.objects.all()
+
+
 class MeSerializer(serializers.ModelSerializer):
     groups = serializers.SerializerMethodField()
     permissions = serializers.SerializerMethodField()
+    default_project = _ProjectPrimaryKeyField(
+        allow_null=True,
+        required=False,
+    )
 
     class Meta:
         model = User
-        fields = ["id", "username", "name", "email", "github_id", "avatar", "groups", "permissions", "settings", "is_superuser"]
+        fields = [
+            "id", "username", "name", "email", "github_id", "avatar",
+            "groups", "permissions", "settings", "is_superuser", "default_project",
+        ]
         read_only_fields = ["id", "username", "groups", "permissions", "is_superuser"]
 
     def get_groups(self, obj):
@@ -26,6 +41,15 @@ class MeSerializer(serializers.ModelSerializer):
 
     def get_permissions(self, obj):
         return list(obj.get_all_permissions())
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        from apps.projects.utils import get_effective_default_project
+        proj = get_effective_default_project(instance)
+        data["default_project"] = (
+            {"id": str(proj.id), "name": proj.name} if proj else None
+        )
+        return data
 
 
 class RegisterSerializer(serializers.Serializer):

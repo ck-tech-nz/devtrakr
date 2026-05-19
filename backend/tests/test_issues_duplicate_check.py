@@ -82,7 +82,7 @@ def test_check_duplicates_returns_matches_from_llm(duplicate_prompt, default_llm
     from apps.issues.services import check_duplicates
 
     project = ProjectFactory()
-    a = IssueFactory(project=project, status="待处理", title="登录页 500", description="点登录后报错")
+    a = IssueFactory(project=project, status="待分配", title="登录页 500", description="点登录后报错")
     IssueFactory(project=project, status="进行中", title="完全无关的问题")
 
     payload = json.dumps({"duplicates": [{"id": a.id, "reason": "同样描述登录页 500"}]})
@@ -90,7 +90,7 @@ def test_check_duplicates_returns_matches_from_llm(duplicate_prompt, default_llm
         MockClient.return_value.complete.return_value = payload
         out = check_duplicates(project_id=project.id, title="登录页 500", description="登录按钮 500")
 
-    assert out == [{"id": a.id, "title": "登录页 500", "status": "待处理", "reason": "同样描述登录页 500"}]
+    assert out == [{"id": a.id, "title": "登录页 500", "status": "待分配", "reason": "同样描述登录页 500"}]
 
 
 @pytest.mark.django_db
@@ -98,7 +98,7 @@ def test_check_duplicates_filters_hallucinated_ids(duplicate_prompt, default_llm
     from apps.issues.services import check_duplicates
 
     project = ProjectFactory()
-    real = IssueFactory(project=project, status="待处理", title="A")
+    real = IssueFactory(project=project, status="待分配", title="A")
     payload = json.dumps({"duplicates": [
         {"id": real.id, "reason": "真的"},
         {"id": 999999, "reason": "幻觉"},
@@ -115,7 +115,7 @@ def test_check_duplicates_caps_at_five(duplicate_prompt, default_llm):
     from apps.issues.services import check_duplicates
 
     project = ProjectFactory()
-    issues = [IssueFactory(project=project, status="待处理", title=f"T{i}") for i in range(7)]
+    issues = [IssueFactory(project=project, status="待分配", title=f"T{i}") for i in range(7)]
     payload = json.dumps({"duplicates": [{"id": i.id, "reason": "x"} for i in issues]})
     with patch("apps.issues.services.LLMClient") as MockClient:
         MockClient.return_value.complete.return_value = payload
@@ -129,7 +129,7 @@ def test_check_duplicates_returns_empty_on_invalid_json(duplicate_prompt, defaul
     from apps.issues.services import check_duplicates
 
     project = ProjectFactory()
-    IssueFactory(project=project, status="待处理", title="A")
+    IssueFactory(project=project, status="待分配", title="A")
     with patch("apps.issues.services.LLMClient") as MockClient:
         MockClient.return_value.complete.return_value = "not json at all"
         out = check_duplicates(project_id=project.id, title="abc", description="")
@@ -142,7 +142,7 @@ def test_check_duplicates_returns_empty_on_llm_exception(duplicate_prompt, defau
     from apps.issues.services import check_duplicates
 
     project = ProjectFactory()
-    IssueFactory(project=project, status="待处理", title="A")
+    IssueFactory(project=project, status="待分配", title="A")
     with patch("apps.issues.services.LLMClient") as MockClient:
         MockClient.return_value.complete.side_effect = RuntimeError("boom")
         out = check_duplicates(project_id=project.id, title="abc", description="")
@@ -155,7 +155,7 @@ def test_check_duplicates_returns_empty_when_no_llm_config(duplicate_prompt):
     from apps.issues.services import check_duplicates
 
     project = ProjectFactory()
-    IssueFactory(project=project, status="待处理", title="A")
+    IssueFactory(project=project, status="待分配", title="A")
     # No LLMConfig with is_default=True exists.
     assert check_duplicates(project_id=project.id, title="abc", description="") == []
 
@@ -166,14 +166,14 @@ def test_check_duplicates_returns_empty_when_no_prompt(default_llm):
 
     Prompt.objects.filter(slug="issue_duplicate_check").update(is_active=False)
     project = ProjectFactory()
-    IssueFactory(project=project, status="待处理", title="A")
+    IssueFactory(project=project, status="待分配", title="A")
     assert check_duplicates(project_id=project.id, title="abc", description="") == []
 
 
 @pytest.mark.django_db
 def test_endpoint_returns_candidates(auth_client, site_settings, duplicate_prompt, default_llm):
     project = ProjectFactory()
-    open_issue = IssueFactory(project=project, status="待处理", title="登录页 500", description="点登录后报错")
+    open_issue = IssueFactory(project=project, status="待分配", title="登录页 500", description="点登录后报错")
 
     payload = json.dumps({"duplicates": [{"id": open_issue.id, "reason": "同样描述登录页 500"}]})
     with patch("apps.issues.services.LLMClient") as MockClient:
@@ -187,7 +187,7 @@ def test_endpoint_returns_candidates(auth_client, site_settings, duplicate_promp
     assert res.status_code == 200
     body = res.json()
     assert body["candidates"][0]["id"] == open_issue.id
-    assert body["candidates"][0]["status"] == "待处理"
+    assert body["candidates"][0]["status"] == "待分配"
     assert body["candidates"][0]["reason"] == "同样描述登录页 500"
 
 
@@ -225,7 +225,7 @@ def test_check_duplicates_passes_timeout_to_llm(duplicate_prompt, default_llm):
     from apps.issues.services import check_duplicates, LLM_TIMEOUT_SECONDS
 
     project = ProjectFactory()
-    IssueFactory(project=project, status="待处理", title="A")
+    IssueFactory(project=project, status="待分配", title="A")
     payload = json.dumps({"duplicates": []})
     with patch("apps.issues.services.LLMClient") as MockClient:
         MockClient.return_value.complete.return_value = payload

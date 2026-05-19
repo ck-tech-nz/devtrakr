@@ -62,7 +62,7 @@ class ExternalIssueListCreateView(APIView):
             description=data.get("description", ""),
             priority=data.get("priority", "P2"),
             labels=data.get("_labels", []),
-            status="待处理",
+            status="待分配",
             source="agent_platform",
             source_meta=source_meta or None,
             project=request.api_key.project,

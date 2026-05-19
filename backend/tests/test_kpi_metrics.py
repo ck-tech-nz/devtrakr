@@ -152,7 +152,7 @@ class TestIssueMetrics:
             project=project,
             assignee=user,
             priority="P2",
-            status="待处理",
+            status="待分配",
             created_by=assignee,
         )
         issue2.created_at = base + timedelta(days=1)

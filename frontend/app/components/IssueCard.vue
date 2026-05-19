@@ -14,14 +14,13 @@
         </UBadge>
       </div>
     </div>
-    <div class="mt-2 flex items-center gap-2 text-[11px] text-gray-400 dark:text-gray-500">
-      <UBadge
-        :color="issue.status === '未计划' ? 'secondary' : issue.status === '待处理' ? 'warning' : issue.status === '进行中' ? 'info' : issue.status === '已解决' ? 'success' : issue.status === '已发布' ? 'primary' : 'neutral'"
-        variant="solid"
-        size="xs"
-      >
-        {{ issue.status }}
-      </UBadge>
+    <div class="mt-2 flex items-center gap-2 text-[11px] text-gray-400 dark:text-gray-500" @click.prevent>
+      <StatusCell
+        :issue="(issue as any)"
+        :self-user-id="selfUserId"
+        @changed="emit('changed')"
+        @request-transfer="emit('request-transfer', issue)"
+      />
       <span>{{ issue.assignee_name || '-' }}</span>
       <span v-if="issue.created_at">{{ issue.created_at.slice(5, 10) }}</span>
     </div>
@@ -29,6 +28,11 @@
 </template>
 
 <script setup lang="ts">
+import StatusCell from '~/components/issue/StatusCell.vue'
+
+const { user } = useAuth()
+const selfUserId = computed(() => Number(user.value?.id ?? 0))
+
 defineProps<{
   issue: {
     id: string | number
@@ -38,6 +42,13 @@ defineProps<{
     assignee_name?: string
     created_at?: string
     source?: string | null
+    assignee?: number | null
+    project_members?: number[]
   }
+}>()
+
+const emit = defineEmits<{
+  (e: 'changed'): void
+  (e: 'request-transfer', issue: any): void
 }>()
 </script>

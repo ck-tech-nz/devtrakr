@@ -4,9 +4,16 @@ from .models import SiteSettings
 
 
 class SiteSettingsSerializer(serializers.ModelSerializer):
+    default_project = serializers.SerializerMethodField()
+
     class Meta:
         model = SiteSettings
-        fields = ["labels", "priorities", "issue_statuses"]
+        fields = ["labels", "priorities", "issue_statuses", "modules", "default_project"]
+
+    def get_default_project(self, obj):
+        if obj.default_project is None:
+            return None
+        return {"id": str(obj.default_project.id), "name": obj.default_project.name}
 
 
 class LabelSettingsSerializer(serializers.Serializer):

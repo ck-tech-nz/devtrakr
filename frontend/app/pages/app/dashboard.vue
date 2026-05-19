@@ -34,7 +34,7 @@
       <!-- Stat Cards -->
       <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <DashboardStatCard label="总 Issue 数" :value="stats.total" icon="i-heroicons-bug-ant" icon-bg="bg-crystal-50 dark:bg-crystal-950" icon-color="text-crystal-500" />
-        <DashboardStatCard label="待处理" :value="stats.pending" icon="i-heroicons-clock" icon-bg="bg-amber-50 dark:bg-amber-950" icon-color="text-amber-500" />
+        <DashboardStatCard label="待分配" :value="stats.pending" icon="i-heroicons-clock" icon-bg="bg-amber-50 dark:bg-amber-950" icon-color="text-amber-500" />
         <DashboardStatCard label="进行中" :value="stats.in_progress" icon="i-heroicons-arrow-path" icon-bg="bg-blue-50 dark:bg-blue-950" icon-color="text-blue-500" />
         <DashboardStatCard label="本周已解决" :value="stats.resolved_this_week" icon="i-heroicons-check-circle" icon-bg="bg-emerald-50 dark:bg-emerald-950" icon-color="text-emerald-500" />
       </div>

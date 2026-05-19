@@ -2,14 +2,26 @@
   <aside
     class="h-screen bg-white dark:bg-gray-900 border-r border-gray-100 dark:border-gray-800 hidden md:flex flex-col transition-all duration-300 ease-in-out flex-shrink-0 relative z-30"
     :class="expanded ? 'w-60' : 'w-16'"
-    @mouseenter="expanded = true"
-    @mouseleave="autoCollapse && (expanded = false)"
   >
-    <div class="h-16 flex items-center px-4 border-b border-gray-50 dark:border-gray-800">
-      <img src="~/assets/images/logo-icon.svg" alt="DevTrakr" class="w-8 h-8 flex-shrink-0" />
+    <div
+      class="h-16 border-b border-gray-50 dark:border-gray-800 flex items-center"
+      :class="expanded ? 'px-4 gap-2' : 'justify-center px-2'"
+    >
+      <img v-if="expanded" src="~/assets/images/logo-icon.svg" alt="DevTrakr" class="w-8 h-8 flex-shrink-0" />
       <transition name="fade">
-        <span v-if="expanded" class="ml-3 font-semibold text-gray-900 dark:text-gray-100 whitespace-nowrap">DevTrakr</span>
+        <span v-if="expanded" class="font-semibold text-gray-900 dark:text-gray-100 whitespace-nowrap">DevTrakr</span>
       </transition>
+      <div v-if="expanded" class="flex-1" />
+      <button
+        class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 flex-shrink-0 p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800"
+        :title="expanded ? '收起侧边栏' : '展开侧边栏'"
+        @click.stop="expanded = !expanded"
+      >
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect width="18" height="18" x="3" y="3" rx="2" />
+          <path d="M9 3v18" />
+        </svg>
+      </button>
     </div>
 
     <nav class="flex-1 overflow-y-auto py-4 px-2 space-y-0.5">
@@ -72,36 +84,47 @@
           </transition>
         </NuxtLink>
       </template>
+
+      <MyTasksSidebar :expanded="expanded" />
     </nav>
 
-    <div v-if="expanded" class="border-t border-gray-50 dark:border-gray-800 py-3 px-3 space-y-1">
-      <p class="text-[10px] uppercase tracking-wider text-gray-300 dark:text-gray-600 mb-1">服务状态 (Demo)</p>
-      <button
-        v-for="key in ['github', 'ai']"
-        :key="key"
-        class="flex items-center justify-between w-full text-xs text-gray-400 hover:text-gray-600 py-1"
-        @click="toggle(key)"
+    <div
+      class="border-t border-gray-50 dark:border-gray-800 py-3 px-3"
+      :class="expanded ? 'flex items-center justify-between gap-2' : 'flex flex-col items-center gap-2'"
+    >
+      <div :class="expanded ? 'flex items-center gap-2' : 'flex flex-col items-center gap-2'">
+        <UTooltip
+          v-for="key in ['github', 'ai']"
+          :key="key"
+          :text="getLabel(key) + (isOnline(key) ? ' · 在线' : ' · 离线')"
+        >
+          <button class="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800" @click="toggle(key)">
+            <ServiceStatusDot :online="isOnline(key)" />
+          </button>
+        </UTooltip>
+      </div>
+      <a
+        href="https://matrixai.xin/"
+        target="_blank"
+        rel="noopener"
+        class="flex items-center hover:opacity-80 transition-opacity"
+        title="MATRIX AI"
       >
-        <span>{{ getLabel(key) }}</span>
-        <ServiceStatusDot :online="isOnline(key)" />
-      </button>
+        <img
+          v-if="expanded"
+          src="~/assets/images/matrix-ai-logo.svg"
+          alt="MATRIX AI"
+          class="h-5 w-auto"
+        />
+        <img
+          v-else
+          src="~/assets/images/matrix-ai-mark.svg"
+          alt="MATRIX AI"
+          class="h-5 w-auto"
+        />
+      </a>
     </div>
 
-    <div class="border-t border-gray-50 dark:border-gray-800 py-3 px-3">
-      <button
-        class="flex items-center w-full text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 py-1"
-        :class="expanded ? 'justify-between' : 'justify-center'"
-        @click="autoCollapse = !autoCollapse"
-      >
-        <transition name="fade">
-          <span v-if="expanded" class="whitespace-nowrap">自动收起</span>
-        </transition>
-        <UIcon
-          :name="autoCollapse ? 'i-heroicons-chevron-double-left' : 'i-heroicons-chevron-double-right'"
-          class="w-4 h-4 flex-shrink-0"
-        />
-      </button>
-    </div>
   </aside>
 </template>
 
@@ -112,10 +135,9 @@ import type { NavItem, NavGroup } from '~/composables/useNavigation'
 const { groupedNavItems, currentPath } = useNavigation()
 const { isOnline, toggle, getLabel } = useServiceStatus()
 const { settings, update } = useUserSettings()
-const expanded = ref(!settings.value.sidebar_auto_collapse)
-const autoCollapse = computed({
-  get: () => settings.value.sidebar_auto_collapse,
-  set: (v: boolean) => update('sidebar_auto_collapse', v),
+const expanded = computed({
+  get: () => !settings.value.sidebar_auto_collapse,
+  set: (v: boolean) => update('sidebar_auto_collapse', !v),
 })
 
 // Track which groups are open

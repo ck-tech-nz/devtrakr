@@ -51,7 +51,7 @@
                 color="neutral"
                 variant="ghost"
                 :loading="closingId === task.id"
-                @click.stop.prevent="closeIssue(task)"
+                @click.stop.prevent="onClose(task)"
               >
                 关闭
               </UButton>
@@ -65,64 +65,23 @@
 </template>
 
 <script setup lang="ts">
-const { api } = useApi()
-const { user, hasGroup } = useAuth()
-
-const tasks = ref<any[]>([])
-const totalCount = ref(0)
+const { tasks, totalCount, load, closeIssue, isTester } = useMyTasks()
 const collapsed = ref(false)
 const closingId = ref<number | null>(null)
 
-const isTester = computed(() => hasGroup('测试'))
-
 function statusColor(status: string) {
-  if (status === '待处理') return 'warning'
+  if (status === '待分配') return 'warning'
+  if (status === '待确认') return 'warning'
   if (status === '进行中') return 'info'
   if (status === '已解决') return 'success'
   if (status === '已发布') return 'success'
   return 'neutral'
 }
 
-async function loadTasks() {
-  if (!user.value) return
-  try {
-    const uid = user.value.id
-    const fetches: Promise<any>[] = [
-      api<any>(`/api/issues/?assignee=${uid}&status=待处理&page_size=8`),
-      api<any>(`/api/issues/?assignee=${uid}&status=进行中&page_size=8`),
-      api<any>(`/api/issues/?helpers=${uid}&status=待处理&page_size=8`),
-      api<any>(`/api/issues/?helpers=${uid}&status=进行中&page_size=8`),
-    ]
-    if (isTester.value) {
-      fetches.push(api<any>(`/api/issues/?status=已发布&page_size=8`))
-    }
-    const results = await Promise.all(fetches)
-    const seen = new Set<number>()
-    const merged: any[] = []
-    let total = 0
-    for (const res of results) {
-      const items = res.results || res || []
-      const prevSize = seen.size
-      for (const item of items) {
-        if (!seen.has(item.id)) { seen.add(item.id); merged.push(item) }
-      }
-      // Use count from paginated response, minus duplicates found in this batch
-      const batchNew = seen.size - prevSize
-      const batchDup = items.length - batchNew
-      total += (res.count ?? items.length) - batchDup
-    }
-    totalCount.value = total
-    tasks.value = merged.slice(0, 8)
-  } catch (e) {
-    console.error('Failed to load pending tasks:', e)
-  }
-}
-
-async function closeIssue(task: any) {
+async function onClose(task: any) {
   closingId.value = task.id
   try {
-    await api(`/api/issues/${task.id}/close-with-github/`, { method: 'POST' })
-    await loadTasks()
+    await closeIssue(task)
   } catch (e) {
     console.error('Failed to close issue:', e)
   } finally {
@@ -130,7 +89,7 @@ async function closeIssue(task: any) {
   }
 }
 
-onMounted(loadTasks)
+onMounted(() => { load() })
 </script>
 
 <style scoped>

@@ -7,6 +7,7 @@ interface AuthUser {
   permissions: string[]
   settings: Record<string, any>
   is_superuser: boolean
+  default_project: { id: string; name: string } | null
 }
 
 export function useAuth() {

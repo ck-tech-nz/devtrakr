@@ -122,7 +122,7 @@ const issueTemplates = [
 ]
 
 const priorities = ['P0', 'P1', 'P2', 'P3'] as const
-const statuses = ['待处理', '进行中', '已解决', '已关闭'] as const
+const statuses = ['待分配', '待确认', '进行中', '已解决', '已关闭'] as const
 const assignees = ['u1', 'u2', 'u3', 'u4', 'u5', 'u6', 'u7', 'u8', 'u9', 'u10']
 const reporters = ['u1', 'u2', 'u5', 'u10']
 
@@ -296,7 +296,7 @@ export const repos = [
 // ===== Dashboard Stats =====
 export const dashboardStats = {
   total_issues: issues.length,
-  pending_issues: issues.filter(i => i.status === '待处理').length,
+  pending_issues: issues.filter(i => i.status === '待分配').length,
   in_progress_issues: issues.filter(i => i.status === '进行中').length,
   resolved_this_week: issues.filter(i => {
     if (!i.resolved_at) return false

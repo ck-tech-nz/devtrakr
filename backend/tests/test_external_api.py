@@ -166,7 +166,7 @@ class TestExternalCreateIssue:
         resp = external_client.post("/api/external/issues/", data, format="json")
         assert resp.status_code == 201
         assert resp.data["title"] == "案件导入页面上传Excel后无响应"
-        assert resp.data["status"] == "待处理"
+        assert resp.data["status"] == "待分配"
         assert resp.data["priority"] == "P1"
         assert "issue_number" in resp.data
 
@@ -187,7 +187,7 @@ class TestExternalCreateIssue:
         data = {"title": "最简问题"}
         resp = external_client.post("/api/external/issues/", data, format="json")
         assert resp.status_code == 201
-        assert resp.data["status"] == "待处理"
+        assert resp.data["status"] == "待分配"
         assert resp.data["priority"] == "P2"
 
     def test_duplicate_feedback_id_returns_409(self, external_client, api_key_obj, site_settings):
@@ -256,9 +256,9 @@ class TestExternalListIssues:
         assert resp.data["count"] == 1
 
     def test_filter_by_status(self, external_client, api_key_obj, site_settings):
-        IssueFactory(source="agent_platform", project=api_key_obj.project, status="待处理")
+        IssueFactory(source="agent_platform", project=api_key_obj.project, status="待分配")
         IssueFactory(source="agent_platform", project=api_key_obj.project, status="进行中")
-        resp = external_client.get("/api/external/issues/?status=待处理")
+        resp = external_client.get("/api/external/issues/?status=待分配")
         assert resp.status_code == 200
         assert resp.data["count"] == 1
 

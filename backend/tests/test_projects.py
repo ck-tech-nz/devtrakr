@@ -1,5 +1,5 @@
 import pytest
-from tests.factories import UserFactory, ProjectFactory, ProjectMemberFactory
+from tests.factories import UserFactory, ProjectFactory, ProjectMemberFactory, GroupFactory
 
 pytestmark = pytest.mark.django_db
 
@@ -28,10 +28,11 @@ class TestProjectDetail:
 
     def test_project_detail_includes_members(self, auth_client):
         project = ProjectFactory()
-        member = ProjectMemberFactory(project=project, role="owner")
+        owner_group = GroupFactory(name="负责人")
+        ProjectMemberFactory(project=project, role=owner_group)
         response = auth_client.get(f"/api/projects/{project.id}/")
         assert len(response.data["members"]) == 1
-        assert response.data["members"][0]["role"] == "owner"
+        assert response.data["members"][0]["role"] == "负责人"
 
 
 class TestProjectCreate:
@@ -65,19 +66,46 @@ class TestProjectDelete:
 class TestProjectMembers:
     def test_list_members(self, auth_client):
         project = ProjectFactory()
-        ProjectMemberFactory(project=project, role="owner")
+        ProjectMemberFactory(project=project, role=GroupFactory(name="负责人"))
         response = auth_client.get(f"/api/projects/{project.id}/members/")
         assert response.status_code == 200
         assert len(response.data) == 1
+        assert response.data[0]["role"] == "负责人"
 
     def test_add_member(self, auth_client):
         project = ProjectFactory()
         user = UserFactory()
+        group = GroupFactory(name="开发者")
         response = auth_client.post(f"/api/projects/{project.id}/members/", {
             "user_id": str(user.id),
-            "role": "member",
+            "role_id": group.id,
+            "personal_description": "负责前端开发",
         })
         assert response.status_code == 201
+        assert response.data["role"] == "开发者"
+        assert response.data["personal_description"] == "负责前端开发"
+
+    def test_add_member_without_role(self, auth_client):
+        project = ProjectFactory()
+        user = UserFactory()
+        response = auth_client.post(f"/api/projects/{project.id}/members/", {
+            "user_id": str(user.id),
+        })
+        assert response.status_code == 201
+        assert response.data["role"] is None
+
+    def test_update_member(self, auth_client):
+        project = ProjectFactory()
+        member = ProjectMemberFactory(project=project)
+        new_group = GroupFactory(name="测试")
+        response = auth_client.patch(
+            f"/api/projects/{project.id}/members/{member.user.id}/",
+            {"role_id": new_group.id, "personal_description": "测试负责人"},
+            format="json",
+        )
+        assert response.status_code == 200
+        assert response.data["role"] == "测试"
+        assert response.data["personal_description"] == "测试负责人"
 
     def test_remove_member(self, auth_client):
         project = ProjectFactory()
@@ -86,3 +114,12 @@ class TestProjectMembers:
             f"/api/projects/{project.id}/members/{member.user.id}/"
         )
         assert response.status_code == 204
+
+    def test_role_choices_endpoint(self, auth_client):
+        GroupFactory(name="管理员")
+        GroupFactory(name="开发者")
+        response = auth_client.get("/api/projects/role-choices/")
+        assert response.status_code == 200
+        names = [g["name"] for g in response.data]
+        assert "管理员" in names
+        assert "开发者" in names

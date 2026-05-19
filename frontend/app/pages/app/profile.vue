@@ -63,6 +63,21 @@
         <div class="space-y-4">
           <div class="flex items-center justify-between">
             <div>
+              <div class="text-sm font-medium text-gray-700 dark:text-gray-300">默认项目</div>
+              <div class="text-xs text-gray-400">新建问题/AI 向导会默认选中该项目</div>
+            </div>
+            <USelect
+              v-model="defaultProjectId"
+              :items="projectOptions"
+              value-key="value"
+              placeholder="（使用站点默认）"
+              size="sm"
+              class="w-48"
+              @update:model-value="saveDefaultProject"
+            />
+          </div>
+          <div class="flex items-center justify-between">
+            <div>
               <div class="text-sm font-medium text-gray-700 dark:text-gray-300">侧栏自动收起</div>
               <div class="text-xs text-gray-400">窗口较小时自动折叠导航栏</div>
             </div>
@@ -138,6 +153,33 @@ const settingsForm = ref({ sidebar_auto_collapse: false, issues_view_mode: 'tabl
 
 const viewModeOptions = [{ label: '列表', value: 'table' }, { label: '看板', value: 'kanban' }]
 const themeOptions = [{ label: '浅色', value: 'light' }, { label: '深色', value: 'dark' }, { label: '跟随系统', value: 'auto' }]
+
+const projects = ref<{ id: string; name: string }[]>([])
+const defaultProjectId = ref<string>('')
+
+const projectOptions = computed(() => [
+  { label: '（使用站点默认）', value: '' },
+  ...projects.value.map(p => ({ label: p.name, value: String(p.id) })),
+])
+
+onMounted(async () => {
+  const data = await api<any>('/api/projects/').catch(() => ({ results: [] }))
+  projects.value = (data.results || data || []).map((p: any) => ({ id: String(p.id), name: p.name }))
+  defaultProjectId.value = String(user.value?.default_project?.id || '')
+})
+
+async function saveDefaultProject(v: string) {
+  try {
+    await api('/api/auth/me/', {
+      method: 'PATCH',
+      body: { default_project: v || null },
+      format: 'json',
+    })
+    await fetchMe()
+  } catch (e) {
+    console.error('Failed to save default project:', e)
+  }
+}
 
 watch(user, (u) => {
   if (u) {

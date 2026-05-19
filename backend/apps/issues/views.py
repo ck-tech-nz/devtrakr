@@ -2,6 +2,7 @@ from datetime import timedelta
 from rest_framework import generics, status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.throttling import UserRateThrottle
 from rest_framework.views import APIView
 from apps.permissions import FullDjangoModelPermissions
 from django_filters.rest_framework import DjangoFilterBackend
@@ -21,9 +22,21 @@ from .serializers import (
     IssueListSerializer, IssueDetailSerializer,
     IssueCreateUpdateSerializer, BatchUpdateSerializer,
     ActivitySerializer,
+    IssueTransferInputSerializer, IssueAssignInputSerializer,
 )
+from .services import claim_issue, confirm_issue, transfer_issue, assign_issue, InvalidTransition
 
 User = get_user_model()
+
+
+class AiWizardThrottle(UserRateThrottle):
+    """10/min per user for the AI draft SSE endpoint (each request = 3 LLM calls)."""
+    scope = "ai_wizard"
+
+
+class AiCheckDuplicateThrottle(UserRateThrottle):
+    """30/min per user for duplicate check (lighter, single LLM call)."""
+    scope = "ai_duplicate_check"
 
 
 def _with_ai_fields(qs):
@@ -67,12 +80,13 @@ class IssueListCreateView(generics.ListCreateAPIView):
         qs = _with_ai_fields(super().get_queryset()).annotate(
             status_order=Case(
                 When(status="未计划", then=Value(0)),
-                When(status="待处理", then=Value(1)),
-                When(status="进行中", then=Value(2)),
-                When(status="已解决", then=Value(3)),
-                When(status="已发布", then=Value(4)),
-                When(status="已关闭", then=Value(5)),
-                default=Value(6),
+                When(status="待分配", then=Value(1)),
+                When(status="待确认", then=Value(2)),
+                When(status="进行中", then=Value(3)),
+                When(status="已解决", then=Value(4)),
+                When(status="已发布", then=Value(5)),
+                When(status="已关闭", then=Value(6)),
+                default=Value(7),
                 output_field=IntegerField(),
             ),
         )
@@ -132,13 +146,25 @@ class DashboardStatsView(APIView):
 
     def get(self, request):
         now = timezone.now()
+        today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
         week_start = now - timedelta(days=now.weekday())
         week_start = week_start.replace(hour=0, minute=0, second=0, microsecond=0)
+        prev_week_start = week_start - timedelta(days=7)
         return Response({
             "total": Issue.objects.count(),
-            "pending": Issue.objects.filter(status="待处理").count(),
+            # 本周新增数量（用于"总数"卡片的对比文案）
+            "total_added_this_week": Issue.objects.filter(created_at__gte=week_start).count(),
+            # 待分配 + 待确认 视作"待处理"统计口径
+            "pending": Issue.objects.filter(status__in=["待分配", "待确认"]).count(),
+            "pending_yesterday": Issue.objects.filter(
+                status__in=["待分配", "待确认"], created_at__lt=today_start
+            ).count(),
             "in_progress": Issue.objects.filter(status="进行中").count(),
             "resolved_this_week": Issue.objects.filter(resolved_at__gte=week_start).count(),
+            # 上一周（周一至周日）解决数量，用于计算同比
+            "resolved_prev_week": Issue.objects.filter(
+                resolved_at__gte=prev_week_start, resolved_at__lt=week_start
+            ).count(),
         })
 
 
@@ -548,6 +574,141 @@ class IssueCloseWithGitHubView(APIView):
         return Response(result)
 
 
+class IssueAiDraftView(APIView):
+    """POST /api/issues/ai-draft/ — SSE stream that drafts an Issue from
+    a free-form bug description via the 3-stage AI wizard pipeline.
+    """
+    permission_classes = [IsAuthenticated]
+    throttle_classes = [AiWizardThrottle]
+
+    def perform_content_negotiation(self, request, force=False):
+        # We return StreamingHttpResponse directly for success and let any
+        # error Response use JSONRenderer. Bypass DRF's Accept-header check
+        # since clients send Accept: text/event-stream which won't match
+        # the default registered renderers (JSONRenderer/BrowsableAPIRenderer).
+        from rest_framework.renderers import JSONRenderer
+        return (JSONRenderer(), "application/json")
+
+    def post(self, request):
+        from django.http import StreamingHttpResponse
+        import json as _json
+        from rest_framework.exceptions import PermissionDenied
+        from .serializers import AiDraftInputSerializer
+        from .services_ai_wizard import AiWizardService
+
+        # AI 草稿仅服务于创建 Issue 的用户——无创建权限的用户无需调用 LLM
+        if not request.user.has_perm("issues.add_issue"):
+            raise PermissionDenied("无权创建问题")
+
+        serializer = AiDraftInputSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        request_user = request.user
+        def event_stream():
+            svc = AiWizardService()
+            try:
+                for event_name, payload in svc.stream_draft(
+                    description=data["description"],
+                    project_id=data["project"].id,
+                    attachment_ids=[str(x) for x in (data.get("attachment_ids") or [])],
+                    user=request_user,
+                ):
+                    if event_name == "_heartbeat":
+                        # SSE 注释行;客户端会忽略,但 yield 在客户端断开后
+                        # 会抛 BrokenPipeError 让生成器停止,避免触发下一次 LLM 调用
+                        yield ": heartbeat\n\n"
+                    else:
+                        yield f"event: {event_name}\ndata: {_json.dumps(payload, ensure_ascii=False)}\n\n"
+            except (BrokenPipeError, ConnectionAbortedError, ConnectionResetError):
+                # 客户端在流中途断开,停止生成器避免空耗 LLM 调用
+                import logging
+                logging.getLogger(__name__).info("SSE client disconnected; stopping draft stream")
+                return
+
+        resp = StreamingHttpResponse(event_stream(), content_type="text/event-stream")
+        resp["X-Accel-Buffering"] = "no"
+        resp["Cache-Control"] = "no-cache"
+        return resp
+
+
+def _get_issue_or_404(pk):
+    return Issue.objects.filter(pk=pk).first()
+
+
+def _serialize_issue(issue, request):
+    return IssueListSerializer(issue, context={"request": request}).data
+
+
+class IssueClaimView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, pk):
+        issue = _get_issue_or_404(pk)
+        if not issue:
+            return Response({"detail": "问题不存在"}, status=status.HTTP_404_NOT_FOUND)
+        try:
+            claim_issue(issue, actor=request.user)
+        except InvalidTransition as e:
+            return Response({"detail": e.message}, status=status.HTTP_409_CONFLICT)
+        return Response(_serialize_issue(issue, request))
+
+
+class IssueConfirmView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, pk):
+        issue = _get_issue_or_404(pk)
+        if not issue:
+            return Response({"detail": "问题不存在"}, status=status.HTTP_404_NOT_FOUND)
+        try:
+            confirm_issue(issue, actor=request.user)
+        except InvalidTransition as e:
+            return Response({"detail": e.message}, status=status.HTTP_409_CONFLICT)
+        return Response(_serialize_issue(issue, request))
+
+
+class IssueTransferView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, pk):
+        issue = _get_issue_or_404(pk)
+        if not issue:
+            return Response({"detail": "问题不存在"}, status=status.HTTP_404_NOT_FOUND)
+        ser = IssueTransferInputSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        try:
+            transfer_issue(
+                issue, actor=request.user,
+                to_user=ser.validated_data["to_user"],
+                reason=ser.validated_data["reason"],
+            )
+        except InvalidTransition as e:
+            return Response({"detail": e.message}, status=status.HTTP_409_CONFLICT)
+        except ValueError as e:
+            return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(_serialize_issue(issue, request))
+
+
+class IssueAssignView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, pk):
+        issue = _get_issue_or_404(pk)
+        if not issue:
+            return Response({"detail": "问题不存在"}, status=status.HTTP_404_NOT_FOUND)
+        ser = IssueAssignInputSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        try:
+            assign_issue(
+                issue, actor=request.user,
+                to_user=ser.validated_data["to_user"],
+            )
+        except InvalidTransition as e:
+            return Response({"detail": e.message}, status=status.HTTP_409_CONFLICT)
+        return Response(_serialize_issue(issue, request))
+
+
 class IssueCheckDuplicateView(APIView):
     """POST /api/issues/check-duplicate/ — AI-driven near-duplicate detection.
 
@@ -556,7 +717,9 @@ class IssueCheckDuplicateView(APIView):
     on configuration or LLM failures: always returns 200 with possibly empty
     candidates so the modal continues to function.
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, FullDjangoModelPermissions]
+    throttle_classes = [AiCheckDuplicateThrottle]
+    queryset = Issue.objects.none()  # FullDjangoModelPermissions 需要 queryset 确定模型
 
     def post(self, request):
         from .serializers import DuplicateCheckInputSerializer
