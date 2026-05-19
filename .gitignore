@@ -21,6 +21,7 @@ staticfiles/
 .claude/settings.local.json
 .gstack/
 .omm/
+.worktrees/
 
 # DB backups
 .backups/

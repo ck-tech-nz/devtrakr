@@ -33,7 +33,7 @@ const vueVersion = pkg.dependencies?.vue?.replace(/^\^/, '') || ''
 export default defineNuxtConfig({
   ssr: false,
   devtools: { enabled: false },
-  devServer: { port: 3000 },
+  devServer: { port: Number(process.env.NUXT_PORT) || 3004 },
   modules: ['@nuxt/ui'],
   css: ['~/assets/css/main.css'],
   colorMode: { preference: 'light', fallback: 'light' },
