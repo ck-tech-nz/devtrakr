@@ -1,8 +1,8 @@
 <template>
-  <div v-if="monitors.length > 0" class="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 p-5">
+  <div v-if="productionMonitors.length > 0" class="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 p-5">
     <div class="flex items-center justify-between mb-3">
       <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100">
-        系统监控 ({{ monitors.length }})
+        生产环境监控 ({{ productionMonitors.length }})
       </h3>
       <div class="flex items-center gap-3 text-xs text-gray-500 dark:text-gray-400">
         <span class="flex items-center gap-1">
@@ -19,15 +19,11 @@
 
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
       <NuxtLink
-        v-for="m in monitors" :key="m.id"
+        v-for="m in productionMonitors" :key="m.id"
         :to="`/app/projects/${m.project}`"
         class="flex items-center gap-2.5 px-3 py-2 bg-gray-50 dark:bg-gray-800 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors min-w-0"
       >
         <span class="w-2 h-2 rounded-full shrink-0" :class="dotClass(m.last_status)" />
-        <span
-          class="text-[10px] px-1.5 py-0.5 rounded font-medium shrink-0"
-          :class="envBadgeClass(m.environment)"
-        >{{ envLabel(m.environment) }}</span>
         <div class="flex-1 min-w-0">
           <div class="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{{ m.name }}</div>
           <div class="text-xs text-gray-500 dark:text-gray-400 truncate">{{ m.project_name || '-' }}</div>
@@ -68,9 +64,11 @@ async function fetchMonitors() {
   }
 }
 
-const upCount = computed(() => monitors.value.filter(m => m.last_status === 'up').length)
-const downCount = computed(() => monitors.value.filter(m => m.last_status === 'down').length)
-const unknownCount = computed(() => monitors.value.filter(m => m.last_status === 'unknown').length)
+const productionMonitors = computed(() => monitors.value.filter(m => m.environment === 'production'))
+
+const upCount = computed(() => productionMonitors.value.filter(m => m.last_status === 'up').length)
+const downCount = computed(() => productionMonitors.value.filter(m => m.last_status === 'down').length)
+const unknownCount = computed(() => productionMonitors.value.filter(m => m.last_status === 'unknown').length)
 
 function dotClass(status: string): string {
   switch (status) {
@@ -85,24 +83,6 @@ function statusTextClass(status: string): string {
     case 'up': return 'text-green-600 dark:text-green-400'
     case 'down': return 'text-red-600 dark:text-red-400'
     default: return 'text-gray-400 dark:text-gray-500'
-  }
-}
-
-function envLabel(env: string): string {
-  switch (env) {
-    case 'production': return '生产'
-    case 'staging': return '预发'
-    case 'test': return '测试'
-    default: return env || '-'
-  }
-}
-
-function envBadgeClass(env: string): string {
-  switch (env) {
-    case 'production': return 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300'
-    case 'staging': return 'bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300'
-    case 'test': return 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300'
-    default: return 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400'
   }
 }
 

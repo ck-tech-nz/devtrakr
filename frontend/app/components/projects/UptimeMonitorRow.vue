@@ -1,5 +1,9 @@
 <template>
-  <div class="group flex items-center gap-4 py-3 px-3 hover:bg-gray-50 dark:hover:bg-gray-800 rounded-lg">
+  <div
+    class="group flex items-center gap-4 py-3 px-3 hover:bg-gray-50 dark:hover:bg-gray-800 rounded-lg"
+    :class="{ 'cursor-pointer': canManage }"
+    @click="onRowClick"
+  >
     <div
       class="w-2 h-2 rounded-full shrink-0"
       :class="statusDotClass"
@@ -15,6 +19,7 @@
       <a
         :href="monitor.url" target="_blank" rel="noopener"
         class="text-xs text-gray-500 dark:text-gray-400 hover:text-crystal-500 truncate block"
+        @click.stop
       >{{ monitor.url }}</a>
     </div>
     <div class="flex-1 min-w-0 overflow-hidden">
@@ -24,8 +29,8 @@
       {{ statusText }}
     </div>
     <div v-if="canManage" class="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
-      <UButton icon="i-heroicons-pencil-square" size="xs" color="neutral" variant="ghost" @click="emit('edit')" />
-      <UButton icon="i-heroicons-trash" size="xs" color="error" variant="ghost" @click="emit('delete')" />
+      <UButton icon="i-heroicons-pencil-square" size="xs" color="neutral" variant="ghost" @click.stop="emit('edit')" />
+      <UButton icon="i-heroicons-trash" size="xs" color="error" variant="ghost" @click.stop="emit('delete')" />
     </div>
   </div>
 </template>
@@ -58,6 +63,10 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{ edit: []; delete: [] }>()
+
+function onRowClick() {
+  if (props.canManage) emit('edit')
+}
 
 const statusDotClass = computed(() => {
   switch (props.monitor.last_status) {
