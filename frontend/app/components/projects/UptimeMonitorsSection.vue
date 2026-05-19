@@ -53,6 +53,7 @@
 interface Monitor {
   id: number
   name: string
+  environment: string
   url: string
   method: string
   expected_status: string
@@ -190,7 +191,7 @@ onMounted(async () => {
   } finally {
     loading.value = false
   }
-  pollTimer = setInterval(pollStatus, 60_000)
+  pollTimer = setInterval(pollStatus, 5_000)
 })
 
 onUnmounted(() => {
