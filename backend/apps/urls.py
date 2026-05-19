@@ -13,6 +13,7 @@ urlpatterns = [
     path("ai/", include("apps.ai.urls")),
     path("tools/", include("apps.tools.urls")),
     path("notifications/", include("apps.notifications.urls")),
+    path("uptime/", include("apps.uptime.urls")),
     path("kpi/", include("apps.kpi.urls")),
     path("page-perms/", include("page_perms.urls")),
     path("external/", include("apps.external.urls")),

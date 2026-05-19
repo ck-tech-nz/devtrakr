@@ -119,6 +119,28 @@ class ProjectIssuesView(generics.ListAPIView):
         return IssueListSerializer
 
 
+class ProjectMonitorsView(generics.ListCreateAPIView):
+    permission_classes = [IsAuthenticated]
+    pagination_class = None
+
+    def get_permissions(self):
+        from apps.uptime.permissions import IsSuperUserOrReadOnly
+        return [IsAuthenticated(), IsSuperUserOrReadOnly()]
+
+    def get_serializer_class(self):
+        from apps.uptime.serializers import UptimeMonitorSerializer
+        return UptimeMonitorSerializer
+
+    def get_queryset(self):
+        from apps.uptime.models import UptimeMonitor
+        return UptimeMonitor.objects.filter(project_id=self.kwargs["project_pk"])
+
+    def perform_create(self, serializer):
+        from apps.projects.models import Project
+        project = get_object_or_404(Project, pk=self.kwargs["project_pk"])
+        serializer.save(project=project)
+
+
 class ProjectMemberRoleChoicesView(APIView):
     """Lightweight endpoint for the project-member role selector.
 

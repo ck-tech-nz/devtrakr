@@ -168,6 +168,13 @@ CELERY_RESULT_SERIALIZER = "json"
 CELERY_TIMEZONE = TIME_ZONE
 CELERY_BEAT_SCHEDULER = "django_celery_beat.schedulers:DatabaseScheduler"
 
+# Uptime monitoring
+UPTIME_TICK_SECONDS = 60
+UPTIME_FAILURE_THRESHOLD = 3
+UPTIME_CHECK_RETENTION_DAYS = 30
+UPTIME_DEFAULT_TIMEOUT_SECS = 20
+UPTIME_SYSTEM_BOT_USERNAME = "bot"
+
 # Page permissions configuration
 PAGE_PERMS = {
     "PROTECTED_PATHS": ["/app/permissions"],

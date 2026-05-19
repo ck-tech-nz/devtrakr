@@ -112,6 +112,9 @@
         </div>
       </div>
 
+      <!-- 系统监控状态(只显示生产环境) -->
+      <UptimeMonitorsHomeWidget />
+
       <!-- 我的提升计划 + 最近动态（同样的折叠规则） -->
       <div
         v-if="hasPlan || hasActivity"
