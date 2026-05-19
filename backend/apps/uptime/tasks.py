@@ -48,9 +48,15 @@ def check_monitor(monitor_id: int):
 
     if result.is_up:
         monitor.consecutive_failures = 0
+        if monitor.last_status == "unknown":
+            monitor.last_status = "up"
+            monitor.last_up_at = timezone.now()
+            monitor.save(update_fields=["consecutive_failures", "last_status", "last_up_at", "updated_at"])
+        else:
+            monitor.save(update_fields=["consecutive_failures", "updated_at"])
     else:
         monitor.consecutive_failures += 1
-    monitor.save(update_fields=["consecutive_failures", "updated_at"])
+        monitor.save(update_fields=["consecutive_failures", "updated_at"])
 
     if action == TransitionAction.FIRE_FAILURE:
         fire_failure(monitor, latest_error=result.error or "unknown")

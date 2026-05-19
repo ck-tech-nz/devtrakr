@@ -338,6 +338,18 @@ class TestCheckMonitorTask:
         assert monitor.last_status == "up"
         assert monitor.active_incident_issue is None
 
+    def test_unknown_passes_sets_status_up(self, site_settings):
+        monitor = UptimeMonitorFactory(
+            last_status="unknown", consecutive_failures=0, last_up_at=None,
+        )
+        with patch("apps.uptime.tasks.perform_check",
+                   return_value=CheckResult(is_up=True, status_code=200, response_ms=80, error="")):
+            check_monitor(monitor.pk)
+        monitor.refresh_from_db()
+        assert monitor.last_status == "up"
+        assert monitor.last_up_at is not None
+        assert monitor.consecutive_failures == 0
+
 
 from apps.uptime.serializers import UptimeMonitorSerializer
 
