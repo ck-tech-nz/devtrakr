@@ -122,7 +122,7 @@ async function fetchAllChecks() {
   const results = await Promise.all(
     monitors.value.map(async (m) => {
       try {
-        const checks = await api<Check[]>(`/api/uptime/monitors/${m.id}/checks/?limit=60`)
+        const checks = await api<Check[]>(`/api/uptime/monitors/${m.id}/checks/?limit=120`)
         return [m.id, checks] as const
       } catch {
         return [m.id, []] as const
