@@ -27,9 +27,18 @@
       </div>
     </template>
     <template #footer>
-      <div class="flex justify-end gap-2">
-        <UButton color="neutral" variant="ghost" @click="isOpen = false">取消</UButton>
-        <UButton :loading="submitting" @click="submit">{{ isEdit ? '保存' : '创建' }}</UButton>
+      <div class="flex items-center justify-between gap-2">
+        <UButton
+          v-if="isEdit"
+          color="error" variant="ghost" icon="i-heroicons-trash"
+          :loading="deleting"
+          @click="onDeleteClick"
+        >删除</UButton>
+        <span v-else />
+        <div class="flex gap-2">
+          <UButton color="neutral" variant="ghost" @click="isOpen = false">取消</UButton>
+          <UButton :loading="submitting" @click="submit">{{ isEdit ? '保存' : '创建' }}</UButton>
+        </div>
       </div>
     </template>
   </UModal>
@@ -58,6 +67,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   'update:open': [value: boolean]
   saved: []
+  'request-delete': []
 }>()
 
 const { api } = useApi()
@@ -97,7 +107,14 @@ const form = reactive<MonitorPayload>({
 })
 
 const submitting = ref(false)
+const deleting = ref(false)
 const error = ref('')
+
+function onDeleteClick() {
+  if (!props.initial?.id) return
+  if (!window.confirm(`确定要删除监控 "${props.initial.name}" 吗?此操作不可撤销。`)) return
+  emit('request-delete')
+}
 
 watch(() => props.open, (open) => {
   if (open) {

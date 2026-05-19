@@ -4,11 +4,19 @@
       <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100">
         系统监控 ({{ monitors.length }})
       </h3>
-      <UButton
-        v-if="canManage"
-        size="xs" icon="i-heroicons-plus"
-        @click="openCreate"
-      >添加监控</UButton>
+      <div class="flex items-center gap-2">
+        <UButton
+          size="xs" color="neutral" variant="ghost"
+          :icon="pollingEnabled ? 'i-heroicons-pause' : 'i-heroicons-play'"
+          :title="pollingEnabled ? '暂停自动刷新' : '启动自动刷新'"
+          @click="togglePolling"
+        >{{ pollingEnabled ? '暂停刷新' : '启动刷新' }}</UButton>
+        <UButton
+          v-if="canManage"
+          size="xs" icon="i-heroicons-plus"
+          @click="openCreate"
+        >添加监控</UButton>
+      </div>
     </div>
 
     <div v-if="loading" class="text-sm text-gray-400 dark:text-gray-500 py-2">加载中...</div>
@@ -24,7 +32,6 @@
         :checks="checksMap[m.id] ?? []"
         :can-manage="canManage"
         @edit="openEdit(m)"
-        @delete="confirmDelete(m)"
       />
     </div>
 
@@ -33,19 +40,8 @@
       :project-id="projectId"
       :initial="editing"
       @saved="onSaved"
+      @request-delete="onModalDeleteRequest"
     />
-
-    <UModal v-model:open="deleteDialogOpen" title="删除监控">
-      <template #body>
-        <p class="text-sm">确定要删除监控 "{{ pendingDelete?.name }}" 吗?此操作不可撤销。</p>
-      </template>
-      <template #footer>
-        <div class="flex justify-end gap-2">
-          <UButton color="neutral" variant="ghost" @click="deleteDialogOpen = false">取消</UButton>
-          <UButton color="error" :loading="deleting" @click="doDelete">删除</UButton>
-        </div>
-      </template>
-    </UModal>
   </div>
 </template>
 
@@ -91,12 +87,31 @@ const loading = ref(true)
 
 const modalOpen = ref(false)
 const editing = ref<Monitor | null>(null)
-
-const deleteDialogOpen = ref(false)
-const pendingDelete = ref<Monitor | null>(null)
-const deleting = ref(false)
+const pollingEnabled = ref(true)
 
 let pollTimer: ReturnType<typeof setInterval> | null = null
+
+function startPolling() {
+  if (pollTimer) return
+  pollTimer = setInterval(pollStatus, 5_000)
+}
+
+function stopPolling() {
+  if (pollTimer) {
+    clearInterval(pollTimer)
+    pollTimer = null
+  }
+}
+
+function togglePolling() {
+  pollingEnabled.value = !pollingEnabled.value
+  if (pollingEnabled.value) {
+    startPolling()
+    pollStatus()  // immediate refresh on resume
+  } else {
+    stopPolling()
+  }
+}
 
 async function fetchMonitors() {
   const data = await api<Monitor[]>(`/api/projects/${props.projectId}/monitors/`)
@@ -164,23 +179,16 @@ async function onSaved() {
   await fetchAllChecks()
 }
 
-function confirmDelete(m: Monitor) {
-  pendingDelete.value = m
-  deleteDialogOpen.value = true
-}
-
-async function doDelete() {
-  if (!pendingDelete.value) return
-  deleting.value = true
+async function onModalDeleteRequest() {
+  const target = editing.value
+  if (!target?.id) return
   try {
-    await api(`/api/uptime/monitors/${pendingDelete.value.id}/`, { method: 'DELETE' })
+    await api(`/api/uptime/monitors/${target.id}/`, { method: 'DELETE' })
+    modalOpen.value = false
     await fetchMonitors()
     await fetchAllChecks()
-    deleteDialogOpen.value = false
   } catch (e) {
     console.error('Delete failed', e)
-  } finally {
-    deleting.value = false
   }
 }
 
@@ -191,10 +199,10 @@ onMounted(async () => {
   } finally {
     loading.value = false
   }
-  pollTimer = setInterval(pollStatus, 5_000)
+  startPolling()
 })
 
 onUnmounted(() => {
-  if (pollTimer) clearInterval(pollTimer)
+  stopPolling()
 })
 </script>

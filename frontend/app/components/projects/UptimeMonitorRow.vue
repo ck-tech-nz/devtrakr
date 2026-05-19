@@ -28,10 +28,6 @@
     <div class="shrink-0 text-xs w-32 text-right" :class="statusTextClass">
       {{ statusText }}
     </div>
-    <div v-if="canManage" class="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
-      <UButton icon="i-heroicons-pencil-square" size="xs" color="neutral" variant="ghost" @click.stop="emit('edit')" />
-      <UButton icon="i-heroicons-trash" size="xs" color="error" variant="ghost" @click.stop="emit('delete')" />
-    </div>
   </div>
 </template>
 
@@ -62,7 +58,7 @@ const props = defineProps<{
   canManage: boolean
 }>()
 
-const emit = defineEmits<{ edit: []; delete: [] }>()
+const emit = defineEmits<{ edit: [] }>()
 
 function onRowClick() {
   if (props.canManage) emit('edit')

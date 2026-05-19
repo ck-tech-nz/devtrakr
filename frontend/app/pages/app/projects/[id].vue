@@ -101,20 +101,21 @@
     <!-- Uptime Monitors -->
     <ProjectsUptimeMonitorsSection :project-id="Number(route.params.id)" />
 
-    <!-- Issues View (collapsible) -->
-    <div>
+    <!-- Issues View (collapsible card) -->
+    <div class="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 p-5">
       <button
-        class="w-full flex items-center justify-between mb-3 group"
+        class="w-full flex items-center justify-between group"
+        :class="{ 'mb-3': issuesExpanded }"
         @click="issuesExpanded = !issuesExpanded"
       >
         <div class="flex items-center gap-2">
-          <UIcon
-            :name="issuesExpanded ? 'i-heroicons-chevron-down' : 'i-heroicons-chevron-right'"
-            class="w-4 h-4 text-gray-400 dark:text-gray-500 group-hover:text-gray-700 dark:group-hover:text-gray-200 transition-colors"
-          />
           <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100">Issues</h3>
           <span class="text-xs text-gray-400 dark:text-gray-500">({{ projectIssues.length }})</span>
         </div>
+        <UIcon
+          :name="issuesExpanded ? 'i-heroicons-chevron-up' : 'i-heroicons-chevron-down'"
+          class="w-4 h-4 text-gray-400 dark:text-gray-500 group-hover:text-gray-700 dark:group-hover:text-gray-200 transition-colors"
+        />
       </button>
 
       <div v-if="issuesExpanded">
@@ -173,7 +174,7 @@
           </template>
         </SharedKanbanBoard>
 
-        <div v-else class="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 overflow-hidden">
+        <div v-else class="overflow-hidden">
           <UTable
             :data="filteredIssues"
             :columns="tableColumns"
