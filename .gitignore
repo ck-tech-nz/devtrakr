@@ -26,3 +26,4 @@ staticfiles/
 # DB backups
 .backups/
 db-backup.yml
+tmp/

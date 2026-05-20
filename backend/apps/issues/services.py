@@ -277,10 +277,12 @@ def transfer_issue(issue, actor, to_user, reason: str):
 AUTO_ASSIGN_PROMPT_SLUG = "issue_auto_assign"
 
 
-def _build_members_block(members) -> str:
+def _build_members_block(members, workload_by_user_id) -> str:
     """Format project members for the LLM prompt.
 
-    Each line: - id=<user_id>, 姓名=<name>, 角色=<role>, 描述="<desc>"
+    Each line: - id=<user_id>, 姓名=<name>, 角色=<role>, 活跃工单=<n>, 描述="<desc>"
+    `活跃工单` is the count of 待确认+进行中 issues currently assigned to the
+    member inside the same project — fed to the LLM so it can balance load.
     personal_description is sanitized: newlines → space, quotes → ', truncated to 500 chars.
     """
     lines = []
@@ -288,24 +290,51 @@ def _build_members_block(members) -> str:
         role = m.role.name if m.role_id else "未设置"
         desc = (m.personal_description or "").replace("\n", " ").replace('"', "'")[:500]
         name = m.user.name or m.user.username
-        lines.append(f'- id={m.user_id}, 姓名={name}, 角色={role}, 描述="{desc}"')
+        active = workload_by_user_id.get(m.user_id, 0)
+        lines.append(
+            f'- id={m.user_id}, 姓名={name}, 角色={role}, 活跃工单={active}, 描述="{desc}"'
+        )
     return "\n".join(lines)
 
 
-def auto_assign_issue(issue):
-    """Phase 2: use LLM to pick the best assignee from members with personal_description.
+def _active_workload_by_user(project, member_ids):
+    """Count of 待确认+进行中 issues per member inside the given project.
 
-    Returns IssueAssignment on success, None on any failure or skip (never raises).
+    Members with zero active issues are absent from the dict; the block
+    builder treats missing keys as 0.
+    """
+    from django.db.models import Count
+    active_statuses = (IssueStatus.PENDING_CONFIRMATION.value, IssueStatus.IN_PROGRESS.value)
+    rows = (
+        Issue.objects
+        .filter(project=project, assignee_id__in=list(member_ids), status__in=active_statuses)
+        .values("assignee_id")
+        .annotate(n=Count("id"))
+    )
+    return {r["assignee_id"]: r["n"] for r in rows}
+
+
+def pick_assignee_for_draft(*, project, title, description, labels, priority):
+    """LLM-pick the best assignee from project developers — pure (no DB writes).
+
+    Returns (User, reason) on success, None on any skip/failure. Shared by:
+      - auto_assign_issue (post-create fallback when no assignee provided)
+      - AiWizardService._stream_draft_v2 (pre-create, parallel with oneshot/dedup)
+
+    Splitting the picker from auto_assign_issue lets the wizard run this LLM
+    call in parallel with the draft+dedup calls so the create-issue POST is
+    instant. Errors are swallowed (logged); caller decides the fallback.
     """
     from apps.projects.models import ProjectMember
 
+    # 仅在"开发者"角色成员中挑选 — 产品经理 / 测试 / 只读成员不参与自动分派
     members = list(
-        ProjectMember.objects.filter(project=issue.project)
+        ProjectMember.objects.filter(project=project, role__name="开发者")
         .exclude(personal_description="")
         .select_related("user", "role")
     )
     if not members:
-        logger.info("auto_assign: no members with descriptions for issue %s", issue.pk)
+        logger.info("auto_assign: no developer members with descriptions for project %s", project.pk)
         return None
 
     prompt = Prompt.objects.filter(slug=AUTO_ASSIGN_PROMPT_SLUG, is_active=True).first()
@@ -316,13 +345,14 @@ def auto_assign_issue(issue):
     llm_config = prompt.llm_config
 
     try:
-        labels = issue.labels if isinstance(issue.labels, list) else []
+        labels_list = labels if isinstance(labels, list) else []
+        workload = _active_workload_by_user(project, [m.user_id for m in members])
         user_prompt = prompt.user_prompt_template.format(
-            title=issue.title,
-            description=(issue.description or "")[:1000],
-            labels=", ".join(labels),
-            priority=issue.priority,
-            members_block=_build_members_block(members),
+            title=title or "",
+            description=(description or "")[:1000],
+            labels=", ".join(labels_list),
+            priority=priority or "P2",
+            members_block=_build_members_block(members, workload),
         )
         raw = LLMClient(llm_config).complete(
             model=prompt.llm_model,
@@ -347,6 +377,27 @@ def auto_assign_issue(issue):
         return None
 
     target_user = next(m.user for m in members if m.user_id == target_id)
+    return target_user, reason
+
+
+def auto_assign_issue(issue):
+    """Phase 2 fallback: LLM-pick + write the assignment for an existing Issue.
+
+    Returns IssueAssignment on success, None on any failure or skip (never raises).
+    The wizard pre-picks an assignee in parallel during draft analysis so this
+    fallback is only hit when an Issue is created outside the wizard with no
+    assignee provided.
+    """
+    pick = pick_assignee_for_draft(
+        project=issue.project,
+        title=issue.title,
+        description=issue.description,
+        labels=issue.labels,
+        priority=issue.priority,
+    )
+    if pick is None:
+        return None
+    target_user, reason = pick
     return _do_assign(
         issue, actor=None, to_user=target_user,
         action=AssignmentAction.AI_ASSIGN, reason=reason,
