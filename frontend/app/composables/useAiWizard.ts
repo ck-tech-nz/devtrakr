@@ -27,6 +27,12 @@ export type DuplicateItem = {
   reason: string
 }
 
+export type AssigneeSuggestion = {
+  user_id: number
+  name: string
+  reason: string
+}
+
 const INITIAL_STEPS: StepProgress[] = [
   { step: 1, label: 'AI 正在理解描述与截图', status: 'pending' },
 ]
@@ -80,6 +86,9 @@ export function useAiWizard() {
   const draft = ref<WizardDraft | null>(null)
   const errorMessage = ref<string>('')
   const duplicates = ref<DuplicateItem[]>([])
+  // 后端在 SSE 期间已并行跑 issue_auto_assign,这里收到推荐人后预填到 StepDraft,
+  // 提交时一起 POST 给 /api/issues/,避免 create_issue 再发起一次 LLM 调用 (~5s)
+  const assigneeSuggestion = ref<AssigneeSuggestion | null>(null)
 
   let abortController: AbortController | null = null
 
@@ -89,6 +98,7 @@ export function useAiWizard() {
     draft.value = null
     errorMessage.value = ''
     duplicates.value = []
+    assigneeSuggestion.value = null
     abortController?.abort()
     abortController = null
   }
@@ -193,6 +203,9 @@ export function useAiWizard() {
       state.value = 'drafting'
     } else if (event === 'duplicates') {
       duplicates.value = (payload.items || []) as DuplicateItem[]
+    } else if (event === 'assignee_suggestion') {
+      // 空对象 {} 表示后端无候选 / LLM 没选出来 — 保持 null,UI 落到"由项目经理指派"
+      assigneeSuggestion.value = payload && payload.user_id ? (payload as AssigneeSuggestion) : null
     } else if (event === 'error') {
       const s = steps.value.find(x => x.step === payload.step)
       if (s) s.status = 'error'
@@ -207,5 +220,5 @@ export function useAiWizard() {
     abortController = null
   }
 
-  return { state, steps, draft, duplicates, errorMessage, start, reset, abort }
+  return { state, steps, draft, duplicates, assigneeSuggestion, errorMessage, start, reset, abort }
 }

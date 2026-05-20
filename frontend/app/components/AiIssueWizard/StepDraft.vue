@@ -10,7 +10,8 @@
         ISS-{{ String(successIssueId).padStart(3, '0') }}
       </NuxtLink>
       <div class="success-sub">
-        <template v-if="form.assignee">已自动分配给 <strong>{{ assigneeName }}</strong> · </template>
+        <template v-if="successAssigneeName">已自动分配给 <strong>{{ successAssigneeName }}</strong> · </template>
+        <template v-else>暂未分派 · 待项目经理手动指派 · </template>
         优先级 <strong>{{ form.priority }}</strong>
       </div>
       <UButton size="sm" icon="i-heroicons-plus" @click="emit('reset')">继续提交新 Issue</UButton>
@@ -81,6 +82,13 @@
           placeholder="（不指派）"
           class="pill-select"
         />
+        <span
+          v-if="assigneeSuggestion && String(form.assignee) === String(assigneeSuggestion.user_id)"
+          class="assignee-reason"
+          :title="assigneeSuggestion.reason"
+        >
+          ✦ AI 推荐 · {{ assigneeSuggestion.reason }}
+        </span>
       </div>
 
       <!-- Follow-up questions hint (if any) -->
@@ -141,7 +149,7 @@
 
 <script setup lang="ts">
 import AiBadge from './AiBadge.vue'
-import type { WizardDraft, DuplicateItem } from '~/composables/useAiWizard'
+import type { WizardDraft, DuplicateItem, AssigneeSuggestion } from '~/composables/useAiWizard'
 
 type UserChoice = { id: string; name: string }
 type Project = { id: string; name: string }
@@ -157,9 +165,14 @@ const props = defineProps<{
   // 用户最初输入的原文（未经 AI 拼装）。写入 source_meta.original_input。
   originalInput: string
   duplicates: DuplicateItem[]
+  // 后端在 SSE 阶段并行 LLM 选出的推荐负责人;null 表示无候选/LLM 没选中,
+  // UI 不强制预填,用户可手动指派或留空 (留空时 create_issue 仍会兜底 LLM)
+  assigneeSuggestion: AssigneeSuggestion | null
   submitting: boolean
   submitError: string
   successIssueId: number | null
+  // 后端创建 Issue 后返回的 assignee 用户 id;为 null 表示未自动分派 (无开发者候选 / LLM 未选中)
+  successAssignee: string | null
 }>()
 
 const emit = defineEmits<{
@@ -167,8 +180,6 @@ const emit = defineEmits<{
   back: []
   reset: []
 }>()
-
-const { user: authUser } = useAuth()
 
 const form = ref({
   title: props.draft.title,
@@ -178,7 +189,9 @@ const form = ref({
   priority: props.draft.priority,
   module: props.draft.module,
   labels: props.draft.labels,
-  assignee: String(authUser.value?.id ?? ''),
+  // 优先采用 SSE 期间并行 LLM 给出的推荐;无推荐时留空,提交时 create_issue 会兜底再选
+  // 用户在下拉里手动选择会覆盖此预填
+  assignee: props.assigneeSuggestion ? String(props.assigneeSuggestion.user_id) : '',
   project: props.initialProjectId,
 })
 
@@ -195,6 +208,21 @@ const assigneeOptions = computed(() => props.users.map(u => ({ label: u.name, va
 
 const assigneeName = computed(() => {
   const u = props.users.find(x => String(x.id) === String(form.value.assignee))
+  return u?.name || ''
+})
+
+// 推荐有时晚于 draft 到达 (oneshot 通常更慢,但偶尔挑人更慢):draft 已渲染、表单已建好,
+// 这时再补一次预填,避免推荐迟到导致下拉里看不到 AI 选择
+watch(() => props.assigneeSuggestion, (s) => {
+  if (s && !form.value.assignee) {
+    form.value.assignee = String(s.user_id)
+  }
+})
+
+// 成功视图里展示后端实际分派到的人 (form.assignee 在自动分派路径下是空字符串)
+const successAssigneeName = computed(() => {
+  if (!props.successAssignee) return ''
+  const u = props.users.find(x => String(x.id) === String(props.successAssignee))
   return u?.name || ''
 })
 
@@ -271,6 +299,16 @@ function onSubmit() {
   display: flex; flex-wrap: wrap; gap: 0.5rem; padding: 0.25rem 0;
 }
 .pill-select :deep(button) { font-size: 0.75rem; min-width: auto; }
+.assignee-reason {
+  font-size: 0.75rem;
+  color: #6b7280;
+  max-width: 22rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  align-self: center;
+}
+:root.dark .assignee-reason { color: #9ca3af; }
 
 .hint-box {
   background-color: #fffbeb;

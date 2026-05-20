@@ -19,6 +19,7 @@
       v-else-if="currentStep === 3 && wizard.draft.value"
       :draft="wizard.draft.value"
       :duplicates="wizard.duplicates.value"
+      :assignee-suggestion="wizard.assigneeSuggestion.value"
       :projects="projects"
       :initial-project-id="lastAnalyzedProject"
       :modules="modules"
@@ -29,6 +30,7 @@
       :submitting="submitting"
       :submit-error="submitError"
       :success-issue-id="successIssueId"
+      :success-assignee="successAssignee"
       @submit="onSubmit"
       @back="onBackToDescribe"
       @reset="onReset"
@@ -62,6 +64,8 @@ const wizard = useAiWizard()
 const submitting = ref(false)
 const submitError = ref('')
 const successIssueId = ref<number | null>(null)
+// 后端可能基于 issue_auto_assign 自动挑人,这里记录响应中的 assignee 用于成功视图展示
+const successAssignee = ref<string | null>(null)
 
 const currentStep = computed(() => {
   if (successIssueId.value) return 3
@@ -97,6 +101,7 @@ function onRetry() {
 function onBackToDescribe() {
   wizard.reset()
   successIssueId.value = null
+  successAssignee.value = null
   submitError.value = ''
 }
 
@@ -110,6 +115,8 @@ async function onSubmit(body: any) {
   try {
     const created = await api<any>('/api/issues/', { method: 'POST', body, format: 'json' })
     successIssueId.value = Number(created.id)
+    // created.assignee 为 null 表示后端无开发者候选或 LLM 未选中,前端提示"待项目经理指派"
+    successAssignee.value = created.assignee != null ? String(created.assignee) : null
     emit('created', created.id)
   } catch (e: any) {
     const data = e?.data || e?.response?._data

@@ -1064,6 +1064,104 @@ def test_stream_draft_v2_appends_image_markdown_to_description(site_settings):
 
 
 @pytest.mark.django_db(transaction=True, serialized_rollback=True)
+def test_stream_draft_v2_emits_assignee_suggestion(site_settings):
+    """Wizard SSE pre-picks an assignee in parallel so the subsequent POST
+    /api/issues/ skips its own LLM call. Event payload carries user_id+name+reason.
+    """
+    import json
+    from django.contrib.auth.models import Group
+    from apps.issues.services_ai_wizard import AiWizardService
+    from apps.projects.models import ProjectMember
+    from apps.settings.models import SiteSettings
+    from tests.factories import LLMConfigFactory, ProjectFactory, PromptFactory, UserFactory
+    from unittest.mock import patch
+    LLMConfigFactory(is_default=True, is_active=True)
+    SiteSettings.objects.update(modules=["其他"], labels={})
+    # auto_assign 仅在 role.name=开发者 的成员中挑选,所以这里必须显式建该角色
+    dev_role, _ = Group.objects.get_or_create(name="开发者")
+    project = ProjectFactory()
+    dev = UserFactory(name="张三")
+    ProjectMember.objects.create(
+        project=project, user=dev, role=dev_role, personal_description="后端开发",
+    )
+    # Migration 0009 seeds this prompt; replace with a controllable template
+    from apps.ai.models import Prompt
+    Prompt.objects.filter(slug="issue_auto_assign").delete()
+    PromptFactory(
+        slug="issue_auto_assign",
+        system_prompt="x",
+        user_prompt_template="{title} {description} {labels} {priority} {members_block}",
+        is_active=True,
+    )
+
+    oneshot_json = (
+        '{"title": "T", "priority": "P2", "module": "其他", '
+        '"repro_steps": "", "expected_behavior": "", '
+        '"labels": [], "follow_up_questions": [], "inferred_env": ""}'
+    )
+    pick_json = json.dumps({"assignee_id": dev.id, "reason": "后端匹配 + 当前0单"})
+
+    with patch(
+        "apps.issues.services_ai_wizard.LLMClient.complete_multimodal",
+        return_value=oneshot_json,
+    ), patch(
+        "apps.issues.services_ai_wizard.check_duplicates",
+        return_value=[],
+    ), patch(
+        "apps.issues.services.LLMClient",
+    ) as PickClient:
+        PickClient.return_value.complete.return_value = pick_json
+        svc = AiWizardService()
+        events = list(svc.stream_draft(
+            description="登录接口报 500",
+            project_id=project.id,
+            attachment_ids=[],
+        ))
+
+    sugg = next(e for e in events if e[0] == "assignee_suggestion")[1]
+    assert sugg["user_id"] == dev.id
+    assert sugg["name"] == "张三"
+    assert "0单" in sugg["reason"]
+
+
+@pytest.mark.django_db(transaction=True, serialized_rollback=True)
+def test_stream_draft_v2_emits_empty_suggestion_when_no_developers(site_settings):
+    """Project with no developer members → assignee_suggestion event still
+    fires (empty {}) so the frontend doesn't wait forever for the event."""
+    from apps.issues.services_ai_wizard import AiWizardService
+    from apps.settings.models import SiteSettings
+    from tests.factories import LLMConfigFactory, ProjectFactory
+    from unittest.mock import patch
+    LLMConfigFactory(is_default=True, is_active=True)
+    SiteSettings.objects.update(modules=["其他"], labels={})
+    project = ProjectFactory()
+
+    oneshot_json = (
+        '{"title": "T", "priority": "P2", "module": "其他", '
+        '"repro_steps": "", "expected_behavior": "", '
+        '"labels": [], "follow_up_questions": [], "inferred_env": ""}'
+    )
+    with patch(
+        "apps.issues.services_ai_wizard.LLMClient.complete_multimodal",
+        return_value=oneshot_json,
+    ), patch(
+        "apps.issues.services_ai_wizard.check_duplicates",
+        return_value=[],
+    ):
+        svc = AiWizardService()
+        events = list(svc.stream_draft(
+            description="x",
+            project_id=project.id,
+            attachment_ids=[],
+        ))
+
+    names = [e[0] for e in events]
+    assert "assignee_suggestion" in names
+    sugg = next(e for e in events if e[0] == "assignee_suggestion")[1]
+    assert sugg == {}
+
+
+@pytest.mark.django_db(transaction=True, serialized_rollback=True)
 def test_stream_draft_routes_to_v1_when_legacy_flag_set(site_settings, settings):
     """AI_WIZARD_LEGACY=True routes to the preserved 3-stage pipeline."""
     settings.AI_WIZARD_LEGACY = True

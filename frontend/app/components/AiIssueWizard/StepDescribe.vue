@@ -4,16 +4,15 @@
       <!-- 附件预览行 -->
       <div v-if="attachments.length" class="attach-row">
         <div v-for="att in attachments" :key="att.id" class="attach-chip" :class="{ 'attach-chip--image': isImage(att.file_name) }">
-          <a
+          <button
             v-if="isImage(att.file_name)"
-            :href="att.file_url"
-            target="_blank"
-            rel="noopener"
+            type="button"
             class="attach-thumb"
-            :title="att.file_name"
+            :title="`预览 ${att.file_name}`"
+            @click="openPreview(att)"
           >
             <img :src="att.file_url" :alt="att.file_name" />
-          </a>
+          </button>
           <UIcon v-else name="i-heroicons-document" class="w-3.5 h-3.5 attach-icon" />
           <span v-if="!isImage(att.file_name)" class="attach-name">{{ att.file_name }}</span>
           <button class="attach-remove" :title="`移除 ${att.file_name}`" @click="removeAttachment(att.id)">
@@ -21,6 +20,21 @@
           </button>
         </div>
       </div>
+
+      <!-- 图片预览弹窗 -->
+      <UModal v-model:open="previewOpen" :ui="{ content: 'sm:max-w-4xl' }">
+        <template #content>
+          <div class="preview-modal">
+            <div class="preview-header">
+              <span class="preview-title" :title="previewAttachment?.file_name">{{ previewAttachment?.file_name }}</span>
+              <UButton icon="i-heroicons-x-mark" variant="ghost" color="neutral" size="sm" @click="previewOpen = false" />
+            </div>
+            <div class="preview-body" @click.self="previewOpen = false">
+              <img v-if="previewAttachment" :src="previewAttachment.file_url" :alt="previewAttachment.file_name" />
+            </div>
+          </div>
+        </template>
+      </UModal>
 
       <UTextarea
         v-model="description"
@@ -78,13 +92,14 @@
           class="project-chip"
         />
         <div class="toolbar-spacer" />
+        <span v-if="hintMessage" class="send-hint">{{ hintMessage }}</span>
         <UButton
           icon="i-heroicons-arrow-up"
           color="primary"
           size="sm"
           :disabled="!canAnalyze"
           class="send-btn"
-          title="AI 分析"
+          :title="hintMessage || 'AI 分析'"
           @click="onAnalyze"
         />
       </div>
@@ -112,12 +127,29 @@ const projectId = ref<string>(props.defaultProjectId ?? '')
 const fileInputRef = ref<HTMLInputElement | null>(null)
 const imgInputRef = ref<HTMLInputElement | null>(null)
 const attachments = ref<AttachmentRef[]>([])
+const previewOpen = ref(false)
+const previewAttachment = ref<AttachmentRef | null>(null)
+
+function openPreview(att: AttachmentRef) {
+  previewAttachment.value = att
+  previewOpen.value = true
+}
 
 const projectOptions = computed(() =>
   props.projects.map(p => ({ label: p.name, value: String(p.id) })),
 )
 
-const canAnalyze = computed(() => description.value.trim().length >= 5 && !!projectId.value)
+const MIN_DESC_LEN = 5
+const trimmedLen = computed(() => description.value.trim().length)
+const canAnalyze = computed(() => trimmedLen.value >= MIN_DESC_LEN && !!projectId.value)
+
+// 仅在用户已开始输入但条件未满足时提示;空输入态不打扰
+const hintMessage = computed(() => {
+  if (trimmedLen.value === 0) return ''
+  if (trimmedLen.value < MIN_DESC_LEN) return `至少 ${MIN_DESC_LEN} 个字（当前 ${trimmedLen.value}）`
+  if (!projectId.value) return '请选择项目'
+  return ''
+})
 
 function isImage(name: string): boolean {
   return /\.(png|jpe?g|gif|webp|bmp|svg)$/i.test(name || '')
@@ -202,6 +234,13 @@ watch(() => props.defaultProjectId, (v) => {
   border-color: #374151;
 }
 .send-btn { border-radius: 9999px !important; }
+.send-hint {
+  font-size: 0.75rem;
+  color: #9ca3af;
+  margin-right: 0.25rem;
+  user-select: none;
+}
+:root.dark .send-hint { color: #6b7280; }
 
 .attach-row {
   display: flex; flex-wrap: wrap; gap: 0.375rem;
@@ -230,6 +269,8 @@ watch(() => props.defaultProjectId, (v) => {
   display: block;
   width: 2rem;
   height: 2rem;
+  padding: 0;
+  border: 0;
   border-radius: 0.375rem;
   overflow: hidden;
   flex-shrink: 0;
@@ -264,4 +305,39 @@ watch(() => props.defaultProjectId, (v) => {
 }
 .attach-remove:hover { background-color: #e5e7eb; color: #374151; }
 :root.dark .attach-remove:hover { background-color: #374151; color: #d1d5db; }
+
+.preview-modal {
+  display: flex; flex-direction: column;
+  max-height: 85vh;
+  background-color: #ffffff;
+  border-radius: 0.75rem;
+  overflow: hidden;
+}
+:root.dark .preview-modal { background-color: #1f2937; }
+.preview-header {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid #e5e7eb;
+}
+:root.dark .preview-header { border-bottom-color: #374151; }
+.preview-title {
+  font-size: 0.875rem; color: #374151;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+:root.dark .preview-title { color: #d1d5db; }
+.preview-body {
+  display: flex; align-items: center; justify-content: center;
+  padding: 1rem;
+  background-color: #f9fafb;
+  overflow: auto;
+  cursor: zoom-out;
+}
+:root.dark .preview-body { background-color: #111827; }
+.preview-body img {
+  max-width: 100%;
+  max-height: calc(85vh - 4rem);
+  object-fit: contain;
+  cursor: default;
+}
 </style>
