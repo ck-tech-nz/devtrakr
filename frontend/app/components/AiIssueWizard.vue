@@ -121,11 +121,11 @@
             <span class="msg-brand-status msg-brand-status--draft">
               {{ turn.version > 1 ? `草稿 v${turn.version} 已就绪` : '草稿已就绪' }}
             </span>
-            <span v-if="!isTurnEditable(turn)" class="msg-brand-status msg-brand-status--stale">
+            <span v-if="!isLatestDraft(turn)" class="msg-brand-status msg-brand-status--stale">
               · 已被新版替代
             </span>
           </div>
-          <div class="msg-draft-card" :class="{ 'msg-draft-card--stale': !isTurnEditable(turn) }">
+          <div class="msg-draft-card" :class="{ 'msg-draft-card--stale': !isLatestDraft(turn) }">
             <StepDraft
               :ref="(el) => captureEditableDraftRef(el, turn.id)"
               :draft="turn.draft"
@@ -136,9 +136,9 @@
               :valid-labels="validLabels"
               :attachment-ids="turn.attachmentIds"
               :original-input="lastOriginalInput"
-              :submitting="submitting && isTurnEditable(turn)"
-              :submit-error="isTurnEditable(turn) ? submitError : ''"
-              :success-issue-id="isTurnEditable(turn) ? successIssueId : null"
+              :submitting="submitting && isLatestDraft(turn)"
+              :submit-error="isLatestDraft(turn) ? submitError : ''"
+              :success-issue-id="isLatestDraft(turn) ? successIssueId : null"
               :success-assignee="successAssignee"
               :editable="isTurnEditable(turn)"
               :version="turn.version"
@@ -230,8 +230,13 @@ const lastTurnIsAsk = computed(() => {
 
 // 最新 ai-draft turn 的 id — 只有它可编辑/提交
 const latestDraftId = computed(() => wizard.latestDraft.value?.turn.id || null)
+/** 是否是最新那张 draft (无论是否已提交) — 用于把 success 视图/submit 反馈定位到正确卡片 */
+function isLatestDraft(turn: Turn): boolean {
+  return turn.role === 'ai-draft' && turn.id === latestDraftId.value
+}
+/** 表单是否仍可编辑/可点提交按钮 — 提交成功后整张卡进入 success 视图, 不再编辑 */
 function isTurnEditable(turn: Turn): boolean {
-  return turn.role === 'ai-draft' && turn.id === latestDraftId.value && !successIssueId.value
+  return isLatestDraft(turn) && !successIssueId.value
 }
 
 function isThinkingTurnRunning(turn: Turn & { role: 'ai-thinking' }): boolean {
@@ -349,9 +354,19 @@ async function onSubmit(body: any) {
   submitError.value = ''
   try {
     const created = await api<any>('/api/issues/', { method: 'POST', body, format: 'json' })
-    successIssueId.value = Number(created.id)
-    successAssignee.value = created.assignee != null ? String(created.assignee) : null
-    emit('created', created.id)
+    let id = Number(created?.id)
+    // POST 响应理论上一定带 id, 但若上游代理改写过 / api 包装层丢字段, 用最新 issue 兜底
+    if (!id || Number.isNaN(id)) {
+      try {
+        const list = await api<any>('/api/issues/?ordering=-id&page_size=1')
+        const items = list?.results || list || []
+        const fallbackId = items[0]?.id
+        if (fallbackId) id = Number(fallbackId)
+      } catch { /* fallback 取不到就让 successIssueId 留空; UI 仍显示 success 但无链接 */ }
+    }
+    successIssueId.value = id && !Number.isNaN(id) ? id : null
+    successAssignee.value = created?.assignee != null ? String(created.assignee) : null
+    emit('created', successIssueId.value || 0)
   } catch (e: any) {
     const data = e?.data || e?.response?._data
     submitError.value = (data && typeof data === 'object') ? JSON.stringify(data) : (e?.message || '创建失败')
