@@ -374,6 +374,33 @@ class AiDraftInputSerializer(serializers.Serializer):
     )
 
 
+class AiChatInputSerializer(serializers.Serializer):
+    """对话式 issue 创建入参 - 客户端持有完整消息历史, 服务端无状态转发。
+
+    messages 每条 {role: user|assistant, content: str}, 服务端做严格校验:
+      - 必须以 user 开头/结尾 (LLM 协议要求)
+      - 单条 content ≤ 4000 字符
+      - 数组最大 20 条 (10 轮), 服务端会再截断
+
+    两类附件 ID:
+    - attachment_ids:                本轮新上传的图片 (挂到 LLM vision 的最后一条 user 上)
+    - conversation_attachment_ids:   全对话累计的所有图片 (用于 draft.description 渲染 markdown)
+                                     缺省时回退到 attachment_ids
+    """
+    messages = serializers.ListField(
+        child=serializers.DictField(),
+        min_length=1,
+        max_length=40,   # 服务端 _truncate 再砍到 20; 这里防超大 payload
+    )
+    project = serializers.PrimaryKeyRelatedField(queryset=Project.objects.all())
+    attachment_ids = serializers.ListField(
+        child=serializers.UUIDField(), required=False, default=list,
+    )
+    conversation_attachment_ids = serializers.ListField(
+        child=serializers.UUIDField(), required=False, default=list,
+    )
+
+
 class AiDraftReviseInputSerializer(serializers.Serializer):
     """多轮草稿修订入参 — 客户端传当前草稿全貌 + 一句修订意见。
 

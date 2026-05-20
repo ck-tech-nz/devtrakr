@@ -8,6 +8,18 @@
   >
     <h2 v-if="!inChatMode" class="hero-title">有什么我可以帮你的？</h2>
 
+    <!-- 清空对话按钮 — chat 模式下右上角 floating, 永远可见 -->
+    <button
+      v-if="inChatMode"
+      type="button"
+      class="clear-btn"
+      title="清空当前对话, 重新开始"
+      @click="onClearConversation"
+    >
+      <UIcon name="i-heroicons-x-mark" class="w-3.5 h-3.5" />
+      <span class="clear-btn-label">清空对话</span>
+    </button>
+
     <!-- 对话 thread -->
     <div v-if="inChatMode" ref="threadEl" class="thread">
       <template v-for="turn in wizard.turns.value" :key="turn.id">
@@ -87,6 +99,18 @@
           </div>
         </div>
 
+        <!-- AI 反问 (chat 路径 ask 动作): 信息不全时主动追问一个最关键的问题 -->
+        <div v-else-if="turn.role === 'ai-ask'" class="msg msg--ai msg--ai-ask">
+          <div class="msg-brand">
+            <span class="msg-brand-mark">
+              <UIcon name="i-heroicons-question-mark-circle" class="w-3 h-3" />
+            </span>
+            <span class="msg-brand-name">DevTrakr</span>
+            <span class="msg-brand-status msg-brand-status--ask">想确认一下</span>
+          </div>
+          <div class="msg-ask-bubble">{{ turn.question }}</div>
+        </div>
+
         <!-- AI 草稿 (可能有多张, 最新可编辑) -->
         <div v-else-if="turn.role === 'ai-draft'" class="msg msg--ai msg--ai-draft">
           <div class="msg-brand">
@@ -135,6 +159,7 @@
         :default-project-id="defaultProjectId"
         :analyzing="wizard.state.value === 'analyzing'"
         :revise-mode="hasDraft && !successIssueId"
+        :ask-reply-mode="lastTurnIsAsk"
         @analyze="onAnalyze"
         @cancel="onBackToDescribe"
       />
@@ -166,6 +191,7 @@ const emit = defineEmits<{ created: [issueId: number] }>()
 
 const { api } = useApi()
 const { user } = useAuth()
+const { confirm: showConfirm } = useDialog()
 
 const defaultProjectId = computed(() => user.value?.default_project?.id || null)
 
@@ -196,6 +222,11 @@ const inChatMode = computed(() => wizard.turns.value.length > 0)
 const hasDraft = computed(() => !!wizard.latestDraft.value)
 // 草稿待提交 (sticky composer 触发条件)
 const draftPending = computed(() => inChatMode.value && !successIssueId.value)
+// 最后一条 turn 是 AI 反问 - composer placeholder 切到"回答 AI 的问题…"
+const lastTurnIsAsk = computed(() => {
+  const last = wizard.turns.value[wizard.turns.value.length - 1]
+  return !!last && last.role === 'ai-ask'
+})
 
 // 最新 ai-draft turn 的 id — 只有它可编辑/提交
 const latestDraftId = computed(() => wizard.latestDraft.value?.turn.id || null)
@@ -234,24 +265,12 @@ onMounted(async () => {
 function onAnalyze(payload: { description: string; project: string; attachments: AttachmentRef[] }) {
   lastAnalyzedProject.value = payload.project
   lastOriginalInput.value = payload.description
-  const attachment_ids = payload.attachments.map(a => a.id)
-  // 已有 draft → revise (LLM 内部分类 submit | update, 命中 submit 通过 SSE 信号触发提交);
-  // 没 draft → start (首发)
-  if (hasDraft.value && !successIssueId.value) {
-    wizard.revise({
-      instruction: payload.description,
-      project: payload.project,
-      attachment_ids,
-      attachments: payload.attachments,
-    })
-  } else {
-    wizard.start({
-      description: payload.description,
-      project: payload.project,
-      attachment_ids,
-      attachments: payload.attachments,
-    })
-  }
+  // 统一走对话式 chat - LLM 拿到完整 messages 历史, 自行判定 draft/ask/submit
+  wizard.chat({
+    text: payload.description,
+    project: payload.project,
+    attachments: payload.attachments,
+  })
 }
 
 // LLM 在 revise 路径中判定为"submit"意图时, useAiWizard 递增 submitIntentCounter,
@@ -307,6 +326,24 @@ function onReset() {
   submitError.value = ''
 }
 
+async function onClearConversation() {
+  // 已成功提交后, 清空相当于"开始新对话", 不需要确认
+  if (successIssueId.value) {
+    onReset()
+    return
+  }
+  // 进行中的草稿丢失成本较高 — 弹个轻确认
+  const ok = await showConfirm({
+    title: '清空对话?',
+    message: '这会丢弃当前 AI 草稿和所有聊天历史 (本地存储也会清除), 确定继续吗?',
+    confirmText: '清空',
+    cancelText: '保留',
+    color: 'error',
+  })
+  if (!ok) return
+  onReset()
+}
+
 async function onSubmit(body: any) {
   submitting.value = true
   submitError.value = ''
@@ -340,6 +377,47 @@ onBeforeUnmount(() => {
   flex-direction: column;
   gap: 1.25rem;
   padding: 1rem 0;
+  position: relative;  /* 锚 .clear-btn 的 absolute */
+}
+
+/* 清空对话: 右上角 floating, 半透明胶囊 + 模糊背景, 永远可见 */
+.clear-btn {
+  position: absolute;
+  top: 0.5rem;
+  right: 0;
+  z-index: 5;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3125rem;
+  padding: 0.3125rem 0.625rem;
+  background-color: rgba(255, 255, 255, 0.78);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid #e5e7eb;
+  border-radius: 9999px;
+  font-size: 0.6875rem;
+  color: #6b7280;
+  cursor: pointer;
+  transition: color 0.15s, background-color 0.15s, border-color 0.15s;
+}
+.clear-btn:hover {
+  color: #dc2626;
+  border-color: #fca5a5;
+  background-color: #fef2f2;
+}
+:root.dark .clear-btn {
+  background-color: rgba(31, 41, 55, 0.78);
+  border-color: #374151;
+  color: #9ca3af;
+}
+:root.dark .clear-btn:hover {
+  color: #fca5a5;
+  border-color: rgba(239, 68, 68, 0.4);
+  background-color: rgba(239, 68, 68, 0.12);
+}
+.clear-btn-label { font-weight: 500; letter-spacing: 0.01em; }
+@media (max-width: 480px) {
+  .clear-btn-label { display: none; }  /* 窄屏只剩 × 图标 */
 }
 
 /* chat 模式: wizard 占据视口可用高度, 内部 flex column 让 thread 滚动而 composer 钉底.
@@ -498,6 +576,29 @@ onBeforeUnmount(() => {
   color: #9ca3af;
   padding-left: 0.25rem;
   border-left: 0;
+}
+.msg-brand-status--ask {
+  color: #d97706;
+}
+:root.dark .msg-brand-status--ask { color: #fbbf24; }
+
+/* AI 反问气泡 - 跟用户气泡视觉成对, 但左对齐 + 暖色边框透露"求确认"语气 */
+.msg-ask-bubble {
+  max-width: min(36rem, 90%);
+  padding: 0.625rem 0.875rem;
+  background-color: #fffbeb;
+  color: #78350f;
+  border: 1px solid #fde68a;
+  border-radius: 0.25rem 1rem 1rem 1rem;
+  font-size: 0.875rem;
+  line-height: 1.55;
+  margin-left: 1.625rem;
+  animation: msg-rise 0.32s ease both;
+}
+:root.dark .msg-ask-bubble {
+  background-color: rgba(251, 191, 36, 0.08);
+  color: #fde68a;
+  border-color: rgba(251, 191, 36, 0.25);
 }
 
 .brand-pulse {

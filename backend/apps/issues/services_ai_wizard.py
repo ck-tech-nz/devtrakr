@@ -676,3 +676,250 @@ class AiWizardService:
             "follow_up_questions": generate.get("follow_up_questions", []),
             "environment": None,
         }
+
+# ============================================================================
+# Conversational chat (wizard_chat) - multi-turn dialog with persistent context
+# ============================================================================
+
+CHAT_TIMEOUT_SECONDS = 25
+CHAT_MAX_TURNS = 10            # 客户端送来的 messages 多于这个值就截掉最早的
+CHAT_MAX_CONTENT_LEN = 4000    # 单条 message content 上限 (与 description 限制对齐)
+
+# action=draft 的 schema 与 oneshot 一致 (去掉 action 字段后)
+SCHEMA_CHAT_DRAFT = SCHEMA_ONESHOT
+
+
+def _truncate_messages(messages: list[dict]) -> list[dict]:
+    """保留最新 CHAT_MAX_TURNS * 2 条 message (一来一回算一轮)。
+    若超长, 从最早的开始丢, 保证开头仍是 user (LLM 不接受首条 assistant)。"""
+    cap = CHAT_MAX_TURNS * 2
+    if len(messages) <= cap:
+        return list(messages)
+    trimmed = messages[-cap:]
+    # 若首条是 assistant, 再丢一条 (LLM 协议要求首条 user)
+    while trimmed and trimmed[0].get("role") != "user":
+        trimmed.pop(0)
+    return trimmed
+
+
+def _validate_client_messages(messages) -> list[dict]:
+    """client 送来的 messages 严格校验:
+      - 必须是 list, 非空, 最后一条必须是 user
+      - 每条 {role: user|assistant, content: str}
+      - content 长度上限
+    返回深拷贝 + 截断后的 messages, 抛 ValueError 让上游转 400。
+    """
+    if not isinstance(messages, list) or not messages:
+        raise ValueError("messages 必须是非空数组")
+    out = []
+    for i, m in enumerate(messages):
+        if not isinstance(m, dict):
+            raise ValueError(f"messages[{i}] 必须是对象")
+        role = m.get("role")
+        content = m.get("content")
+        if role not in ("user", "assistant"):
+            raise ValueError(f"messages[{i}].role 必须是 user 或 assistant")
+        if not isinstance(content, str):
+            raise ValueError(f"messages[{i}].content 必须是字符串")
+        if len(content) > CHAT_MAX_CONTENT_LEN:
+            raise ValueError(f"messages[{i}].content 超长 (上限 {CHAT_MAX_CONTENT_LEN})")
+        out.append({"role": role, "content": content})
+    if out[-1].get("role") != "user":
+        raise ValueError("messages 最后一条必须是 user")
+    return _truncate_messages(out)
+
+
+class AiChatService:
+    """对话式 issue 创建 - wizard_chat prompt。
+
+    - chat(): 单次 LLM 调用, 返回解析后的 {action: draft|submit|ask, ...}
+    - stream_chat(): SSE 包装, 把 chat 结果按 action 分别 emit 不同事件
+    """
+
+    def chat(
+        self,
+        messages: list[dict],
+        attachment_ids: list,
+        user,
+        conversation_attachment_ids: list | None = None,
+    ) -> dict:
+        """单次多轮对话调用。
+
+        - messages: 已校验+截断的 [{role, content}, ...] 历史
+        - attachment_ids: 用户本轮 (最新 user message) 附带的图片 ID
+        - user: 调用者 (用于 attachment owner 校验)
+
+        返回值 examples:
+          {"action": "draft", "title": "...", ...}
+          {"action": "ask",   "question": "..."}
+          {"action": "submit"}
+        失败抛 AiWizardError 让 SSE 层 emit error 事件。
+        """
+        from apps.ai.services import parse_json_response
+        from apps.settings.models import SiteSettings
+
+        prompt = Prompt.objects.filter(slug="wizard_chat", is_active=True).first()
+        if prompt is None:
+            raise AiWizardError(step=1, code="missing_prompt", message="未配置 Prompt: wizard_chat")
+
+        config = prompt.llm_config
+
+        site = SiteSettings.get_solo()
+        modules = list(site.modules or [])
+        labels_dict = site.labels or {}
+        labels_list = list(labels_dict.keys()) if isinstance(labels_dict, dict) else list(labels_dict)
+
+        # system_prompt 末尾追加项目侧的元数据 (可选标签 / 模块), 让 LLM 选择时有约束
+        try:
+            extra_context = prompt.user_prompt_template.format(
+                modules_json=json.dumps(modules, ensure_ascii=False),
+                labels_json=json.dumps(labels_list, ensure_ascii=False),
+            )
+        except KeyError as e:
+            raise AiWizardError(step=1, code="prompt_format_error", message=f"模板缺失变量 {e}")
+        system_prompt = f"{prompt.system_prompt}\n\n---\n{extra_context}"
+
+        # 加载本轮图片 (只挂到最后一条 user message 上)
+        # 内部方法仍在 AiWizardService 上 — 复用免重写
+        helper = AiWizardService()
+        images = helper._load_image_attachments(attachment_ids or [], user)
+
+        client = LLMClient(config)
+        vision_warning = None
+        attempts_left = ONESHOT_RETRY_COUNT + 1
+        current_images = list(images)
+        parsed = None
+
+        while attempts_left > 0:
+            attempts_left -= 1
+            try:
+                raw = client.chat(
+                    model=prompt.llm_model,
+                    system_prompt=system_prompt,
+                    messages=messages,
+                    last_user_images=current_images,
+                    temperature=prompt.temperature,
+                    timeout=CHAT_TIMEOUT_SECONDS,
+                )
+            except Exception as e:
+                if current_images:
+                    logger.warning("wizard_chat vision call failed, falling back to text-only: %s", e)
+                    vision_warning = "AI 未能读取截图,已基于文字继续"
+                    current_images = []
+                    attempts_left += 1
+                    continue
+                logger.warning("wizard_chat LLM call failed: %s", e, exc_info=True)
+                raise AiWizardError(step=1, code="llm_call_failed", message="AI 调用失败,请重试")
+
+            try:
+                parsed = parse_json_response(raw)
+                break
+            except (json.JSONDecodeError, ValueError):
+                if attempts_left == 0:
+                    logger.warning("wizard_chat bad JSON after retries: %r", raw)
+                    raise AiWizardError(step=1, code="llm_bad_json", message="AI 返回格式异常,请重试")
+
+        if not isinstance(parsed, dict):
+            raise AiWizardError(step=1, code="llm_bad_shape", message="AI 返回非对象")
+
+        action = parsed.get("action")
+        if action == "submit":
+            return {"action": "submit"}
+        if action == "ask":
+            question = (parsed.get("question") or "").strip()[:200]
+            if not question:
+                raise AiWizardError(step=1, code="llm_bad_shape", message="ask 缺少 question 字段")
+            return {"action": "ask", "question": question}
+
+        # action == "draft" 或缺失 (兼容: 缺失视为 draft)
+        parsed.pop("action", None)
+        parsed = _validate_shape(1, "wizard_chat", parsed, SCHEMA_CHAT_DRAFT)
+        helper._sanitize_oneshot(parsed, modules, labels_list)
+        if vision_warning:
+            parsed["follow_up_questions"] = [vision_warning] + list(parsed.get("follow_up_questions") or [])
+            parsed["follow_up_questions"] = parsed["follow_up_questions"][:3]
+        # 拼装 description: 第一条 user 消息作为原始描述 + AI 推断环境 + 全对话累计图片 markdown.
+        # 用 conversation_attachment_ids 而非 attachment_ids - 否则当 LLM 先 ask 再 draft 时,
+        # 用户回答那一轮 attachment_ids=[], 早先附的图就丢了 (#bug)
+        first_user_text = ""
+        for m in messages:
+            if m.get("role") == "user":
+                first_user_text = m.get("content") or ""
+                break
+        meta_ids = conversation_attachment_ids if conversation_attachment_ids is not None else attachment_ids
+        image_meta = helper._load_image_metadata(meta_ids or [], user)
+        parsed["description"] = helper._assemble_description(
+            first_user_text, parsed.get("inferred_env", ""), image_meta,
+        )
+        parsed["action"] = "draft"
+        return parsed
+
+    def stream_chat(
+        self,
+        messages: list[dict],
+        attachment_ids: list | None = None,
+        user=None,
+        conversation_attachment_ids: list | None = None,
+    ):
+        """SSE 流式 wrap chat() - 按 action 分发事件:
+          - draft  → emit ('draft', {title, priority, ...})
+          - ask    → emit ('ask',   {question})
+          - submit → emit ('submit', {})
+
+        失败时 emit ('step', error) + ('error', {code, message}) + ('done', {})
+        """
+        import time
+        t0 = time.monotonic()
+
+        STEP_LABEL = "AI 正在思考"
+        yield ("step", {"step": 1, "label": STEP_LABEL, "status": "running"})
+
+        try:
+            result = self.chat(
+                messages,
+                attachment_ids or [],
+                user,
+                conversation_attachment_ids=conversation_attachment_ids,
+            )
+        except AiWizardError as e:
+            logger.warning(
+                "wizard_chat AiWizardError code=%s elapsed_ms=%d",
+                e.code, int((time.monotonic() - t0) * 1000),
+            )
+            yield ("step", {"step": 1, "label": STEP_LABEL, "status": "error"})
+            yield ("error", {"code": e.code, "message": e.message})
+            yield ("done", {})
+            return
+        except BaseException:
+            logger.exception(
+                "wizard_chat unexpected failure elapsed_ms=%d",
+                int((time.monotonic() - t0) * 1000),
+            )
+            yield ("step", {"step": 1, "label": STEP_LABEL, "status": "error"})
+            yield ("error", {"code": "llm_call_failed", "message": "AI 调用失败,请重试"})
+            yield ("done", {})
+            return
+
+        action = result.get("action")
+        elapsed = int((time.monotonic() - t0) * 1000)
+        if action == "submit":
+            logger.info("wizard_chat → submit elapsed_ms=%d", elapsed)
+            yield ("step", {"step": 1, "label": "✓ 已确认提交", "status": "done"})
+            yield ("submit", {})
+            yield ("done", {})
+            return
+        if action == "ask":
+            logger.info("wizard_chat → ask elapsed_ms=%d", elapsed)
+            yield ("step", {"step": 1, "label": "AI 需要补充信息", "status": "done"})
+            yield ("ask", {"question": result["question"]})
+            yield ("done", {})
+            return
+
+        # draft
+        logger.info("wizard_chat → draft elapsed_ms=%d", elapsed)
+        draft = dict(result)
+        draft.pop("action", None)
+        # description 已在 chat() 内拼装好 (含原始用户描述 + AI 推断环境 + 本轮图片 markdown)
+        yield ("step", {"step": 1, "label": STEP_LABEL, "status": "done"})
+        yield ("draft", draft)
+        yield ("done", {})

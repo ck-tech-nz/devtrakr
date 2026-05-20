@@ -132,6 +132,8 @@ const props = defineProps<{
   analyzing?: boolean
   /** thread 内已有 draft 时, composer 进入"修订模式" - 改 placeholder/最短长度 */
   reviseMode?: boolean
+  /** 最近一条 AI 反问待用户回答 - placeholder 变"回答 AI 的问题..." */
+  askReplyMode?: boolean
   /** 父级可清空已编辑内容 */
   resetSignal?: number
 }>()
@@ -161,14 +163,15 @@ const projectOptions = computed(() =>
 )
 
 const MIN_DESC_LEN = 5
-const MIN_REVISE_LEN = 2  // 修订指令可以很短, 例如 "P0"
-const minLen = computed(() => (props.reviseMode ? MIN_REVISE_LEN : MIN_DESC_LEN))
+const MIN_REVISE_LEN = 2  // 修订指令 / 回答反问可以很短, 例如 "P0" / "prod"
+const minLen = computed(() => (props.reviseMode || props.askReplyMode ? MIN_REVISE_LEN : MIN_DESC_LEN))
 const trimmedLen = computed(() => description.value.trim().length)
 const canAnalyze = computed(() => trimmedLen.value >= minLen.value && !!projectId.value && !props.analyzing)
 
 const placeholderText = computed(() => {
-  if (props.analyzing) return 'AI 正在生成草稿，可点击 ■ 取消…'
-  if (props.reviseMode) return '告诉 AI 怎么改这份草稿，例如「复现步骤加一条 xxx」「优先级提到 P0」'
+  if (props.analyzing) return 'AI 正在思考，可点击 ■ 取消…'
+  if (props.askReplyMode) return '回答 AI 刚才的问题…'
+  if (props.reviseMode) return '告诉 AI 怎么改这份草稿，例如「复现步骤加一条 xxx」「优先级提到 P0」「OK 提交」'
   return '描述问题：哪个页面/角色，做了什么，看到什么。可以贴截图——AI 会读取截图内容。'
 })
 

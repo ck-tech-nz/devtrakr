@@ -27,13 +27,21 @@ export type Turn =
   | {
       id: string
       role: 'ai-thinking'
-      kind: 'initial' | 'revise'
+      /** initial/revise 是旧的两端点路径; chat 是新对话式路径 */
+      kind: 'initial' | 'revise' | 'chat'
       steps: StepProgress[]
       errorMessage: string
-      /** AI 判定用户意图; submit 时 UI 把 brand status 显示为"已确认,提交中" */
-      intent?: 'update' | 'submit'
+      /** AI 判定用户意图; 控制 brand status 副标题 */
+      intent?: 'update' | 'submit' | 'ask'
     }
   | { id: string; role: 'ai-draft'; version: number; draft: WizardDraft; attachmentIds: string[] }
+  | { id: string; role: 'ai-ask'; question: string }
+
+/** 发送给后端 /ai-draft/chat/ 的对话历史; system 由服务端控制不能从这里送 */
+export type ChatMessage = {
+  role: 'user' | 'assistant'
+  content: string
+}
 
 const INITIAL_STEPS_INITIAL: StepProgress[] = [
   { step: 1, label: 'AI 正在理解描述与截图', status: 'pending' },
@@ -41,9 +49,14 @@ const INITIAL_STEPS_INITIAL: StepProgress[] = [
 const INITIAL_STEPS_REVISE: StepProgress[] = [
   { step: 1, label: 'AI 正在更新草稿', status: 'pending' },
 ]
+const INITIAL_STEPS_CHAT: StepProgress[] = [
+  { step: 1, label: 'AI 正在思考', status: 'pending' },
+]
 
 const STORAGE_KEY = 'ai-wizard:turns'
-const MAX_TURNS = 60   // 60 个 turn (含 user/thinking/draft) 大约 20 轮对话, 足够多
+const STORAGE_MSG_KEY = 'ai-wizard:messages'
+const MAX_TURNS = 60   // 60 个 turn (含 user/thinking/draft/ask) 大约 20 轮, 够多
+const MAX_MESSAGES = 20  // 10 轮 user+assistant; 与后端 _truncate_messages 上限对齐
 const STORAGE_CAP_BYTES = 64 * 1024  // 单 key 不超过 64KB; LocalStorage 单域 5MB 配额
 
 async function refreshAccessToken(): Promise<string | null> {
@@ -95,6 +108,8 @@ function genId(): string {
 export function useAiWizard() {
   const state = ref<WizardState>('idle')
   const turns = ref<Turn[]>([])
+  /** LLM 对话历史 (chat 路径用) - user/assistant 交替; 后端无状态, 每次把完整数组送过去 */
+  const messages = ref<ChatMessage[]>([])
   const errorMessage = ref<string>('')
   // LLM 判定用户在确认时, 递增此 counter; 父组件 watch 它触发 StepDraft.triggerSubmit
   const submitIntentCounter = ref(0)
@@ -129,6 +144,20 @@ export function useAiWizard() {
       // 损坏的 JSON, 静默清除
       try { localStorage.removeItem(STORAGE_KEY) } catch {}
     }
+    // 同样 restore messages (用于 chat 路径下次发消息时把完整历史送给 LLM)
+    try {
+      const rawMsg = localStorage.getItem(STORAGE_MSG_KEY)
+      if (rawMsg) {
+        const parsedMsg = JSON.parse(rawMsg)
+        if (Array.isArray(parsedMsg)) {
+          messages.value = parsedMsg.filter((m: any) =>
+            m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string'
+          )
+        }
+      }
+    } catch {
+      try { localStorage.removeItem(STORAGE_MSG_KEY) } catch {}
+    }
 
     // 任何 turns 变化都 debounced 写回 (200ms)
     let persistTimer: ReturnType<typeof setTimeout> | null = null
@@ -152,6 +181,23 @@ export function useAiWizard() {
         }
       }, 200)
     }, { deep: true })
+
+    // messages 单独 debounced 持久化, 截掉超过 MAX_MESSAGES 的最早历史
+    let persistMsgTimer: ReturnType<typeof setTimeout> | null = null
+    watch(messages, (v) => {
+      if (persistMsgTimer) clearTimeout(persistMsgTimer)
+      persistMsgTimer = setTimeout(() => {
+        try {
+          let payload = v.slice(-MAX_MESSAGES)
+          // 截后首条若是 assistant, 再丢一条让首条仍是 user (与后端协议对齐)
+          while (payload.length && payload[0]!.role !== 'user') payload = payload.slice(1)
+          const serialized = JSON.stringify(payload)
+          if (serialized.length <= STORAGE_CAP_BYTES) {
+            localStorage.setItem(STORAGE_MSG_KEY, serialized)
+          }
+        } catch {}
+      }, 200)
+    }, { deep: true })
   }
 
   // ---------- 基础 reducers ----------
@@ -162,11 +208,13 @@ export function useAiWizard() {
   function reset() {
     state.value = 'idle'
     turns.value = []
+    messages.value = []
     errorMessage.value = ''
     abortController?.abort()
     abortController = null
     if (typeof window !== 'undefined') {
       try { localStorage.removeItem(STORAGE_KEY) } catch {}
+      try { localStorage.removeItem(STORAGE_MSG_KEY) } catch {}
     }
   }
 
@@ -422,6 +470,181 @@ export function useAiWizard() {
     }, params.attachment_ids || [])
   }
 
+  // ---------- chat (对话式, 替代 start/revise 的新主路径) ----------
+  async function chat(params: { text: string; project: string; attachments?: AttachmentRef[] }) {
+    state.value = 'analyzing'
+    errorMessage.value = ''
+    abortController?.abort()
+    abortController = new AbortController()
+
+    const userText = params.text
+    const userAtts = params.attachments || []
+
+    // 1. user turn + user message
+    appendTurn({
+      id: genId(),
+      role: 'user',
+      text: userText,
+      attachments: userAtts,
+    })
+    messages.value.push({ role: 'user', content: userText })
+
+    // 2. ai-thinking turn (chat kind)
+    const thinking: Turn & { role: 'ai-thinking' } = {
+      id: genId(),
+      role: 'ai-thinking',
+      kind: 'chat',
+      steps: structuredClone(INITIAL_STEPS_CHAT),
+      errorMessage: '',
+    }
+    appendTurn(thinking)
+
+    // 3. 调 /ai-draft/chat/, 把完整 messages 历史送过去
+    // 累计 attachment_ids: 全对话所有 user turn 上传过的图片 (本轮 user 已 appendTurn).
+    // 用 Set 去重 - 用户可能重复上传同一张
+    const cumulativeIds = Array.from(new Set(
+      turns.value
+        .filter(t => t.role === 'user')
+        .flatMap(t => (t as Turn & { role: 'user' }).attachments.map(a => a.id))
+    ))
+    let token = await getValidAccessToken()
+    const body = {
+      messages: messages.value.slice(-MAX_MESSAGES),
+      project: params.project,
+      attachment_ids: userAtts.map(a => a.id),     // 本轮新图 → LLM vision
+      conversation_attachment_ids: cumulativeIds,  // 全程累计 → draft.description 渲染
+    }
+    let resp: Response
+    try {
+      resp = await doFetch('/api/issues/ai-draft/chat/', token, body)
+      if (resp.status === 401) {
+        token = await refreshAccessToken()
+        if (token) resp = await doFetch('/api/issues/ai-draft/chat/', token, body)
+      }
+    } catch (e: any) {
+      state.value = 'error'
+      errorMessage.value = e?.message || '网络错误，请重试'
+      thinking.errorMessage = errorMessage.value
+      thinking.steps[0]!.status = 'error'
+      return
+    }
+
+    if (!resp.ok || !resp.body) {
+      state.value = 'error'
+      errorMessage.value = `请求失败 (${resp.status})`
+      thinking.errorMessage = errorMessage.value
+      thinking.steps[0]!.status = 'error'
+      return
+    }
+
+    await consumeChatStream(resp, thinking, userAtts.map(a => a.id))
+  }
+
+  /** chat 路径专用 SSE 消费 - 处理 draft/ask/submit/error 4 种终态事件 */
+  async function consumeChatStream(
+    resp: Response,
+    thinking: Turn & { role: 'ai-thinking' },
+    lastUserAttachmentIds: string[],
+  ) {
+    const reader = resp.body!.getReader()
+    const decoder = new TextDecoder('utf-8')
+    let buffer = ''
+    let gotTerminal = false
+
+    try {
+      while (true) {
+        const { value, done } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+        let idx
+        while ((idx = buffer.indexOf('\n\n')) !== -1) {
+          const frame = buffer.slice(0, idx)
+          buffer = buffer.slice(idx + 2)
+          const lines = frame.split('\n')
+          let event = 'message'
+          let data = ''
+          for (const ln of lines) {
+            if (ln.startsWith('event:')) event = ln.slice(6).trim()
+            else if (ln.startsWith('data:')) data = ln.slice(5).trim()
+          }
+          if (!data) continue
+          let payload: any
+          try { payload = JSON.parse(data) } catch { continue }
+
+          if (event === 'step') {
+            const s = thinking.steps.find(x => x.step === payload.step)
+            if (s) {
+              s.status = (payload.status as StepStatus) || 'done'
+              if (payload.label) s.label = payload.label
+            }
+          } else if (event === 'draft') {
+            gotTerminal = true
+            thinking.intent = 'update'
+            const prevVersion = latestDraft.value?.turn.version || 0
+            const newDraft = payload as WizardDraft
+            appendTurn({
+              id: genId(),
+              role: 'ai-draft',
+              version: prevVersion + 1,
+              draft: newDraft,
+              attachmentIds: lastUserAttachmentIds,
+            })
+            messages.value.push({
+              role: 'assistant',
+              content: JSON.stringify({ action: 'draft', ...newDraft }),
+            })
+            state.value = 'drafting'
+          } else if (event === 'ask') {
+            gotTerminal = true
+            thinking.intent = 'ask'
+            const q = String(payload.question || '').trim()
+            if (q) {
+              appendTurn({ id: genId(), role: 'ai-ask', question: q })
+              messages.value.push({
+                role: 'assistant',
+                content: JSON.stringify({ action: 'ask', question: q }),
+              })
+            }
+            // ask 后等用户回答, 不视为 error 也不结束对话
+            state.value = 'drafting'
+          } else if (event === 'submit') {
+            gotTerminal = true
+            thinking.intent = 'submit'
+            for (const s of thinking.steps) {
+              if (s.status === 'running' || s.status === 'pending') s.status = 'done'
+            }
+            messages.value.push({
+              role: 'assistant',
+              content: JSON.stringify({ action: 'submit' }),
+            })
+            state.value = 'drafting'
+            submitIntentCounter.value++
+          } else if (event === 'error') {
+            thinking.errorMessage = payload.message || 'AI 调用失败'
+            const r = thinking.steps.find(s => s.status === 'running' || s.status === 'pending')
+            if (r) r.status = 'error'
+            state.value = 'error'
+            errorMessage.value = thinking.errorMessage
+          }
+        }
+      }
+    } catch (e: any) {
+      if (e?.name !== 'AbortError') {
+        state.value = 'error'
+        errorMessage.value = e?.message || '流读取失败'
+        thinking.errorMessage = errorMessage.value
+        const r = thinking.steps.find(s => s.status === 'running' || s.status === 'pending')
+        if (r) r.status = 'error'
+      }
+    }
+
+    if (!gotTerminal && state.value === 'analyzing') {
+      state.value = 'error'
+      errorMessage.value = '响应中断，请重试'
+      thinking.errorMessage = errorMessage.value
+    }
+  }
+
   // ---------- 通用 doFetch ----------
   async function doFetch(url: string, token: string | null, body: any): Promise<Response> {
     return fetch(url, {
@@ -457,12 +680,14 @@ export function useAiWizard() {
   return {
     state,
     turns,
+    messages,
     draft,           // 向后兼容: 等同 latestDraft.draft
     draftVersion,
     latestDraft,
     errorMessage,
-    start,
-    revise,
+    chat,
+    start,           // @deprecated: 改用 chat()
+    revise,          // @deprecated: 改用 chat()
     reset,
     abort,
     updateDraftInPlace,

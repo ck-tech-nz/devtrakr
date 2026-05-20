@@ -574,6 +574,70 @@ class IssueCloseWithGitHubView(APIView):
         return Response(result)
 
 
+class IssueAiChatView(APIView):
+    """POST /api/issues/ai-draft/chat/ — SSE stream for conversational issue creation.
+
+    Body: {messages: [{role, content}, ...], project, attachment_ids?}
+    Server prepends its own system_prompt (wizard_chat), calls LLM with full history,
+    emits one of: draft / ask / submit events.
+    """
+    permission_classes = [IsAuthenticated]
+    throttle_classes = [AiWizardThrottle]
+
+    def perform_content_negotiation(self, request, force=False):
+        from rest_framework.renderers import JSONRenderer
+        return (JSONRenderer(), "application/json")
+
+    def post(self, request):
+        from django.http import StreamingHttpResponse
+        import json as _json
+        from rest_framework.exceptions import PermissionDenied, ValidationError
+        from .serializers import AiChatInputSerializer
+        from .services_ai_wizard import AiChatService, _validate_client_messages
+
+        if not request.user.has_perm("issues.add_issue"):
+            raise PermissionDenied("无权创建问题")
+
+        serializer = AiChatInputSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        # 二次结构校验 (DictField 只验外形, 内部 role/content 校验在这里)
+        try:
+            validated_messages = _validate_client_messages(data["messages"])
+        except ValueError as e:
+            raise ValidationError({"messages": str(e)})
+
+        request_user = request.user
+        # 区分两类附件: 本轮新图喂 vision, 全程累计渲染 description.
+        # 缺省时累计列表退化为本轮列表 (兼容老客户端 / 简单单轮场景)
+        current_attachments = [str(x) for x in (data.get("attachment_ids") or [])]
+        cumulative_attachments = [str(x) for x in (data.get("conversation_attachment_ids") or [])] or current_attachments
+
+        def event_stream():
+            svc = AiChatService()
+            try:
+                for event_name, payload in svc.stream_chat(
+                    messages=validated_messages,
+                    attachment_ids=current_attachments,
+                    conversation_attachment_ids=cumulative_attachments,
+                    user=request_user,
+                ):
+                    if event_name == "_heartbeat":
+                        yield ": heartbeat\n\n"
+                    else:
+                        yield f"event: {event_name}\ndata: {_json.dumps(payload, ensure_ascii=False)}\n\n"
+            except (BrokenPipeError, ConnectionAbortedError, ConnectionResetError):
+                import logging
+                logging.getLogger(__name__).info("SSE client disconnected; stopping chat stream")
+                return
+
+        resp = StreamingHttpResponse(event_stream(), content_type="text/event-stream")
+        resp["X-Accel-Buffering"] = "no"
+        resp["Cache-Control"] = "no-cache"
+        return resp
+
+
 class IssueAiDraftReviseView(APIView):
     """POST /api/issues/ai-draft/revise/ — SSE stream that revises an existing
     draft per user instruction. 复用与 ai-draft 完全一致的事件 schema, 客户端
