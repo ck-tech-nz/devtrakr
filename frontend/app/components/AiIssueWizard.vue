@@ -156,11 +156,11 @@
             <span class="msg-brand-status msg-brand-status--draft">
               {{ turn.version > 1 ? `草稿 v${turn.version} 已就绪` : '草稿已就绪' }}
             </span>
-            <span v-if="!isLatestDraft(turn)" class="msg-brand-status msg-brand-status--stale">
+            <span v-if="isReplacedDraft(turn)" class="msg-brand-status msg-brand-status--stale">
               · 已被新版替代
             </span>
           </div>
-          <div class="msg-draft-card" :class="{ 'msg-draft-card--stale': !isLatestDraft(turn) }">
+          <div class="msg-draft-card" :class="{ 'msg-draft-card--stale': isReplacedDraft(turn) }">
             <StepDraft
               :ref="(el) => captureEditableDraftRef(el, turn.id)"
               :draft="turn.draft"
@@ -171,11 +171,11 @@
               :valid-labels="validLabels"
               :attachment-ids="turn.attachmentIds"
               :original-input="lastOriginalInput"
-              :submitting="submitting && isLatestDraft(turn)"
-              :submit-error="isLatestDraft(turn) ? submitError : ''"
-              :success-issue-id="isLatestDraft(turn) ? successIssueId : null"
-              :success-assignee="successAssignee"
-              :editable="isTurnEditable(turn)"
+              :submitting="submitting && isLiveDraft(turn)"
+              :submit-error="isLiveDraft(turn) ? submitError : ''"
+              :success-issue-id="turn.submittedIssueId || null"
+              :success-assignee="turn.submittedAssignee ?? null"
+              :editable="isLiveDraft(turn)"
               :version="turn.version"
               @submit="onSubmit"
               @back="onBackToDescribe"
@@ -193,7 +193,7 @@
         :projects="projects"
         :default-project-id="defaultProjectId"
         :analyzing="wizard.state.value === 'analyzing'"
-        :revise-mode="hasDraft && !successIssueId"
+        :revise-mode="hasLiveDraft"
         :ask-reply-mode="lastTurnIsAsk"
         @analyze="onAnalyze"
         @cancel="onBackToDescribe"
@@ -248,30 +248,35 @@ function captureEditableDraftRef(el: any, turnId: string) {
 const wizard = useAiWizard()
 const submitting = ref(false)
 const submitError = ref('')
-const successIssueId = ref<number | null>(null)
-const successAssignee = ref<string | null>(null)
 
 // thread 内是否有任意 turn
 const inChatMode = computed(() => wizard.turns.value.length > 0)
-// 是否已经至少有一张 draft (决定 composer 走 start 还是 revise)
-const hasDraft = computed(() => !!wizard.latestDraft.value)
-// 草稿待提交 (sticky composer 触发条件)
-const draftPending = computed(() => inChatMode.value && !successIssueId.value)
+// 当前会话有没有 unsealed 的 draft (用来切 composer 的 revise placeholder)
+const hasLiveDraft = computed(() => {
+  const last = wizard.latestDraft.value?.turn
+  return !!last && !last.submittedIssueId
+})
+// 草稿待提交 (sticky composer 触发条件) - 有 thread 且最新 draft 还没 seal
+const draftPending = computed(() => inChatMode.value && hasLiveDraft.value)
 // 最后一条 turn 是 AI 反问 - composer placeholder 切到"回答 AI 的问题…"
 const lastTurnIsAsk = computed(() => {
   const last = wizard.turns.value[wizard.turns.value.length - 1]
   return !!last && last.role === 'ai-ask'
 })
 
-// 最新 ai-draft turn 的 id — 只有它可编辑/提交
+// 最新 ai-draft turn 的 id (无论 sealed 与否) — 给 ref 捕获用
 const latestDraftId = computed(() => wizard.latestDraft.value?.turn.id || null)
-/** 是否是最新那张 draft (无论是否已提交) — 用于把 success 视图/submit 反馈定位到正确卡片 */
-function isLatestDraft(turn: Turn): boolean {
-  return turn.role === 'ai-draft' && turn.id === latestDraftId.value
+
+/** draft 处于以下三态之一: live / sealed (已提交为 ISS-X) / replaced (被新版替代)
+ * 模板用这三个 helper 判定每张卡如何渲染 */
+function isSealed(turn: Turn): boolean {
+  return turn.role === 'ai-draft' && !!(turn as any).submittedIssueId
 }
-/** 表单是否仍可编辑/可点提交按钮 — 提交成功后整张卡进入 success 视图, 不再编辑 */
-function isTurnEditable(turn: Turn): boolean {
-  return isLatestDraft(turn) && !successIssueId.value
+function isLiveDraft(turn: Turn): boolean {
+  return turn.role === 'ai-draft' && !isSealed(turn) && turn.id === latestDraftId.value
+}
+function isReplacedDraft(turn: Turn): boolean {
+  return turn.role === 'ai-draft' && !isSealed(turn) && turn.id !== latestDraftId.value
 }
 
 function isThinkingTurnRunning(turn: Turn & { role: 'ai-thinking' }): boolean {
@@ -354,15 +359,11 @@ function onBackToDescribe() {
     describeRef.value.setAttachments(lastUser.attachments)
   }
   wizard.reset()
-  successIssueId.value = null
-  successAssignee.value = null
   submitError.value = ''
 }
 
 function onReset() {
   wizard.reset()
-  successIssueId.value = null
-  successAssignee.value = null
   submitError.value = ''
 }
 
@@ -396,11 +397,15 @@ async function onSubmit(body: any) {
         const items = list?.results || list || []
         const fallbackId = items[0]?.id
         if (fallbackId) id = Number(fallbackId)
-      } catch { /* fallback 取不到就让 successIssueId 留空; UI 仍显示 success 但无链接 */ }
+      } catch { /* fallback 取不到就让 turn 留空 issue id; UI 仍显示 success 但无链接 */ }
     }
-    successIssueId.value = id && !Number.isNaN(id) ? id : null
-    successAssignee.value = created?.assignee != null ? String(created.assignee) : null
-    emit('created', successIssueId.value || 0)
+    if (id && !Number.isNaN(id) && latestDraftId.value) {
+      // 关键: checkpoint 让本张 draft 卡 morph 为 success 视图, 同时清空 LLM messages —
+      // 用户继续打字 = 新会话 (LLM 不会再当成 v4 修订当前 issue), thread 历史仍可滚动看。
+      const assignee = created?.assignee != null ? String(created.assignee) : null
+      wizard.checkpoint(latestDraftId.value, id, assignee)
+      emit('created', id)
+    }
   } catch (e: any) {
     const data = e?.data || e?.response?._data
     submitError.value = (data && typeof data === 'object') ? JSON.stringify(data) : (e?.message || '创建失败')

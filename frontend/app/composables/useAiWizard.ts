@@ -36,7 +36,18 @@ export type Turn =
       /** 服务端 emit 的非致命警告 (如截图超大被丢弃 / 视觉模型回退到文字) */
       warnings?: string[]
     }
-  | { id: string; role: 'ai-draft'; version: number; draft: WizardDraft; attachmentIds: string[] }
+  | {
+      id: string
+      role: 'ai-draft'
+      version: number
+      draft: WizardDraft
+      attachmentIds: string[]
+      /** 该 draft 已被提交为正式 issue 时, 记下 ISS 号让卡片永久 morph 成 success 视图.
+       * 同时 useAiWizard.messages 会在 checkpoint 时清空, LLM 下一轮看不到本会话, 即"新对话" */
+      submittedIssueId?: number
+      /** POST 响应里的 assignee, 仅用于 success 视图的副标题 */
+      submittedAssignee?: string | null
+    }
   | { id: string; role: 'ai-ask'; question: string }
   | {
       id: string
@@ -701,6 +712,23 @@ export function useAiWizard() {
     })
   }
 
+  /** 一个 issue 提交成功后调一下: 把对应 draft turn 标 sealed, 同时清空 LLM 历史
+   * (下一条 user 消息 = 全新会话, LLM 不再受之前 issue 的上下文污染).
+   * thread 里所有 turn 不动 - 用户仍能滚动回看历史。 */
+  function checkpoint(turnId: string, issueId: number, assignee?: string | null) {
+    const t = turns.value.find(x => x.id === turnId)
+    if (t && t.role === 'ai-draft') {
+      t.submittedIssueId = issueId
+      t.submittedAssignee = assignee ?? null
+    }
+    // 关键: 清空 messages, 下次 chat() 调用时 LLM 看到的是空历史 + 新一条 user 消息
+    messages.value = []
+    state.value = 'idle'
+    errorMessage.value = ''
+    abortController?.abort()
+    abortController = null
+  }
+
   return {
     state,
     turns,
@@ -716,6 +744,7 @@ export function useAiWizard() {
     abort,
     updateDraftInPlace,
     appendUserTurn,
+    checkpoint,
     submitIntentCounter,
   }
 }
