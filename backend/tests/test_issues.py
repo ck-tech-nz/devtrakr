@@ -279,3 +279,112 @@ class TestMentionNotification:
         }, format="json")
         assert response.status_code == 200
         assert NotificationRecipient.objects.filter(user=user2).count() == 1
+
+
+@pytest.mark.django_db
+class TestIssueRelated:
+    """JSON 字段 + 两类来源 (ai_dup / manual) + 添加/删除/解析端点"""
+
+    def test_create_with_ai_related_persists_kind_ai_dup(self, auth_client, site_settings):
+        from tests.factories import IssueFactory, ProjectFactory
+        project = ProjectFactory()
+        other = IssueFactory(project=project)
+        resp = auth_client.post("/api/issues/", {
+            "project": project.id,
+            "title": "新 issue",
+            "description": "x",
+            "priority": "P2",
+            "status": "待分配",
+            "labels": [],
+            "ai_related": [{"id": other.id, "reason": "标题相似"}],
+        }, format="json")
+        assert resp.status_code == 201, resp.data
+        from apps.issues.models import Issue
+        new_issue = Issue.objects.get(id=resp.data["id"])
+        assert len(new_issue.related_issues) == 1
+        entry = new_issue.related_issues[0]
+        assert entry["id"] == other.id
+        assert entry["kind"] == "ai_dup"
+        assert entry["reason"] == "标题相似"
+        assert entry["added_at"]
+
+    def test_create_with_ai_related_skips_invalid_ids(self, auth_client, site_settings):
+        """不存在的 id / 自身 id 被静默过滤; 不会让创建失败"""
+        from tests.factories import ProjectFactory
+        project = ProjectFactory()
+        resp = auth_client.post("/api/issues/", {
+            "project": project.id, "title": "x", "description": "y", "priority": "P2",
+            "status": "待分配", "labels": [],
+            "ai_related": [{"id": 999999, "reason": "ghost"}, {"id": "not-int"}],
+        }, format="json")
+        assert resp.status_code == 201
+        from apps.issues.models import Issue
+        new_issue = Issue.objects.get(id=resp.data["id"])
+        assert new_issue.related_issues == []
+
+    def test_detail_serializer_resolves_related_issues(self, auth_client, site_settings):
+        from tests.factories import IssueFactory
+        target = IssueFactory(title="目标 issue", status="进行中")
+        issue = IssueFactory(related_issues=[
+            {"id": target.id, "kind": "ai_dup", "reason": "r", "added_at": "2026-05-21T00:00:00"},
+        ])
+        resp = auth_client.get(f"/api/issues/{issue.id}/")
+        assert resp.status_code == 200
+        resolved = resp.data["related_issues_resolved"]
+        assert len(resolved) == 1
+        assert resolved[0]["id"] == target.id
+        assert resolved[0]["title"] == "目标 issue"
+        assert resolved[0]["status"] == "进行中"
+        assert resolved[0]["kind"] == "ai_dup"
+
+    def test_detail_skips_orphan_related_ids(self, auth_client, site_settings):
+        """被关联的 issue 被删除后, related_issues 里残留的 id 在 resolved 输出里被跳过"""
+        from tests.factories import IssueFactory
+        issue = IssueFactory(related_issues=[
+            {"id": 999999, "kind": "manual", "reason": "", "added_at": ""},
+        ])
+        resp = auth_client.get(f"/api/issues/{issue.id}/")
+        assert resp.status_code == 200
+        assert resp.data["related_issues_resolved"] == []
+
+    def test_post_related_adds_manual_entry(self, auth_client, site_settings):
+        from tests.factories import IssueFactory
+        a, b = IssueFactory(), IssueFactory()
+        resp = auth_client.post(f"/api/issues/{a.id}/related/", {"id": b.id, "reason": "看着像"}, format="json")
+        assert resp.status_code == 200
+        a.refresh_from_db()
+        assert len(a.related_issues) == 1
+        assert a.related_issues[0]["id"] == b.id
+        assert a.related_issues[0]["kind"] == "manual"
+        assert a.related_issues[0]["reason"] == "看着像"
+
+    def test_post_related_rejects_self_link(self, auth_client, site_settings):
+        from tests.factories import IssueFactory
+        a = IssueFactory()
+        resp = auth_client.post(f"/api/issues/{a.id}/related/", {"id": a.id}, format="json")
+        assert resp.status_code == 400
+
+    def test_post_related_rejects_duplicate(self, auth_client, site_settings):
+        from tests.factories import IssueFactory
+        a, b = IssueFactory(), IssueFactory()
+        auth_client.post(f"/api/issues/{a.id}/related/", {"id": b.id}, format="json")
+        resp2 = auth_client.post(f"/api/issues/{a.id}/related/", {"id": b.id}, format="json")
+        assert resp2.status_code == 409
+
+    def test_post_related_rejects_missing_target(self, auth_client, site_settings):
+        from tests.factories import IssueFactory
+        a = IssueFactory()
+        resp = auth_client.post(f"/api/issues/{a.id}/related/", {"id": 999999}, format="json")
+        assert resp.status_code == 404
+
+    def test_delete_related_removes_any_kind(self, auth_client, site_settings):
+        """DELETE 不分 kind, 用户既能解除 AI 标注的也能解除人工标注的"""
+        from tests.factories import IssueFactory
+        target = IssueFactory()
+        issue = IssueFactory(related_issues=[
+            {"id": target.id, "kind": "ai_dup", "reason": "r", "added_at": ""},
+        ])
+        resp = auth_client.delete(f"/api/issues/{issue.id}/related/{target.id}/")
+        assert resp.status_code == 200
+        issue.refresh_from_db()
+        assert issue.related_issues == []

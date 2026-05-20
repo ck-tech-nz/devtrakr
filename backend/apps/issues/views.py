@@ -303,6 +303,56 @@ class IssueGitHubLinkView(APIView):
         return Response({"unlinked": len(gh_issues)})
 
 
+class IssueRelatedView(APIView):
+    """手动关联/解除关联其它 issue (人工标注路径, kind='manual')。
+    AI 标注的 (kind='ai_dup') 由 wizard 在创建时直接写入, 不走这里;
+    但用户也可以从 detail 页删除任何 kind 的关联条目。"""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, pk):
+        issue = Issue.objects.filter(pk=pk).first()
+        if not issue:
+            return Response({"detail": "问题不存在"}, status=status.HTTP_404_NOT_FOUND)
+        try:
+            related_id = int(request.data.get("id"))
+        except (TypeError, ValueError):
+            return Response({"detail": "id 参数必须是整数"}, status=status.HTTP_400_BAD_REQUEST)
+        if related_id == issue.id:
+            return Response({"detail": "不能关联自身"}, status=status.HTTP_400_BAD_REQUEST)
+        if not Issue.objects.filter(id=related_id).exists():
+            return Response({"detail": "被关联的 issue 不存在"}, status=status.HTTP_404_NOT_FOUND)
+        entries = list(issue.related_issues or [])
+        # 去重: 同 id 不重复追加
+        if any(int(e.get("id", -1)) == related_id for e in entries if isinstance(e, dict)):
+            return Response({"detail": "已关联"}, status=status.HTTP_409_CONFLICT)
+        from django.utils import timezone
+        entries.append({
+            "id": related_id,
+            "kind": "manual",
+            "reason": str(request.data.get("reason") or "")[:200],
+            "added_at": timezone.now().isoformat(),
+        })
+        issue.related_issues = entries
+        issue.save(update_fields=["related_issues", "updated_at"])
+        return Response({"id": related_id, "related_count": len(entries)})
+
+    def delete(self, request, pk, related_id):
+        issue = Issue.objects.filter(pk=pk).first()
+        if not issue:
+            return Response({"detail": "问题不存在"}, status=status.HTTP_404_NOT_FOUND)
+        try:
+            rid = int(related_id)
+        except (TypeError, ValueError):
+            return Response({"detail": "id 参数必须是整数"}, status=status.HTTP_400_BAD_REQUEST)
+        entries = [
+            e for e in (issue.related_issues or [])
+            if not (isinstance(e, dict) and int(e.get("id", -1)) == rid)
+        ]
+        issue.related_issues = entries
+        issue.save(update_fields=["related_issues", "updated_at"])
+        return Response({"id": rid, "related_count": len(entries)})
+
+
 class IssueAIAnalyzeView(APIView):
     permission_classes = [IsAuthenticated]
 

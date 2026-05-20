@@ -5,6 +5,7 @@ from .views import (
     IssueAIAnalyzeView, IssueAIStatusView, IssueAnalysesView,
     IssueAttachmentsView, IssueCheckDuplicateView, IssueHistoryView,
     IssueAiDraftView, IssueAiDraftReviseView, IssueAiChatView,
+    IssueRelatedView,
     IssueClaimView, IssueConfirmView, IssueTransferView, IssueAssignView,
 )
 
@@ -19,6 +20,8 @@ urlpatterns = [
     path("<int:pk>/attachments/", IssueAttachmentsView.as_view(), name="issue-attachments"),
     path("<int:pk>/github-create/", IssueGitHubCreateView.as_view(), name="issue-github-create"),
     path("<int:pk>/github-link/", IssueGitHubLinkView.as_view(), name="issue-github-link"),
+    path("<int:pk>/related/", IssueRelatedView.as_view(), name="issue-related"),
+    path("<int:pk>/related/<int:related_id>/", IssueRelatedView.as_view(), name="issue-related-delete"),
     path("<int:pk>/close-with-github/", IssueCloseWithGitHubView.as_view(), name="issue-close-with-github"),
     path("<int:pk>/ai-analyze/", IssueAIAnalyzeView.as_view(), name="issue-ai-analyze"),
     path("<int:pk>/ai-status/", IssueAIStatusView.as_view(), name="issue-ai-status"),

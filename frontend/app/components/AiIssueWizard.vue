@@ -373,6 +373,19 @@ function onClearConversation() {
 async function onSubmit(body: any) {
   submitting.value = true
   submitError.value = ''
+  // 把 thread 里 AI 提示过的查重候选记到 issue 上 (kind=ai_dup).
+  // 用户即使无视提示直接提交, 这些信号仍保留为关联线索, detail 页能看到 "AI 创建时认为可能与 ISS-X 相关"
+  const aiDupCandidates: Array<{ id: number; reason: string }> = []
+  for (const t of wizard.turns.value) {
+    if (t.role === 'ai-dup-hint') {
+      for (const c of t.candidates) {
+        aiDupCandidates.push({ id: c.id, reason: c.reason || '' })
+      }
+    }
+  }
+  if (aiDupCandidates.length) {
+    body = { ...body, ai_related: aiDupCandidates }
+  }
   try {
     const created = await api<any>('/api/issues/', { method: 'POST', body, format: 'json' })
     let id = Number(created?.id)

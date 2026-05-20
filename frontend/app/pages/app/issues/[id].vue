@@ -403,6 +403,85 @@
           </div>
         </div>
 
+        <!-- 关联 Issues — 自动 (AI 创建时去重命中) + 手动 -->
+        <div v-if="relatedIssuesResolved.length || relatedSearchOpen" class="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 p-5 space-y-3">
+          <div class="flex items-center justify-between">
+            <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100">关联 Issues</h3>
+            <UButton
+              v-if="!relatedSearchOpen"
+              size="xs"
+              variant="ghost"
+              color="neutral"
+              icon="i-heroicons-plus"
+              title="关联其它 issue"
+              @click="openRelatedSearch"
+            />
+          </div>
+
+          <div v-if="relatedIssuesResolved.length" class="space-y-1.5">
+            <div
+              v-for="r in relatedIssuesResolved"
+              :key="r.id"
+              class="group flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-gray-50 dark:hover:bg-gray-800"
+            >
+              <span
+                v-if="r.kind === 'ai_dup'"
+                class="text-[0.625rem] px-1.5 py-px rounded bg-violet-50 text-violet-600 dark:bg-violet-900/30 dark:text-violet-300"
+                :title="r.reason || 'AI 创建时识别为相似'"
+              >AI</span>
+              <span
+                v-else
+                class="text-[0.625rem] px-1.5 py-px rounded bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400"
+              >人工</span>
+              <NuxtLink
+                :to="`/app/issues/${r.id}`"
+                class="font-mono text-xs text-violet-600 dark:text-violet-400 hover:underline shrink-0"
+              >ISS-{{ String(r.id).padStart(3, '0') }}</NuxtLink>
+              <span class="text-sm text-gray-700 dark:text-gray-300 truncate flex-1">{{ r.title }}</span>
+              <span
+                class="text-[0.625rem] px-1.5 py-px rounded shrink-0"
+                :class="['已解决', '已发布', '已关闭'].includes(r.status)
+                  ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-300'
+                  : 'bg-amber-50 text-amber-600 dark:bg-amber-900/30 dark:text-amber-300'"
+              >{{ r.status }}</span>
+              <button
+                class="text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100"
+                title="解除关联"
+                @click="removeRelated(r.id)"
+              >
+                <UIcon name="i-heroicons-x-mark" class="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+
+          <!-- 手动添加: 搜索框 + 结果列表 -->
+          <div v-if="relatedSearchOpen" class="space-y-2 pt-1">
+            <UInput
+              v-model="relatedSearchQ"
+              placeholder="搜索 issue 标题或 ID..."
+              icon="i-heroicons-magnifying-glass"
+              size="sm"
+              @update:model-value="onRelatedSearchInput"
+            />
+            <div v-if="relatedSearchResults.length" class="max-h-48 overflow-y-auto space-y-1">
+              <button
+                v-for="cand in relatedSearchResults"
+                :key="cand.id"
+                type="button"
+                class="w-full flex items-center gap-2 px-2 py-1.5 text-left text-sm rounded hover:bg-gray-100 dark:hover:bg-gray-800"
+                @click="addRelated(cand.id)"
+              >
+                <span class="font-mono text-xs text-gray-400 shrink-0">ISS-{{ String(cand.id).padStart(3, '0') }}</span>
+                <span class="text-gray-700 dark:text-gray-300 truncate">{{ cand.title }}</span>
+              </button>
+            </div>
+            <p v-else-if="relatedSearchQ && !relatedSearching" class="text-xs text-gray-400">无匹配结果</p>
+            <div class="flex justify-end">
+              <UButton size="xs" variant="ghost" color="neutral" @click="closeRelatedSearch">取消</UButton>
+            </div>
+          </div>
+        </div>
+
         <div v-if="issue.github_issues?.length" class="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 p-5 space-y-3">
           <div class="flex items-center justify-between">
             <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100">GitHub 关联</h3>
@@ -964,6 +1043,75 @@ const ghCreateError = ref('')
 // GitHub 关联
 const showLinkGH = ref(false)
 const showSourceMeta = ref(true)
+
+// 关联 Issues — JSON 字段, 后端 detail serializer 已经 resolved 出 title/status
+type RelatedItem = { id: number; title: string; status: string; priority?: string; kind: string; reason: string; added_at: string }
+const relatedIssuesResolved = computed<RelatedItem[]>(() => (issue.value as any)?.related_issues_resolved || [])
+const relatedSearchOpen = ref(false)
+const relatedSearchQ = ref('')
+const relatedSearching = ref(false)
+const relatedSearchResults = ref<Array<{ id: number; title: string }>>([])
+let relatedSearchTimer: ReturnType<typeof setTimeout> | null = null
+
+function openRelatedSearch() {
+  relatedSearchOpen.value = true
+  relatedSearchQ.value = ''
+  relatedSearchResults.value = []
+}
+function closeRelatedSearch() {
+  relatedSearchOpen.value = false
+  relatedSearchQ.value = ''
+  relatedSearchResults.value = []
+  if (relatedSearchTimer) { clearTimeout(relatedSearchTimer); relatedSearchTimer = null }
+}
+function onRelatedSearchInput(q: string) {
+  if (relatedSearchTimer) clearTimeout(relatedSearchTimer)
+  const query = (q || '').trim()
+  if (!query) {
+    relatedSearchResults.value = []
+    return
+  }
+  // debounce 250ms 避免每键一次 API
+  relatedSearchTimer = setTimeout(async () => {
+    relatedSearching.value = true
+    try {
+      // 直接复用 issues 列表搜索 (search 参数); 排除当前 issue
+      const res = await api<any>(`/api/issues/?search=${encodeURIComponent(query)}&page_size=10`)
+      const all = (res?.results || res || []) as Array<{ id: number; title: string }>
+      const linkedIds = new Set([
+        issue.value?.id,
+        ...relatedIssuesResolved.value.map(r => r.id),
+      ])
+      relatedSearchResults.value = all.filter(x => !linkedIds.has(x.id)).slice(0, 8)
+    } catch {
+      relatedSearchResults.value = []
+    } finally {
+      relatedSearching.value = false
+    }
+  }, 250)
+}
+async function addRelated(relatedId: number) {
+  if (!issue.value?.id) return
+  try {
+    await api(`/api/issues/${issue.value.id}/related/`, {
+      method: 'POST',
+      body: { id: relatedId },
+    })
+    issue.value = await api<any>(`/api/issues/${route.params.id}/`)
+    closeRelatedSearch()
+  } catch (e) {
+    console.error('Add related failed:', e)
+  }
+}
+async function removeRelated(relatedId: number) {
+  if (!issue.value?.id) return
+  try {
+    await api(`/api/issues/${issue.value.id}/related/${relatedId}/`, { method: 'DELETE' })
+    issue.value = await api<any>(`/api/issues/${route.params.id}/`)
+  } catch (e) {
+    console.error('Remove related failed:', e)
+  }
+}
 
 // 外部来源: ai_wizard 是内部 AI 生成不算外部; 仅 github / external_api 等第三方接口
 // 且 source_meta 含具体字段 (feedback_id / reporter / context / attachments) 时才有展示价值
