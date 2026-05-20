@@ -51,7 +51,7 @@ const props = withDefaults(defineProps<{
   saturation?: number   // 背景饱和度增强 (%)
 }>(), {
   bezelDepth: 0.16,
-  bezelWidth: 0.12,
+  bezelWidth: 0.2,
   blur: 0.4,
   saturation: 140,
 })
