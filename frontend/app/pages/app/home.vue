@@ -54,22 +54,33 @@
         />
       </div>
 
+      <!-- 系统监控状态(只显示生产环境) -->
+      <UptimeMonitorsHomeWidget />
+
       <!-- 我的待办 + 提及我的（任一为空时另一张卡占满，全为空时整行隐藏） -->
       <div
         v-if="hasTodos || hasMentions"
         class="grid grid-cols-1 gap-4"
         :class="{ 'lg:grid-cols-2': hasTodos && hasMentions }"
       >
-        <!-- 我的待办 -->
+        <!-- 我的待办（默认收起） -->
         <div v-if="hasTodos" class="section-card">
-          <div class="section-header">
+          <button
+            class="section-header section-toggle"
+            :class="{ 'section-toggle--collapsed': !showTodos }"
+            type="button"
+            @click="showTodos = !showTodos"
+          >
             <h3 class="section-title">
               我的待办
               <span class="section-badge">{{ myIssues.length }}</span>
             </h3>
-            <NuxtLink to="/app/issues?assignee=me" class="section-link">查看全部</NuxtLink>
-          </div>
-          <div class="todo-list">
+            <div class="section-toggle-right">
+              <NuxtLink to="/app/issues?assignee=me" class="section-link" @click.stop>查看全部</NuxtLink>
+              <UIcon :name="showTodos ? 'i-heroicons-chevron-up' : 'i-heroicons-chevron-down'" class="w-4 h-4 text-gray-400" />
+            </div>
+          </button>
+          <div v-if="showTodos" class="todo-list">
             <NuxtLink
               v-for="issue in myIssues"
               :key="issue.id"
@@ -111,9 +122,6 @@
           </div>
         </div>
       </div>
-
-      <!-- 系统监控状态(只显示生产环境) -->
-      <UptimeMonitorsHomeWidget />
 
       <!-- 我的提升计划 + 最近动态（同样的折叠规则） -->
       <div
@@ -198,6 +206,7 @@ const stats = ref({
 })
 const recentActivity = ref<any[]>([])
 const showActivity = ref(false)
+const showTodos = ref(false)
 const planData = ref<any>(null)
 const isTester = computed(() => hasGroup('测试'))
 

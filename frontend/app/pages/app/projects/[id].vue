@@ -63,7 +63,7 @@
         >
           <div class="flex items-center gap-2">
             <div class="w-7 h-7 rounded-full bg-crystal-100 dark:bg-crystal-900 flex items-center justify-center shrink-0 overflow-hidden">
-              <img v-if="m.avatar" :src="m.avatar" class="w-full h-full object-cover" :alt="m.user_name">
+              <img v-if="m.avatar" :src="resolveAvatarUrl(m.avatar)" class="w-full h-full object-cover" :alt="m.user_name">
               <span v-else class="text-crystal-600 dark:text-crystal-400 text-xs font-medium">{{ (m.user_name || '?').slice(0, 1) }}</span>
             </div>
             <span class="text-sm text-gray-700 dark:text-gray-300 truncate">{{ m.user_name || '未知' }}</span>
@@ -282,6 +282,7 @@ definePageMeta({ layout: 'default' })
 
 const { api } = useApi()
 const { can, user } = useAuth()
+const { resolveAvatarUrl } = useAvatars()
 const { confirm: dialogConfirm, alert: dialogAlert } = useDialog()
 const route = useRoute()
 
