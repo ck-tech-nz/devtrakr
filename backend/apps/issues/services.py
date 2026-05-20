@@ -414,6 +414,15 @@ def create_issue(*, project, actor, title, description, priority,
         a developer. The submitter only cares the AI draft matches their intent;
         the assignment decision runs off the critical path.
     """
+    # 未指定 repo 且项目仅关联一个仓库时自动绑定。
+    # 普通创建表单本就有"单仓库自动选中"UX, AI 向导没有仓库选择器,
+    # 在服务层兜底,避免 AI 创建的 issue 永远没关联仓库 (顺带让 post_save
+    # 触发的 AI 代码分析也能跑起来——signals 依赖 issue.repo_id)
+    if not extra_fields.get("repo") and not extra_fields.get("repo_id"):
+        project_repo_ids = list(project.repos.values_list("id", flat=True)[:2])
+        if len(project_repo_ids) == 1:
+            extra_fields["repo_id"] = project_repo_ids[0]
+
     issue = Issue.objects.create(
         project=project,
         manager=_resolve_project_manager(project),

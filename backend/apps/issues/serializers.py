@@ -251,6 +251,15 @@ class IssueCreateUpdateSerializer(serializers.ModelSerializer):
             )
         return value
 
+    def validate(self, attrs):
+        # repo 必须属于 issue 所在项目的关联仓库列表; 前端只让选项目内仓库,
+        # 这里防 UI 绕过. PATCH 时若只改其一, 缺失字段回退到实例当前值
+        repo = attrs.get("repo", getattr(self.instance, "repo", None))
+        project = attrs.get("project", getattr(self.instance, "project", None))
+        if repo and project and not project.repos.filter(pk=repo.pk).exists():
+            raise serializers.ValidationError({"repo": "所选仓库不属于该项目"})
+        return attrs
+
     def _user_can_edit_estimated_hours(self) -> bool:
         user = self.context["request"].user
         if not user.is_authenticated:

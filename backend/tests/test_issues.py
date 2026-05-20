@@ -148,6 +148,25 @@ class TestIssueUpdate:
         issue.refresh_from_db()
         assert float(issue.estimated_hours) == 12.5
 
+    def test_patch_repo_must_belong_to_project(self, auth_client, site_settings):
+        # PATCH 仓库时, 必须是 issue 所在项目关联的仓库
+        from tests.factories import RepoFactory, ProjectFactory
+        project = ProjectFactory()
+        in_project = RepoFactory()
+        outside_repo = RepoFactory()
+        project.repos.add(in_project)
+        issue = IssueFactory(project=project, repo=None)
+
+        # 不在项目里的仓库 → 400
+        bad = auth_client.patch(f"/api/issues/{issue.id}/", {"repo": outside_repo.id})
+        assert bad.status_code == 400
+
+        # 项目里的仓库 → 200
+        ok = auth_client.patch(f"/api/issues/{issue.id}/", {"repo": in_project.id})
+        assert ok.status_code == 200
+        issue.refresh_from_db()
+        assert issue.repo_id == in_project.id
+
     def test_non_admin_estimated_hours_change_ignored(self, api_client, site_settings):
         """非管理员 PATCH estimated_hours 应被静默忽略,其他字段正常更新。"""
         from django.contrib.auth.models import Group, Permission

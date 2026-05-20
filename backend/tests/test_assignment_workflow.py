@@ -15,7 +15,7 @@ from apps.issues.services import (
 from apps.issues.serializers import IssueListSerializer
 from apps.projects.models import ProjectMember
 from rest_framework.exceptions import PermissionDenied
-from tests.factories import IssueFactory, UserFactory, ProjectFactory
+from tests.factories import IssueFactory, RepoFactory, UserFactory, ProjectFactory
 
 
 @pytest.mark.django_db
@@ -342,6 +342,51 @@ class TestCreateIssue:
             title="t", description="d", priority="P2", assignee=None,
         )
         assert issue.manager is None
+
+    def test_auto_binds_repo_when_project_has_exactly_one(self):
+        # AI 向导无 repo 选择器, 服务层兜底自动绑定
+        project = ProjectFactory()
+        repo = RepoFactory()
+        project.repos.add(repo)
+
+        issue = create_issue(
+            project=project, actor=UserFactory(),
+            title="t", description="d", priority="P2", assignee=None,
+        )
+        assert issue.repo_id == repo.id
+
+    def test_no_auto_bind_when_project_has_multiple_repos(self):
+        # 多仓库无法判断, 由前端选择器决定
+        project = ProjectFactory()
+        project.repos.add(RepoFactory(), RepoFactory())
+
+        issue = create_issue(
+            project=project, actor=UserFactory(),
+            title="t", description="d", priority="P2", assignee=None,
+        )
+        assert issue.repo_id is None
+
+    def test_no_auto_bind_when_project_has_no_repos(self):
+        project = ProjectFactory()
+        issue = create_issue(
+            project=project, actor=UserFactory(),
+            title="t", description="d", priority="P2", assignee=None,
+        )
+        assert issue.repo_id is None
+
+    def test_explicit_repo_overrides_auto_bind(self):
+        # 用户已显式选择仓库时, 即使项目只有一个候选也尊重传入值
+        project = ProjectFactory()
+        project_repo = RepoFactory()
+        explicit_repo = RepoFactory()
+        project.repos.add(project_repo)
+
+        issue = create_issue(
+            project=project, actor=UserFactory(),
+            title="t", description="d", priority="P2", assignee=None,
+            repo=explicit_repo,
+        )
+        assert issue.repo_id == explicit_repo.id
 
 
 @pytest.mark.django_db

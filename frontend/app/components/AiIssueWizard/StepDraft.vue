@@ -21,96 +21,122 @@
     <div v-else class="draft-wrap">
       <!-- Header -->
       <div class="draft-header">
-        <div class="header-icon"><UIcon name="i-heroicons-check" class="w-4 h-4 text-white" /></div>
-        <div class="header-title">Issue 已生成 · 确认后一键提交</div>
-        <span class="header-sub">AI 自动分析完成</span>
-      </div>
-
-      <!-- Title (centered, large) -->
-      <div class="field-row">
-        <UInput v-model="form.title" :ui="{ base: 'text-center text-lg font-semibold' }" />
-      </div>
-
-      <!-- Description -->
-      <div class="field-row">
-        <UTextarea v-model="form.description" :rows="2" autoresize :ui="{ base: 'text-center text-sm text-gray-500' }" />
-      </div>
-
-      <!-- Pills row: priority / module / assignee -->
-      <div class="pills-row">
-        <USelect
-          v-model="form.priority"
-          :items="priorityOptions"
-          value-key="value"
-          size="xs"
-          icon="i-heroicons-flag"
-          class="pill-select"
-        />
-        <USelect
-          v-model="form.module"
-          :items="moduleOptions"
-          size="xs"
-          icon="i-heroicons-folder"
-          class="pill-select"
-        />
-        <USelect
-          v-model="form.assignee"
-          :items="assigneeOptions"
-          value-key="value"
-          size="xs"
-          icon="i-heroicons-user"
-          placeholder="（AI 后台自动分派）"
-          class="pill-select"
-        />
-      </div>
-
-      <!-- Follow-up questions hint (if any) -->
-      <div v-if="draft.follow_up_questions && draft.follow_up_questions.length" class="hint-box">
-        <div class="hint-head">
-          <UIcon name="i-heroicons-chat-bubble-bottom-center-text" class="w-4 h-4" />
-          <span>AI 建议补充以下信息后再提交</span>
+        <div class="header-icon"><UIcon name="i-heroicons-sparkles" class="w-4 h-4 text-white" /></div>
+        <div class="header-text">
+          <div class="header-title">Issue 草稿</div>
+          <div class="header-sub">AI 已自动分析 · 确认或修改后一键提交</div>
         </div>
-        <ul class="hint-list">
-          <li v-for="q in draft.follow_up_questions" :key="q">{{ q }}</li>
-        </ul>
+        <AiBadge kind="generated" class="header-badge" />
       </div>
 
-      <!-- 复现步骤 sub-card -->
-      <div class="repro-card">
-        <div class="repro-head">
-          <span class="repro-label">复现步骤</span>
-          <AiBadge v-if="form.repro_steps.trim()" kind="generated" />
+      <!-- Body: 2-column layout -->
+      <div class="draft-body">
+        <!-- Left: issue content -->
+        <div class="content-col">
+          <UInput
+            v-model="form.title"
+            placeholder="问题标题"
+            :ui="{ base: 'issue-title-input' }"
+          />
+
+          <UTextarea
+            v-model="form.description"
+            :rows="2"
+            autoresize
+            placeholder="一句话补充上下文（可选）"
+            :ui="{ base: 'issue-desc-input' }"
+          />
+
+          <div class="section">
+            <div class="section-label">复现步骤</div>
+            <UTextarea
+              v-model="form.repro_steps"
+              :rows="4"
+              autoresize
+              placeholder="1. ...&#10;2. ...&#10;3. ..."
+              :ui="{ base: 'issue-body-input' }"
+            />
+          </div>
+
+          <div class="section">
+            <div class="section-label">预期行为</div>
+            <UInput
+              v-model="form.expected_behavior"
+              placeholder="应该发生什么？"
+              :ui="{ base: 'issue-body-input' }"
+            />
+          </div>
         </div>
-        <UTextarea
-          v-model="form.repro_steps"
-          :rows="4"
-          autoresize
-          placeholder="（请按 1. 2. 3. 列出具体步骤）"
-          :ui="{ base: 'text-center text-sm' }"
-        />
-      </div>
 
-      <!-- Expected behavior -->
-      <div class="field-row">
-        <label class="field-label">预期行为 <AiBadge v-if="form.expected_behavior.trim()" kind="generated" /></label>
-        <UInput v-model="form.expected_behavior" placeholder="（应该发生什么？）" />
-      </div>
+        <!-- Right: meta sidebar -->
+        <aside class="meta-col">
+          <div class="meta-group">
+            <div class="meta-row">
+              <span class="meta-label">项目</span>
+              <USelect
+                v-model="form.project"
+                :items="projectOptions"
+                value-key="value"
+                size="xs"
+                class="meta-select"
+              />
+            </div>
+            <div class="meta-row">
+              <span class="meta-label">优先级</span>
+              <USelect
+                v-model="form.priority"
+                :items="priorityOptions"
+                value-key="value"
+                size="xs"
+                class="meta-select"
+              />
+            </div>
+            <div class="meta-row">
+              <span class="meta-label">模块</span>
+              <USelect
+                v-model="form.module"
+                :items="moduleOptions"
+                size="xs"
+                class="meta-select"
+              />
+            </div>
+            <div class="meta-row">
+              <span class="meta-label">指派人</span>
+              <USelect
+                v-model="form.assignee"
+                :items="assigneeOptions"
+                value-key="value"
+                size="xs"
+                placeholder="AI 自动分派"
+                class="meta-select"
+              />
+            </div>
+          </div>
 
-      <!-- Project (preserved for fix-on-final-step) -->
-      <div class="field-row">
-        <label class="field-label">项目</label>
-        <USelect v-model="form.project" :items="projectOptions" value-key="value" size="sm" />
+          <!-- AI suggestions callout (only if present) -->
+          <div v-if="draft.follow_up_questions && draft.follow_up_questions.length" class="ai-suggest">
+            <div class="ai-suggest-head">
+              <UIcon name="i-heroicons-light-bulb" class="w-3.5 h-3.5" />
+              <span>AI 建议补充</span>
+            </div>
+            <ul class="ai-suggest-list">
+              <li v-for="q in draft.follow_up_questions" :key="q">{{ q }}</li>
+            </ul>
+          </div>
+        </aside>
       </div>
 
       <p v-if="submitError" class="submit-error">{{ submitError }}</p>
 
       <!-- Footer -->
       <div class="footer">
-        <span class="footer-hint">✦ AI 已自动判断优先级、模块与指派人 · 如有异议可点击修改</span>
-        <UButton variant="outline" color="neutral" size="sm" @click="emit('back')">重新描述</UButton>
+        <UButton variant="ghost" color="neutral" size="sm" icon="i-heroicons-arrow-uturn-left" @click="emit('back')">
+          重新描述
+        </UButton>
+        <div class="footer-spacer" />
         <UButton
           size="sm"
-          icon="i-heroicons-check"
+          icon="i-heroicons-paper-airplane"
           :loading="submitting"
           :disabled="!canSubmit"
           @click="onSubmit"
@@ -176,11 +202,6 @@ const projectOptions = computed(() => props.projects.map(p => ({ label: p.name, 
 const moduleOptions = computed(() => props.modules)
 const assigneeOptions = computed(() => props.users.map(u => ({ label: u.name, value: String(u.id) })))
 
-const assigneeName = computed(() => {
-  const u = props.users.find(x => String(x.id) === String(form.value.assignee))
-  return u?.name || ''
-})
-
 // 成功视图里展示后端实际分派到的人 (form.assignee 在自动分派路径下是空字符串)
 const successAssigneeName = computed(() => {
   if (!props.successAssignee) return ''
@@ -230,7 +251,7 @@ function onSubmit() {
   background-color: #ffffff;
   border: 1px solid #e5e7eb;
   border-radius: 1rem;
-  padding: 1.5rem;
+  padding: 1.25rem 1.5rem 1.125rem;
   display: flex;
   flex-direction: column;
   gap: 1rem;
@@ -238,6 +259,7 @@ function onSubmit() {
 }
 :root.dark .draft-wrap { background-color: #1f2937; border-color: #374151; }
 
+/* ---------- Header ---------- */
 .draft-header {
   display: flex; align-items: center; gap: 0.625rem;
   padding-bottom: 0.875rem;
@@ -246,51 +268,144 @@ function onSubmit() {
 :root.dark .draft-header { border-bottom-color: #374151; }
 .header-icon {
   width: 1.75rem; height: 1.75rem; border-radius: 0.5rem;
-  background-color: #7c3aed; display: flex; align-items: center; justify-content: center;
+  background: linear-gradient(135deg, #7c3aed, #9333ea);
+  display: flex; align-items: center; justify-content: center;
   flex-shrink: 0;
+  box-shadow: 0 2px 8px -2px rgba(124, 58, 237, 0.4);
 }
+.header-text { display: flex; flex-direction: column; line-height: 1.2; }
 .header-title { font-size: 0.9375rem; font-weight: 600; color: #111827; }
 :root.dark .header-title { color: #f3f4f6; }
-.header-sub { font-size: 0.75rem; color: #9ca3af; margin-left: auto; }
+.header-sub { font-size: 0.75rem; color: #9ca3af; margin-top: 0.125rem; }
+.header-badge { margin-left: auto; }
 
-.field-row { display: flex; flex-direction: column; gap: 0.375rem; }
-.field-label { font-size: 0.8125rem; font-weight: 500; color: #374151; display: flex; align-items: center; }
-:root.dark .field-label { color: #d1d5db; }
-
-.pills-row {
-  display: flex; flex-wrap: wrap; gap: 0.5rem; padding: 0.25rem 0;
+/* ---------- Body grid ---------- */
+.draft-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 18rem;
+  gap: 1.75rem;
 }
-.pill-select :deep(button) { font-size: 0.75rem; min-width: auto; }
-
-.hint-box {
-  background-color: #fffbeb;
-  border: 1px solid #fde68a;
-  border-radius: 0.5rem;
-  padding: 0.75rem 1rem;
-  font-size: 0.8125rem;
+@media (max-width: 768px) {
+  .draft-body { grid-template-columns: 1fr; gap: 1rem; }
 }
-:root.dark .hint-box { background-color: rgba(251, 191, 36, 0.08); border-color: rgba(251, 191, 36, 0.3); }
-.hint-head {
-  display: flex; align-items: center; gap: 0.375rem;
-  color: #92400e; font-weight: 500; margin-bottom: 0.375rem;
-}
-:root.dark .hint-head { color: #fcd34d; }
-.hint-list { list-style: disc; padding-left: 1.5rem; color: #78350f; }
-:root.dark .hint-list { color: #fde68a; }
-.hint-list li { padding: 0.125rem 0; }
 
-.repro-card {
+/* ---------- Left content column ---------- */
+.content-col {
+  display: flex; flex-direction: column; gap: 1.125rem;
+  min-width: 0;
+}
+.content-col :deep(.issue-title-input) {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: #111827;
+  letter-spacing: -0.01em;
+  padding: 0.5rem 0.75rem;
+}
+:root.dark .content-col :deep(.issue-title-input) { color: #f3f4f6; }
+.content-col :deep(.issue-desc-input) {
+  font-size: 0.875rem;
+  color: #4b5563;
+  line-height: 1.55;
+  padding: 0.5rem 0.75rem;
+}
+:root.dark .content-col :deep(.issue-desc-input) { color: #9ca3af; }
+
+.section {
+  display: flex; flex-direction: column; gap: 0.4375rem;
+  padding-top: 0.25rem;
+  border-top: 1px dashed #f3f4f6;
+}
+:root.dark .section { border-top-color: #374151; }
+.section-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+:root.dark .section-label { color: #9ca3af; }
+.content-col :deep(.issue-body-input) {
+  font-size: 0.875rem;
+  color: #1f2937;
+  line-height: 1.6;
+}
+:root.dark .content-col :deep(.issue-body-input) { color: #e5e7eb; }
+
+/* ---------- Right meta sidebar ---------- */
+.meta-col {
+  display: flex; flex-direction: column; gap: 0.875rem;
+  padding-left: 1.25rem;
+  border-left: 1px solid #f3f4f6;
+}
+:root.dark .meta-col { border-left-color: #374151; }
+@media (max-width: 768px) {
+  .meta-col { padding-left: 0; border-left: 0; border-top: 1px solid #f3f4f6; padding-top: 1rem; }
+  :root.dark .meta-col { border-top-color: #374151; }
+}
+
+.meta-group { display: flex; flex-direction: column; gap: 0.5rem; }
+.meta-row {
+  display: grid;
+  grid-template-columns: 4.5rem 1fr;
+  align-items: center;
+  gap: 0.5rem;
+}
+.meta-label {
+  font-size: 0.75rem;
+  color: #6b7280;
+  font-weight: 500;
+}
+:root.dark .meta-label { color: #9ca3af; }
+.meta-select { width: 100%; }
+.meta-select :deep(button) {
+  font-size: 0.75rem;
+  width: 100%;
+  justify-content: space-between;
   background-color: #f9fafb;
-  border: 1px solid #f3f4f6;
-  border-radius: 0.625rem;
-  padding: 1rem;
-  display: flex; flex-direction: column; gap: 0.625rem;
+  border-color: #e5e7eb;
 }
-:root.dark .repro-card { background-color: #111827; border-color: #1f2937; }
-.repro-head { display: flex; align-items: center; gap: 0.375rem; }
-.repro-label { font-size: 0.8125rem; font-weight: 500; color: #374151; }
-:root.dark .repro-label { color: #d1d5db; }
+:root.dark .meta-select :deep(button) {
+  background-color: #111827;
+  border-color: #374151;
+}
 
+/* AI suggest callout */
+.ai-suggest {
+  background: linear-gradient(135deg, rgba(124, 58, 237, 0.04), rgba(245, 158, 11, 0.04));
+  border: 1px solid rgba(124, 58, 237, 0.12);
+  border-radius: 0.625rem;
+  padding: 0.625rem 0.75rem;
+  font-size: 0.75rem;
+}
+:root.dark .ai-suggest {
+  background: linear-gradient(135deg, rgba(124, 58, 237, 0.12), rgba(245, 158, 11, 0.08));
+  border-color: rgba(124, 58, 237, 0.3);
+}
+.ai-suggest-head {
+  display: flex; align-items: center; gap: 0.3125rem;
+  color: #7c3aed; font-weight: 600; margin-bottom: 0.375rem;
+}
+:root.dark .ai-suggest-head { color: #c4b5fd; }
+.ai-suggest-list {
+  list-style: none; padding: 0; margin: 0;
+  display: flex; flex-direction: column; gap: 0.25rem;
+  color: #6b7280;
+  line-height: 1.5;
+}
+:root.dark .ai-suggest-list { color: #d1d5db; }
+.ai-suggest-list li {
+  padding-left: 0.75rem;
+  position: relative;
+}
+.ai-suggest-list li::before {
+  content: '·';
+  position: absolute;
+  left: 0.25rem;
+  color: #7c3aed;
+  font-weight: 700;
+}
+
+/* ---------- Footer ---------- */
 .submit-error { font-size: 0.8125rem; color: #dc2626; }
 
 .footer {
@@ -298,8 +413,9 @@ function onSubmit() {
   padding-top: 0.875rem; border-top: 1px solid #f3f4f6;
 }
 :root.dark .footer { border-top-color: #374151; }
-.footer-hint { font-size: 0.75rem; color: #9ca3af; flex: 1; }
+.footer-spacer { flex: 1; }
 
+/* ---------- Success ---------- */
 .success { display: flex; flex-direction: column; align-items: center; gap: 0.75rem; padding: 2rem 0; }
 .success-icon {
   width: 4rem; height: 4rem; border-radius: 9999px;
@@ -313,5 +429,4 @@ function onSubmit() {
 .success-iss:hover { color: #6d28d9; text-decoration: underline; }
 .success-sub { font-size: 0.8125rem; color: #6b7280; margin-bottom: 0.5rem; }
 :root.dark .success-sub { color: #9ca3af; }
-
 </style>
