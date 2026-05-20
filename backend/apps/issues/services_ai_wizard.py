@@ -759,6 +759,7 @@ class AiChatService:
         attachment_ids: list,
         user,
         conversation_attachment_ids: list | None = None,
+        project=None,
     ) -> dict:
         """单次多轮对话调用。
 
@@ -786,7 +787,19 @@ class AiChatService:
         labels_dict = site.labels or {}
         labels_list = list(labels_dict.keys()) if isinstance(labels_dict, dict) else list(labels_dict)
 
-        # system_prompt 末尾追加项目侧的元数据 (可选标签 / 模块), 让 LLM 选择时有约束
+        # system_prompt 末尾追加项目元数据 (项目名 + 可选模块/标签) - 让 LLM 即使在 messages
+        # 被 checkpoint 清空后, 也能从 system prompt 知道"用户当前在哪个项目下创建 issue".
+        # 没有这一段, LLM 在新会话首轮会反复问"是哪个项目?"
+        project_block = ""
+        if project is not None:
+            proj_name = getattr(project, "name", "") or ""
+            proj_desc = (getattr(project, "description", "") or "").strip()
+            if proj_name:
+                project_block = f"当前项目: {proj_name}"
+                if proj_desc:
+                    # 截短防 prompt 膨胀; 200 字够说明项目背景了
+                    project_block += f"\n项目说明: {proj_desc[:200]}"
+                project_block += "\n"
         try:
             extra_context = prompt.user_prompt_template.format(
                 modules_json=json.dumps(modules, ensure_ascii=False),
@@ -794,7 +807,7 @@ class AiChatService:
             )
         except KeyError as e:
             raise AiWizardError(step=1, code="prompt_format_error", message=f"模板缺失变量 {e}")
-        system_prompt = f"{prompt.system_prompt}\n\n---\n{extra_context}"
+        system_prompt = f"{prompt.system_prompt}\n\n---\n{project_block}{extra_context}"
 
         # 加载本轮图片 (只挂到最后一条 user message 上)
         # 内部方法仍在 AiWizardService 上 — 复用免重写
@@ -907,6 +920,7 @@ class AiChatService:
                 attachment_ids or [],
                 user,
                 conversation_attachment_ids=conversation_attachment_ids,
+                project=project,
             )
         except AiWizardError as e:
             logger.warning(

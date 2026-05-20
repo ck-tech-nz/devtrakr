@@ -2112,3 +2112,49 @@ def test_stream_chat_dup_check_failure_swallowed(site_settings, monkeypatch, set
     names = [e[0] for e in events]
     assert "draft" in names and "done" in names
     assert "dup" not in names
+
+
+@pytest.mark.django_db
+def test_chat_injects_project_name_into_system_prompt(site_settings):
+    """LLM 即使在 messages 被清空后, 也必须能从 system_prompt 知道当前项目.
+    捕获实际送给 LLM 的 system_prompt, 断言包含项目名 + 说明。"""
+    from apps.issues.services_ai_wizard import AiChatService
+    from tests.factories import LLMConfigFactory, ProjectFactory
+    LLMConfigFactory(is_default=True, is_active=True)
+    project = ProjectFactory(name="贷后智能体", description="信贷催收自动化平台")
+
+    captured = {}
+    def fake_chat(self, **kwargs):
+        captured["system_prompt"] = kwargs.get("system_prompt")
+        return '{"action":"ask","question":"x"}'
+
+    with patch("apps.issues.services_ai_wizard.LLMClient.chat", new=fake_chat):
+        svc = AiChatService()
+        svc.chat(
+            messages=[{"role": "user", "content": "y"}],
+            attachment_ids=[], user=None,
+            project=project,
+        )
+
+    sp = captured["system_prompt"]
+    assert "当前项目: 贷后智能体" in sp, f"system_prompt 缺项目名: {sp!r}"
+    assert "信贷催收自动化平台" in sp, "system_prompt 缺项目说明"
+
+
+@pytest.mark.django_db
+def test_chat_omits_project_block_when_no_project(site_settings):
+    """没传 project 时 (理论不应发生, 但容错) system_prompt 不该有空白的'当前项目:' 块"""
+    from apps.issues.services_ai_wizard import AiChatService
+    from tests.factories import LLMConfigFactory
+    LLMConfigFactory(is_default=True, is_active=True)
+
+    captured = {}
+    def fake_chat(self, **kwargs):
+        captured["system_prompt"] = kwargs.get("system_prompt")
+        return '{"action":"ask","question":"x"}'
+
+    with patch("apps.issues.services_ai_wizard.LLMClient.chat", new=fake_chat):
+        svc = AiChatService()
+        svc.chat(messages=[{"role": "user", "content": "y"}], attachment_ids=[], user=None)
+
+    assert "当前项目:" not in captured["system_prompt"]
