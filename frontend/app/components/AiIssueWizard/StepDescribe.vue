@@ -97,7 +97,32 @@
           :disabled="analyzing"
         />
         <div class="toolbar-spacer" />
-        <span v-if="!analyzing && hintMessage" class="send-hint">{{ hintMessage }}</span>
+        <span v-if="!analyzing && validationHint" class="send-hint send-hint--warn">{{ validationHint }}</span>
+        <div
+          v-if="!analyzing"
+          class="send-mode-toggle"
+          role="group"
+          :aria-label="sendModeTitle"
+          :title="sendModeTitle"
+        >
+          <span class="send-mode-thumb" :class="{ 'send-mode-thumb--right': sendMode === 'modifier' }" aria-hidden="true" />
+          <button
+            type="button"
+            class="send-mode-opt"
+            :class="{ 'send-mode-opt--active': sendMode === 'enter' }"
+            :aria-pressed="sendMode === 'enter'"
+            title="Enter 直接发送 · Shift+Enter 换行"
+            @click="sendMode = 'enter'"
+          >Enter</button>
+          <button
+            type="button"
+            class="send-mode-opt"
+            :class="{ 'send-mode-opt--active': sendMode === 'modifier' }"
+            :aria-pressed="sendMode === 'modifier'"
+            :title="`${isMac ? '⌘' : 'Ctrl'}+Enter 发送 · Enter 换行`"
+            @click="sendMode = 'modifier'"
+          >{{ isMac ? '⌘↵' : 'Ctrl↵' }}</button>
+        </div>
         <UButton
           v-if="!analyzing"
           icon="i-heroicons-arrow-up"
@@ -105,7 +130,7 @@
           size="sm"
           :disabled="!canAnalyze"
           class="send-btn"
-          :title="hintMessage || 'AI 分析'"
+          :title="validationHint || sendModeTitle || 'AI 分析'"
           @click="onAnalyze"
         />
         <button
@@ -179,14 +204,35 @@ const isMac = computed(() => {
   if (typeof navigator === 'undefined') return false
   return /Mac|iPhone|iPad|iPod/.test(navigator.platform)
 })
-const sendShortcutHint = computed(() => `${isMac.value ? '⌘' : 'Ctrl'} + Enter 发送`)
 
-const hintMessage = computed(() => {
+// 发送键模式: 'enter' = 直接 Enter 发送, Shift+Enter 换行 / 'modifier' = ⌘/Ctrl+Enter 发送, Enter 换行.
+// 默认 modifier (跟历史行为一致, 不会让长按 Enter 的老用户突然误发)
+type SendMode = 'enter' | 'modifier'
+const SEND_MODE_KEY = 'ai-wizard:send-mode'
+function readSendMode(): SendMode {
+  if (typeof localStorage === 'undefined') return 'modifier'
+  return localStorage.getItem(SEND_MODE_KEY) === 'enter' ? 'enter' : 'modifier'
+}
+const sendMode = ref<SendMode>(readSendMode())
+watch(sendMode, (v) => {
+  if (typeof localStorage !== 'undefined') {
+    try { localStorage.setItem(SEND_MODE_KEY, v) } catch {}
+  }
+})
+
+const sendModeTitle = computed(() =>
+  sendMode.value === 'enter'
+    ? `Enter 发送 · Shift+Enter 换行 (${isMac.value ? '⌘' : 'Ctrl'}+Enter 也可发送)`
+    : `${isMac.value ? '⌘' : 'Ctrl'}+Enter 发送 · Enter 换行`,
+)
+
+// 只用于显示"为什么按了没反应" - 不再重复显示快捷键提示 (toggle 已表达)
+const validationHint = computed(() => {
   if (trimmedLen.value > 0 && trimmedLen.value < minLen.value) {
     return `至少 ${minLen.value} 个字（当前 ${trimmedLen.value}）`
   }
   if (trimmedLen.value >= minLen.value && !projectId.value) return '请选择项目'
-  return sendShortcutHint.value
+  return ''
 })
 
 function isImage(name: string): boolean {
@@ -247,7 +293,15 @@ function onAnalyze() {
 }
 
 function onKeydown(e: KeyboardEvent) {
-  if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+  if (e.key !== 'Enter') return
+  // ⌘/Ctrl+Enter 永远发送 (即便在 'enter' 模式下也是) - 给重度用户一个稳定的快捷键
+  if (e.metaKey || e.ctrlKey) {
+    e.preventDefault()
+    onAnalyze()
+    return
+  }
+  // 'enter' 模式: 裸 Enter 发送, Shift+Enter 走默认换行行为
+  if (sendMode.value === 'enter' && !e.shiftKey && !e.altKey) {
     e.preventDefault()
     onAnalyze()
   }
@@ -298,6 +352,69 @@ defineExpose({
   user-select: none;
 }
 :root.dark .send-hint { color: #6b7280; }
+/* 校验提示 (字数不够 / 没选项目) - 暖色, 比快捷键提示更"招手" */
+.send-hint--warn { color: #d97706; }
+:root.dark .send-hint--warn { color: #fbbf24; }
+
+/* ---------- 发送模式 toggle (Enter vs ⌘/Ctrl+Enter) ----------
+   分段开关, 滑块在两个选项间平移; 状态持久化在 localStorage */
+.send-mode-toggle {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  padding: 0.1875rem;
+  background-color: #f3f4f6;
+  border: 1px solid #e5e7eb;
+  border-radius: 9999px;
+  margin-right: 0.375rem;
+  user-select: none;
+  /* 防止 thumb 溢出圆角 */
+  overflow: hidden;
+}
+:root.dark .send-mode-toggle {
+  background-color: #111827;
+  border-color: #374151;
+}
+.send-mode-thumb {
+  position: absolute;
+  top: 0.1875rem;
+  left: 0.1875rem;
+  width: calc(50% - 0.1875rem);
+  height: calc(100% - 0.375rem);
+  background-color: #ffffff;
+  border-radius: 9999px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.12), 0 0 0 1px rgba(15, 23, 42, 0.04);
+  transition: transform 0.22s cubic-bezier(0.4, 0, 0.2, 1);
+  z-index: 0;
+}
+.send-mode-thumb--right { transform: translateX(100%); }
+:root.dark .send-mode-thumb {
+  background-color: #374151;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.35), 0 0 0 1px rgba(255, 255, 255, 0.04);
+}
+.send-mode-opt {
+  position: relative;
+  z-index: 1;
+  padding: 0.1875rem 0.5625rem;
+  min-width: 2.625rem;
+  border: 0;
+  background: transparent;
+  font-size: 0.6875rem;
+  line-height: 1;
+  color: #9ca3af;
+  cursor: pointer;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: 0.01em;
+  transition: color 0.18s ease;
+}
+.send-mode-opt:hover { color: #4b5563; }
+.send-mode-opt--active {
+  color: #111827;
+  font-weight: 600;
+}
+:root.dark .send-mode-opt { color: #6b7280; }
+:root.dark .send-mode-opt:hover { color: #d1d5db; }
+:root.dark .send-mode-opt--active { color: #f3f4f6; }
 
 .stop-btn {
   width: 1.875rem; height: 1.875rem;
