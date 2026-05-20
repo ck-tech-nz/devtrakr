@@ -45,13 +45,13 @@
 import { ref, reactive, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 
 const props = withDefaults(defineProps<{
-  bezelDepth?: number   // 边缘折射强度 (0..1). 默认刻意调弱: 太强会把字符采样到错位, 看着像翻转
-  bezelWidth?: number   // 边缘折射作用区域宽度 (0..0.5, UV 单位). 只在最外圈薄薄一层折射
+  bezelDepth?: number   // 边缘最大位移强度. 短边 (min(w,h)) 的比例 — 0.16 = 短边 16%, 约 6px on 37px 胶囊
+  bezelWidth?: number   // 折射作用区域宽度. 短边比例 — 0.12 = 短边 12%, 约 4-5px 边缘带
   blur?: number         // 叠加的高斯模糊 px
   saturation?: number   // 背景饱和度增强 (%)
 }>(), {
-  bezelDepth: 0.1,
-  bezelWidth: 0.08,
+  bezelDepth: 0.16,
+  bezelWidth: 0.12,
   blur: 0.4,
   saturation: 140,
 })
@@ -73,11 +73,11 @@ function smoothStep(a: number, b: number, t: number) {
   return x * x * (3 - 2 * x)
 }
 
-// 圆角矩形 SDF — 单位是按钮尺寸的一半 (即 -0.5..0.5 UV 空间)
-// halfW/halfH 是矩形半边长, r 是圆角半径; 返回到边的有符号距离 (内为负, 外为正)
-function roundedRectSDF(x: number, y: number, halfW: number, halfH: number, r: number) {
-  const qx = Math.abs(x) - halfW + r
-  const qy = Math.abs(y) - halfH + r
+// 圆角矩形 SDF — 像素空间. halfInnerW/halfInnerH 是 (按钮半宽 - 圆角半径) 等, r 是圆角半径
+// 返回到边的有符号距离 (内为负, 外为正), 单位是像素
+function roundedRectSDF(px: number, py: number, halfInnerW: number, halfInnerH: number, r: number) {
+  const qx = Math.abs(px) - halfInnerW
+  const qy = Math.abs(py) - halfInnerH
   return Math.min(Math.max(qx, qy), 0) + Math.hypot(Math.max(qx, 0), Math.max(qy, 0)) - r
 }
 
@@ -89,9 +89,16 @@ function generate() {
   size.w = w
   size.h = h
 
-  // CSS 圆角 (px) → 转 UV 比例 (相对 min(w,h)). border-radius:9999px 实际为 h/2 的胶囊形
   const cssRadius = parseFloat(getComputedStyle(btn.value).borderTopLeftRadius) || 0
-  const rUV = Math.min(cssRadius / Math.min(w, h), 0.5)
+  const radius = Math.min(cssRadius, w / 2, h / 2)
+  // SDF 用的内矩形 (圆角扣除后) 的半边长 — pill 形式 halfInnerH 会接近 0
+  const halfInnerW = w / 2 - radius
+  const halfInnerH = h / 2 - radius
+
+  // bezel 区域宽度 + 最大位移 — 都按短边比例算, 保证上下左右一致
+  const minDim = Math.min(w, h)
+  const bezelPx = Math.max(1, minDim * props.bezelWidth)
+  const displPx = minDim * props.bezelDepth
 
   const cvs = document.createElement('canvas')
   cvs.width = w
@@ -100,28 +107,46 @@ function generate() {
   if (!ctx) return
   const img = ctx.createImageData(w, h)
 
-  // 第一遍: 算每个像素的位移 (像素单位), 同时记录 maxScale 以归一化到 0..255
   const rawDx = new Float32Array(w * h)
   const rawDy = new Float32Array(w * h)
   let maxScale = 0
 
-  // 用 min(w,h) 把 SDF 调成各向同性 — 胶囊形按钮宽高差很大, 直接用 0.5 半边长会让宽边缘的位移过强
-  const aspectScale = Math.min(w, h) / Math.max(w, h)
-  const halfW = w >= h ? 0.5 : 0.5 * aspectScale
-  const halfH = h >= w ? 0.5 : 0.5 * aspectScale
-
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
-      // 把像素坐标映射到 -0.5..0.5 UV 空间; 长边方向保留 0.5, 短边按 aspect 缩放
-      const ix = (x / w - 0.5) * (w >= h ? 1 : aspectScale)
-      const iy = (y / h - 0.5) * (h >= w ? 1 : aspectScale)
-      const dist = roundedRectSDF(ix, iy, halfW, halfH, rUV * aspectScale)
-      // dist: 圆心区域 ~-0.5, 边上 0; 在 [-bezelWidth, 0] 内 smoothstep 出 0..1 边缘掩码
-      const edgeT = smoothStep(-props.bezelWidth, 0, dist)
-      const strength = edgeT * props.bezelDepth
-      // 折射方向: 把纹理向中心拉 (玻璃边缘把光线弯向法线)
-      const dx = -ix * strength * w
-      const dy = -iy * strength * h
+      // 中心相对像素坐标 (+ 0.5 让坐标落在像素中心)
+      const px = x + 0.5 - w / 2
+      const py = y + 0.5 - h / 2
+      const qx = Math.abs(px) - halfInnerW
+      const qy = Math.abs(py) - halfInnerH
+      const dist = Math.min(Math.max(qx, qy), 0) + Math.hypot(Math.max(qx, 0), Math.max(qy, 0)) - radius
+
+      // edgeT: bezel 区掩码, 0 (深处) → 1 (临边)
+      const strength = smoothStep(-bezelPx, 0, dist)
+
+      // 外法线方向 — 哪条边/角最近, 法线就指那里. 这样上下左右位移幅度一致, 不会因 aspect 失衡
+      let nx = 0
+      let ny = 0
+      if (qx > 0 && qy > 0) {
+        // 在四个圆角的弧带, 法线沿 (qx, qy) 方向
+        const len = Math.hypot(qx, qy) || 1
+        nx = (Math.sign(px) * qx) / len
+        ny = (Math.sign(py) * qy) / len
+      } else if (qx > qy) {
+        // 靠近左右长边
+        nx = Math.sign(px)
+        ny = 0
+      } else {
+        // 靠近上下短边
+        nx = 0
+        ny = Math.sign(py)
+      }
+
+      // 折射方向: 沿法线向内拉 (像凸透镜把外部光线汇向中心)
+      // 反向 = 朝外 (撑开式) — 这里选向内, Apple 风格更像凸透镜
+      const displ = strength * displPx
+      const dx = -nx * displ
+      const dy = -ny * displ
+
       const idx = y * w + x
       rawDx[idx] = dx
       rawDy[idx] = dy
