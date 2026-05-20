@@ -203,6 +203,35 @@
       </template>
     </div>
 
+    <!-- 草稿就绪时的快捷操作: OK 提交 / 优先级点选. 用户聚焦/输入对话框后会收起, 给自由文字让出空间. -->
+    <Transition name="quick-actions">
+      <div v-if="showQuickActions" class="quick-actions">
+        <button
+          type="button"
+          class="qa-submit"
+          :disabled="submitting"
+          title="直接提交当前草稿 - 不再问 AI"
+          @click="onQuickSubmit"
+        >
+          <UIcon name="i-heroicons-check" class="w-3.5 h-3.5" />
+          <span>OK 提交</span>
+        </button>
+        <span class="qa-divider" aria-hidden="true" />
+        <span class="qa-label">优先级</span>
+        <button
+          v-for="opt in priorityQuickPicks"
+          :key="opt.value"
+          type="button"
+          class="qa-priority"
+          :class="[`qa-priority--${opt.value.toLowerCase()}`, { 'qa-priority--active': currentPriority === opt.value }]"
+          :title="`改为 ${opt.value} ${opt.label}`"
+          @click="onQuickPriority(opt.value)"
+        >
+          <span class="qa-priority-dot" />{{ opt.label }}
+        </button>
+      </div>
+    </Transition>
+
     <!-- Composer -->
     <div class="composer-slot">
       <StepDescribe
@@ -214,6 +243,7 @@
         :ask-reply-mode="lastTurnIsAsk"
         @analyze="onAnalyze"
         @cancel="onBackToDescribe"
+        @composing-change="composerActive = $event"
       />
     </div>
 
@@ -265,6 +295,33 @@ function captureEditableDraftRef(el: any, turnId: string) {
 const wizard = useAiWizard()
 const submitting = ref(false)
 const submitError = ref('')
+// 用户聚焦/已在 composer 打字 = "正在自定义指令" - 收起快捷 chip 让出空间
+const composerActive = ref(false)
+
+const priorityQuickPicks = [
+  { value: 'P0' as const, label: '紧急' },
+  { value: 'P1' as const, label: '高' },
+  { value: 'P2' as const, label: '中' },
+  { value: 'P3' as const, label: '低' },
+]
+const currentPriority = computed(() => wizard.latestDraft.value?.turn.draft.priority || 'P2')
+// 有 live draft && 没在 compose 时显示快捷 chip
+const showQuickActions = computed(() =>
+  hasLiveDraft.value && !composerActive.value && wizard.state.value !== 'analyzing',
+)
+
+function onQuickSubmit() {
+  // 直接走草稿卡的提交路径 - 跟"⌘+Enter / 点提交按钮"完全等价, 不打扰 LLM
+  editableDraftRef.value?.triggerSubmit()
+}
+
+function onQuickPriority(p: 'P0' | 'P1' | 'P2' | 'P3') {
+  const live = wizard.latestDraft.value?.turn
+  if (!live || live.role !== 'ai-draft') return
+  // 直接改本地草稿. 若用户接着发一条 LLM 消息让重写, LLM 可能不知道这次手动改 -
+  // 用户可再点一次, 成本极低. 不为这个加一轮 LLM 调用.
+  wizard.updateDraftInPlace(live.id, { priority: p })
+}
 
 // thread 内是否有任意 turn
 const inChatMode = computed(() => wizard.turns.value.length > 0)
@@ -1056,6 +1113,139 @@ onBeforeUnmount(() => {
 @media (max-width: 768px) {
   .msg-draft-card { width: 100%; }
   .msg-draft-card :deep(.draft-body) { grid-template-columns: 1fr; }
+}
+
+/* ---------- 快捷操作 chip (草稿就绪时显示在 composer 上方) ---------- */
+/* 用户聚焦 composer 或开始打字后自动收起, 不抢空间 */
+.quick-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.4375rem;
+  flex-wrap: wrap;
+  padding: 0.375rem 0.125rem;
+  flex-shrink: 0;
+}
+.qa-submit {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3125rem;
+  padding: 0.3125rem 0.6875rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #047857;
+  background-color: #ecfdf5;
+  border: 1px solid rgba(16, 185, 129, 0.35);
+  border-radius: 9999px;
+  cursor: pointer;
+  transition: background-color 0.15s, border-color 0.15s, transform 0.15s, box-shadow 0.15s;
+}
+.qa-submit:hover {
+  background-color: #d1fae5;
+  border-color: rgba(16, 185, 129, 0.6);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 10px -4px rgba(16, 185, 129, 0.35);
+}
+.qa-submit:active { transform: translateY(0); }
+.qa-submit:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+:root.dark .qa-submit {
+  color: #6ee7b7;
+  background-color: rgba(16, 185, 129, 0.14);
+  border-color: rgba(16, 185, 129, 0.4);
+}
+:root.dark .qa-submit:hover {
+  background-color: rgba(16, 185, 129, 0.22);
+  border-color: rgba(16, 185, 129, 0.6);
+}
+
+.qa-divider {
+  width: 1px;
+  height: 1rem;
+  background-color: #e5e7eb;
+  margin: 0 0.125rem;
+}
+:root.dark .qa-divider { background-color: #374151; }
+
+.qa-label {
+  font-size: 0.6875rem;
+  color: #6b7280;
+  user-select: none;
+}
+:root.dark .qa-label { color: #9ca3af; }
+
+.qa-priority {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3125rem;
+  padding: 0.25rem 0.5625rem;
+  font-size: 0.6875rem;
+  font-weight: 500;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: #4b5563;
+  background-color: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 9999px;
+  cursor: pointer;
+  transition: background-color 0.15s, border-color 0.15s, color 0.15s;
+}
+.qa-priority:hover {
+  background-color: #f9fafb;
+  border-color: #d1d5db;
+}
+.qa-priority-dot {
+  width: 0.4375rem;
+  height: 0.4375rem;
+  border-radius: 9999px;
+  background-color: currentColor;
+}
+.qa-priority--p0 { color: #dc2626; }
+.qa-priority--p1 { color: #ea580c; }
+.qa-priority--p2 { color: #ca8a04; }
+.qa-priority--p3 { color: #6b7280; }
+.qa-priority--active {
+  background-color: #111827;
+  border-color: #111827;
+  color: #f9fafb;
+}
+.qa-priority--active .qa-priority-dot {
+  background-color: currentColor;
+}
+.qa-priority--active.qa-priority--p0 { background-color: #b91c1c; border-color: #b91c1c; }
+.qa-priority--active.qa-priority--p1 { background-color: #c2410c; border-color: #c2410c; }
+.qa-priority--active.qa-priority--p2 { background-color: #a16207; border-color: #a16207; }
+.qa-priority--active.qa-priority--p3 { background-color: #4b5563; border-color: #4b5563; }
+:root.dark .qa-priority {
+  color: #d1d5db;
+  background-color: #1f2937;
+  border-color: #374151;
+}
+:root.dark .qa-priority:hover {
+  background-color: #111827;
+  border-color: #4b5563;
+}
+
+/* Transition: 滑入/滑出 - 让收起的过程看起来"折叠"而不是消失 */
+.quick-actions-enter-active,
+.quick-actions-leave-active {
+  transition: opacity 0.18s ease, transform 0.22s cubic-bezier(0.4, 0, 0.2, 1), max-height 0.22s ease;
+  overflow: hidden;
+}
+.quick-actions-enter-from,
+.quick-actions-leave-to {
+  opacity: 0;
+  transform: translateY(4px);
+  max-height: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+.quick-actions-enter-to,
+.quick-actions-leave-from {
+  opacity: 1;
+  max-height: 3rem;
 }
 
 /* ---------- Composer slot ---------- */

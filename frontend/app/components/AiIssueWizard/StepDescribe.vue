@@ -47,6 +47,8 @@
         @drop.prevent="onDrop"
         @dragover.prevent
         @keydown="onKeydown"
+        @focusin="textareaFocused = true"
+        @focusout="textareaFocused = false"
       />
 
       <!-- 隐藏文件输入 -->
@@ -166,6 +168,8 @@ const props = defineProps<{
 const emit = defineEmits<{
   analyze: [payload: { description: string; project: string; attachments: AttachmentRef[] }]
   cancel: []
+  /** 父级用于收起 revise 模式的快捷操作 chip - active = textarea 已聚焦 或 已有文字 */
+  'composing-change': [active: boolean]
 }>()
 
 const { api } = useApi()
@@ -177,6 +181,14 @@ const imgInputRef = ref<HTMLInputElement | null>(null)
 const attachments = ref<AttachmentRef[]>([])
 const previewOpen = ref(false)
 const previewAttachment = ref<AttachmentRef | null>(null)
+const textareaFocused = ref(false)
+
+// 聚焦 或 已有文字 都算"用户正在组合自定义消息" - 父级用来收起快捷操作 chip
+watch(
+  [textareaFocused, () => description.value.trim().length > 0],
+  ([focused, hasText]) => emit('composing-change', focused || hasText),
+  { immediate: true },
+)
 
 function openPreview(att: AttachmentRef) {
   previewAttachment.value = att
@@ -196,7 +208,7 @@ const canAnalyze = computed(() => trimmedLen.value >= minLen.value && !!projectI
 const placeholderText = computed(() => {
   if (props.analyzing) return 'AI 正在思考，可点击 ■ 取消…'
   if (props.askReplyMode) return '回答 AI 刚才的问题…'
-  if (props.reviseMode) return '告诉 AI 怎么改这份草稿，例如「复现步骤加一条 xxx」「优先级提到 P0」「OK 提交」'
+  if (props.reviseMode) return '告诉 AI 怎么改这份草稿，例如「复现步骤加一条 xxx」「描述更详细一些」'
   return '描述问题：哪个页面/角色，做了什么，看到什么。可以贴截图——AI 会读取截图内容。'
 })
 

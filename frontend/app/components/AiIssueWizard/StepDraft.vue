@@ -27,7 +27,7 @@
             Issue 草稿
             <span v-if="(version || 0) > 1" class="header-version">v{{ version }}</span>
           </div>
-          <div class="header-sub">{{ isEditable ? 'AI 已自动分析 · 确认或修改后一键提交' : '该版本已被新版替代,仅供查看' }}</div>
+          <div class="header-sub">{{ isEditable ? '可直接编辑下方字段后点提交, 或在底部对话框告诉 AI 怎么改' : '该版本已被新版替代,仅供查看' }}</div>
         </div>
         <AiBadge kind="generated" class="header-badge" />
       </div>
@@ -218,7 +218,14 @@ const form = ref({
   // 默认留空;提交后 Celery 异步跑 issue_auto_assign 自动挑人,
   // 用户在下拉里手动选择会优先于自动分派
   assignee: '',
-  project: props.initialProjectId,
+  // 父级 lastAnalyzedProject 可能是 number/string, 显式 String() 让 USelect 严格比对成功
+  project: props.initialProjectId ? String(props.initialProjectId) : '',
+})
+
+// 兜底: 若 props.initialProjectId 在 mount 之后才推到 (上游异步加载),
+// 自动同步进 form.project. 用户手动改过 (form.project 非空) 时不覆盖.
+watch(() => props.initialProjectId, (v) => {
+  if (v && !form.value.project) form.value.project = String(v)
 })
 
 const priorityOptions = [
