@@ -97,3 +97,99 @@ class TestImageUpload:
         f = SimpleUploadedFile("notes.txt", b"hello", content_type="text/plain")
         response = auth_client.post(self.URL, {"file": f}, format="multipart")
         assert response.status_code == 200
+
+
+@pytest.mark.django_db
+class TestImageUploadDedup:
+    """同 user 上传相同 bytes 时复用已有 Attachment, 节省存储 + 让 LLM 不会看到两份同图。"""
+    URL = "/api/tools/upload/image/"
+
+    @patch("apps.tools.storage.upload_image")
+    def test_same_bytes_returns_same_attachment_id(self, mock_upload, auth_client):
+        """同 user 第二次上传相同 bytes 应返回首次的 id, 不写 storage, DB 不新增行。"""
+        from apps.tools.models import Attachment
+        mock_upload.return_value = ("http://minio/x.png", "2026/05/x.png")
+
+        f1 = SimpleUploadedFile("a.png", b"\x89PNG\r\n\x1a\nidentical", content_type="image/png")
+        r1 = auth_client.post(self.URL, {"file": f1}, format="multipart")
+        assert r1.status_code == 200
+        id1 = r1.data["id"]
+        assert r1.data.get("deduped") is not True
+        assert mock_upload.call_count == 1
+        assert Attachment.objects.count() == 1
+
+        # 第二次上传相同 bytes (文件名不同也无所谓 — hash 一样)
+        f2 = SimpleUploadedFile("b.png", b"\x89PNG\r\n\x1a\nidentical", content_type="image/png")
+        r2 = auth_client.post(self.URL, {"file": f2}, format="multipart")
+        assert r2.status_code == 200
+        assert r2.data["id"] == id1, "同 bytes 应复用 attachment id"
+        assert r2.data["deduped"] is True
+        assert mock_upload.call_count == 1, "dedup 时不应再写 storage"
+        assert Attachment.objects.count() == 1, "DB 不应新增行"
+
+    @patch("apps.tools.storage.upload_image")
+    def test_different_bytes_returns_different_ids(self, mock_upload, auth_client):
+        from apps.tools.models import Attachment
+        mock_upload.side_effect = [
+            ("http://minio/a.png", "2026/05/a.png"),
+            ("http://minio/b.png", "2026/05/b.png"),
+        ]
+
+        r1 = auth_client.post(
+            self.URL,
+            {"file": SimpleUploadedFile("a.png", b"\x89PNGcontent-a", content_type="image/png")},
+            format="multipart",
+        )
+        r2 = auth_client.post(
+            self.URL,
+            {"file": SimpleUploadedFile("b.png", b"\x89PNGcontent-b", content_type="image/png")},
+            format="multipart",
+        )
+        assert r1.data["id"] != r2.data["id"]
+        assert Attachment.objects.count() == 2
+
+    @patch("apps.tools.storage.upload_image")
+    def test_dedup_scoped_to_uploader(self, mock_upload, api_client):
+        """不同 user 上传相同 bytes 各自得到独立 attachment - 避免跨用户权限混淆。"""
+        from apps.tools.models import Attachment
+        from tests.factories import UserFactory
+        mock_upload.side_effect = [
+            ("http://minio/x1.png", "2026/05/x1.png"),
+            ("http://minio/x2.png", "2026/05/x2.png"),
+        ]
+
+        user_a = UserFactory()
+        user_b = UserFactory()
+        same_bytes = b"\x89PNGshared-bytes"
+
+        api_client.force_authenticate(user_a)
+        r_a = api_client.post(
+            self.URL,
+            {"file": SimpleUploadedFile("x.png", same_bytes, content_type="image/png")},
+            format="multipart",
+        )
+        api_client.force_authenticate(user_b)
+        r_b = api_client.post(
+            self.URL,
+            {"file": SimpleUploadedFile("x.png", same_bytes, content_type="image/png")},
+            format="multipart",
+        )
+        assert r_a.data["id"] != r_b.data["id"]
+        assert Attachment.objects.count() == 2
+
+    @patch("apps.tools.storage.upload_image")
+    def test_content_hash_stored_for_new_uploads(self, mock_upload, auth_client):
+        """新上传 attachment 必须落 content_hash, 否则下次重复上传 dedup 不工作。"""
+        import hashlib
+        from apps.tools.models import Attachment
+        mock_upload.return_value = ("http://minio/x.png", "2026/05/x.png")
+
+        body = b"\x89PNGbytes-for-hash-check"
+        expected = hashlib.sha256(body).hexdigest()
+        r = auth_client.post(
+            self.URL,
+            {"file": SimpleUploadedFile("x.png", body, content_type="image/png")},
+            format="multipart",
+        )
+        att = Attachment.objects.get(id=r.data["id"])
+        assert att.content_hash == expected
