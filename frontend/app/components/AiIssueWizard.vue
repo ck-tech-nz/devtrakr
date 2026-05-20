@@ -425,8 +425,8 @@ onBeforeUnmount(() => {
   z-index: 50;
   display: inline-flex;
   align-items: center;
-  gap: 0.5rem;
-  padding: 0.5625rem 1rem;  /* 加点 padding, 让玻璃有"体量" */
+  gap: 0.4375rem;
+  padding: 0.5rem 0.875rem;
   /* iOS 26 Liquid Glass: 真折射由 <LiquidGlass> 通过 SVG feDisplacementMap 提供,
      这里只负责形态 (边/影/高光) + 一丝冷色折射底, 让玻璃在纯白页面上也能看出来. */
   background-image: linear-gradient(
@@ -436,21 +436,18 @@ onBeforeUnmount(() => {
     rgba(255, 255, 255, 0.08) 100%
   );
   background-color: transparent;
-  border: 1px solid rgba(0, 0, 0, 0.09);
+  border: 1px solid rgba(0, 0, 0, 0.1);
   border-radius: 9999px;
   font-size: 0.8125rem;
   font-weight: 500;
   color: #374151;
   cursor: pointer;
-  /* 玻璃厚度 = 顶面高光 (粗) + 内圈高光 (玻璃内壁折射光) + 底面暗线 (玻璃体) + 浮起投影 */
+  /* 上沿白高光 + 下沿暗线 = 玻璃厚度, 外加双层浮起阴影 */
   box-shadow:
-    inset 0 1.5px 0.5px rgba(255, 255, 255, 0.95),       /* 顶面亮边: 入射光打在玻璃顶 */
-    inset 0 0 0 1px rgba(255, 255, 255, 0.35),           /* 内壁圈光: 玻璃内表面环反射 */
-    inset 0 -1.5px 1px -0.5px rgba(15, 23, 42, 0.12),    /* 底面暗线: 玻璃体阴影 */
-    inset 0 -3px 4px -2px rgba(15, 23, 42, 0.06),        /* 底面渐变暗: 玻璃厚度感 */
-    0 1px 2px rgba(15, 23, 42, 0.08),                    /* 紧贴投影: 玻璃压在页面上 */
-    0 10px 30px -8px rgba(15, 23, 42, 0.22),             /* 主投影: 玻璃浮起的距离感 */
-    0 18px 40px -16px rgba(15, 23, 42, 0.15);            /* 远投影: 进一步拉高浮起 */
+    inset 0 1px 0.5px rgba(255, 255, 255, 0.6),
+    inset 0 -1px 0.5px rgba(0, 0, 0, 0.05),
+    0 8px 24px -6px rgba(15, 23, 42, 0.15),
+    0 3px 8px -2px rgba(15, 23, 42, 0.08);
   transition: color 0.2s, background-color 0.2s, border-color 0.2s, transform 0.2s, box-shadow 0.2s;
 }
 .clear-btn:hover {
