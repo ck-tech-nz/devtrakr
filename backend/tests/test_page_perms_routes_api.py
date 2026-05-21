@@ -132,3 +132,30 @@ class TestRoutesAPIHierarchy:
         )
         assert resp.status_code == 400
         assert "parent" in resp.json()
+
+    def test_create_with_leaf_as_parent_returns_400(self, superuser_client):
+        PageRoute.objects.create(
+            path="/app/leaf", label="Leaf", source="manual",
+        )
+        resp = superuser_client.post(
+            "/api/page-perms/routes/",
+            {"path": "/app/x", "label": "X", "parent": "/app/leaf"},
+            format="json",
+        )
+        assert resp.status_code == 400
+        assert "parent" in resp.json()
+
+    def test_create_with_three_level_nesting_returns_400(self, superuser_client):
+        a = PageRoute.objects.create(
+            path="#group:a", label="A", is_group=True, source="manual",
+        )
+        PageRoute.objects.create(
+            path="#group:b", label="B", is_group=True, parent=a, source="manual",
+        )
+        resp = superuser_client.post(
+            "/api/page-perms/routes/",
+            {"path": "/app/x", "label": "X", "parent": "#group:b"},
+            format="json",
+        )
+        assert resp.status_code == 400
+        assert "parent" in resp.json()

@@ -62,11 +62,21 @@ class PageRouteSerializer(serializers.ModelSerializer):
                 f"Parent route '{value}' does not exist."
             )
 
-    def create(self, validated_data):
-        return super().create(validated_data)
+    def validate(self, attrs):
+        # Mirror PageRoute.clean() so the API can't bypass the hierarchy guard.
+        # Admin runs clean() via ModelForm; DRF doesn't, so we do it explicitly.
+        from django.core.exceptions import ValidationError as DjangoValidationError
 
-    def update(self, instance, validated_data):
-        return super().update(instance, validated_data)
+        instance = self.instance or PageRoute(**{k: v for k, v in attrs.items() if k != "source"})
+        for field, value in attrs.items():
+            if field == "source":
+                continue
+            setattr(instance, field, value)
+        try:
+            instance.clean()
+        except DjangoValidationError as exc:
+            raise serializers.ValidationError(exc.message_dict if hasattr(exc, "message_dict") else {"non_field_errors": exc.messages})
+        return attrs
 
 
 class PermissionSerializer(serializers.ModelSerializer):
