@@ -4,6 +4,8 @@ export interface PageRouteConfig {
   label: string
   icon: string
   permission: string | null
+  parent: string | null
+  is_group: boolean
   show_in_nav: boolean
   sort_order: number
   is_active: boolean
