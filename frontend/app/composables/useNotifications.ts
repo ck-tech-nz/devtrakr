@@ -18,7 +18,7 @@ interface PaginatedResponse<T> {
   results: T[]
 }
 
-const POLL_INTERVAL = 30_000
+const POLL_INTERVAL = 60_000
 
 export function useNotifications() {
   const { api } = useApi()

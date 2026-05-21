@@ -93,7 +93,7 @@ let pollTimer: ReturnType<typeof setInterval> | null = null
 
 function startPolling() {
   if (pollTimer) return
-  pollTimer = setInterval(pollStatus, 5_000)
+  pollTimer = setInterval(pollStatus, 60_000)
 }
 
 function stopPolling() {

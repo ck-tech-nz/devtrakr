@@ -1269,7 +1269,7 @@ function pollAnalysisStatus(analysisId: number | undefined) {
         aiAnalyzing.value = false
       }
     }
-  }, 3000)
+  }, 5000)
 }
 
 

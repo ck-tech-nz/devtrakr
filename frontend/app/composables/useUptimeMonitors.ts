@@ -14,7 +14,7 @@ export interface UptimeMonitor {
   outage_started_at: string | null
 }
 
-const POLL_INTERVAL_MS = 5_000
+const POLL_INTERVAL_MS = 60_000
 
 const monitors = ref<UptimeMonitor[]>([])
 let subscribers = 0
