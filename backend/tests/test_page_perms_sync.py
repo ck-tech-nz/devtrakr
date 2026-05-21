@@ -80,3 +80,13 @@ class TestSyncPagePerms:
         assert admin_route.meta == {"adminOnly": True}
         hidden_route = PageRoute.objects.get(path="/app/hidden")
         assert hidden_route.show_in_nav is False
+
+    def test_roadmap_route_seeded_from_production_config(self):
+        # 不覆盖 settings.PAGE_PERMS，验证生产配置中 /app/roadmap 能被 sync 命令正确建立
+        call_command("sync_page_perms")
+        route = PageRoute.objects.get(path="/app/roadmap")
+        assert route.label == "产品路线图"
+        assert route.icon == "i-heroicons-map"
+        assert route.permission is None
+        assert route.show_in_nav is True
+        assert route.source == "seed"

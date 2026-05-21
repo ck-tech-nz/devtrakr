@@ -1,0 +1,100 @@
+{
+  "items": [
+    {
+      "id": "devtrack-v2-2026q3",
+      "date": "2026-09-01",
+      "title": "DevTrack v2.0",
+      "description": "看板视图、AI 计划周报与移动端工作流的整合大版本。",
+      "status": "计划中",
+      "type": "里程碑"
+    },
+    {
+      "id": "issue-board-drag",
+      "date": "2026-07-20",
+      "title": "Issue 看板支持拖拽",
+      "description": "在状态列之间拖拽 Issue 卡片即可改状态，无需弹窗。",
+      "status": "计划中",
+      "type": "功能"
+    },
+    {
+      "id": "kanban-view-2026q3",
+      "date": "2026-07-01",
+      "title": "项目看板视图",
+      "description": "按状态列展示 Issue,支持按负责人、标签和优先级过滤。",
+      "status": "计划中",
+      "type": "功能"
+    },
+    {
+      "id": "mobile-layout-polish-2026-06",
+      "date": "2026-06-05",
+      "title": "移动端布局优化",
+      "description": "首页、详情页和侧边栏在小屏下的密度和触控目标尺寸全面调整。",
+      "status": "计划中",
+      "type": "优化"
+    },
+    {
+      "id": "roadmap-page-2026-05",
+      "date": "2026-05-20",
+      "title": "产品路线图页面",
+      "description": "公开展示我们做过、正在做和未来要做的事;以居中脊线时间线呈现。",
+      "status": "进行中",
+      "type": "功能"
+    },
+    {
+      "id": "ai-auto-assign-2026-05",
+      "date": "2026-05-15",
+      "title": "AI 自动分配 Issue",
+      "description": "根据当前负载和历史解决率给新 Issue 推荐处理人,新 Issue 创建即生效。",
+      "status": "已完成",
+      "type": "功能"
+    },
+    {
+      "id": "uptime-monitoring-2026-05",
+      "date": "2026-05-10",
+      "title": "生产环境 Uptime 监控",
+      "description": "首页和顶部全局 Banner 显示项目 URL 健康状态,异常时提示运维。",
+      "status": "已完成",
+      "type": "里程碑"
+    },
+    {
+      "id": "ai-duplicate-check-2026-05",
+      "date": "2026-05-05",
+      "title": "AI Issue 重复检查",
+      "description": "新建 Issue 时即时检测潜在重复条目,降低无效工单。",
+      "status": "已完成",
+      "type": "功能"
+    },
+    {
+      "id": "ai-issue-wizard-2026-04",
+      "date": "2026-04-28",
+      "title": "AI Issue 创建向导",
+      "description": "支持图文输入,自动归类项目、类型与优先级,并预选处理人。",
+      "status": "已完成",
+      "type": "功能"
+    },
+    {
+      "id": "notifications-broadcast-2026-04",
+      "date": "2026-04-20",
+      "title": "进场广播通知",
+      "description": "用户登录后弹窗展示重要公告,可按用户组定向投放。",
+      "status": "已完成",
+      "type": "功能"
+    },
+    {
+      "id": "markdown-editor-polish-2026-04",
+      "date": "2026-04-10",
+      "title": "富文本编辑器增强",
+      "description": "支持 Markdown 附件预览、下载和 Hover 弹层。",
+      "status": "已完成",
+      "type": "优化"
+    },
+    {
+      "id": "devtrack-v1-launch-2026-04",
+      "date": "2026-04-01",
+      "title": "DevTrack v1.0 上线",
+      "description": "项目管理、Issue 跟踪、KPI 与权限管理首发就绪。",
+      "status": "已完成",
+      "type": "里程碑"
+    }
+  ]
+}
