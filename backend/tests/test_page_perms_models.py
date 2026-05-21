@@ -42,3 +42,41 @@ class TestPageRouteModel:
         perm.delete()
         route.refresh_from_db()
         assert route.permission is None
+
+
+class TestPageRouteHierarchy:
+    def test_group_row_can_be_created(self):
+        group = PageRoute.objects.create(
+            path="#group:project-mgmt",
+            label="项目管理",
+            icon="i-heroicons-folder",
+            is_group=True,
+        )
+        assert group.is_group is True
+        assert group.parent is None
+
+    def test_leaf_can_reference_parent(self):
+        group = PageRoute.objects.create(
+            path="#group:project-mgmt", label="项目管理", is_group=True,
+        )
+        leaf = PageRoute.objects.create(
+            path="/app/projects", label="项目列表", parent=group,
+        )
+        leaf.refresh_from_db()
+        assert leaf.parent == group
+        assert list(group.children.all()) == [leaf]
+
+    def test_parent_set_null_on_delete(self):
+        group = PageRoute.objects.create(
+            path="#group:tmp", label="临时", is_group=True,
+        )
+        leaf = PageRoute.objects.create(
+            path="/app/x", label="X", parent=group,
+        )
+        group.delete()
+        leaf.refresh_from_db()
+        assert leaf.parent is None
+
+    def test_leaf_defaults_to_not_group(self):
+        leaf = PageRoute.objects.create(path="/app/x", label="X")
+        assert leaf.is_group is False
