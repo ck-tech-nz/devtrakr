@@ -54,12 +54,23 @@ PAGE_PERMS = {
 
     # Seed route data (synced by sync_page_perms command)
     "SEED_ROUTES": [
+        # A group row — renders as a parent in the sidebar; not a navigable page.
+        # By convention, use a synthetic path prefixed with `#group:`.
+        {
+            "path": "#group:dashboards",
+            "label": "Dashboards",
+            "icon": "folder-icon",
+            "is_group": True,
+            "sort_order": 0,
+        },
+        # A leaf route, linked to its parent group by `parent` (the parent's path).
         {
             "path": "/app/dashboard",
             "label": "Dashboard",
             "icon": "dashboard-icon",
             "permission": "myapp.view_dashboard",  # app_label.codename format, or None
-            "sort_order": 0,
+            "parent": "#group:dashboards",  # null/omit for top-level
+            "sort_order": 1,
             "meta": {},  # arbitrary JSON for frontend use
         },
     ],
@@ -105,8 +116,10 @@ All options can be combined; the final permission set is the union.
   "label": "Dashboard",
   "icon": "icon-class",
   "permission": "myapp.view_dashboard",
+  "parent": "#group:dashboards",
+  "is_group": false,
   "show_in_nav": true,
-  "sort_order": 0,
+  "sort_order": 1,
   "is_active": true,
   "meta": {},
   "source": "seed"
@@ -114,6 +127,8 @@ All options can be combined; the final permission set is the union.
 ```
 
 The `permission` field accepts and returns `"app_label.codename"` strings. Set to `null` for no permission requirement.
+
+The `parent` field is the parent route's `path` (a string), or `null` for top-level entries. The `is_group` flag marks rows that are sidebar groups rather than navigable pages — they have children and no `permission` of their own. Only one level of nesting is supported (a group cannot have a group parent); this is enforced by `PageRoute.clean()`.
 
 ### Permissions
 
@@ -138,7 +153,14 @@ On login, call `GET /api/page-perms/routes/` to get the full route-permission ma
 
 ### 2. Build navigation
 
-Filter routes where `show_in_nav` is true. For each route, check if the current user has the required `permission` (from your user/auth endpoint). Hide routes the user cannot access.
+Filter routes where `show_in_nav` is true and `is_active` is true. For each route, check if the current user has the required `permission` (from your user/auth endpoint). Hide routes the user cannot access.
+
+To render a **two-level hierarchy**, group the rows by `parent`:
+
+1. Pick rows where `is_group: true` — these become group headers.
+2. For each group, pick rows where `parent` equals the group's `path` — these are its children.
+3. Rows with `parent: null` and `is_group: false` render at the top level.
+4. Hide a group entirely if all its children fail your visibility/permission filters.
 
 ### 3. Build route guard
 
