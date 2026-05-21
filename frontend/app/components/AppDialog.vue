@@ -2,7 +2,7 @@
   <Teleport to="body">
     <Transition name="dialog">
       <div v-if="state.open" class="dialog-overlay" @click.self="onOverlayClick" @keydown.esc="onEsc">
-        <div class="dialog-panel" role="dialog" aria-modal="true" :aria-labelledby="state.title ? 'dialog-title' : undefined">
+        <div class="dialog-panel" :class="`dialog-panel--${state.size}`" role="dialog" aria-modal="true" :aria-labelledby="state.title ? 'dialog-title' : undefined">
           <div class="dialog-body">
             <div v-if="state.icon" class="dialog-icon" :class="iconClass">
               <UIcon :name="state.icon" class="w-6 h-6" />
@@ -104,6 +104,8 @@ watch(() => state.value.open, async (open) => {
   padding: 1.5rem 1.75rem 1.25rem;
   outline: none;
 }
+.dialog-panel--lg { max-width: 760px; }
+.dialog-panel--xl { max-width: min(1040px, 92vw); max-height: min(88vh, 900px); }
 :root.dark .dialog-panel {
   background-color: #1f2937;
   box-shadow: 0 20px 50px -10px rgba(0, 0, 0, 0.6), 0 8px 16px -8px rgba(0, 0, 0, 0.4);

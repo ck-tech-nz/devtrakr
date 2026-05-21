@@ -1,4 +1,5 @@
 type DialogColor = 'primary' | 'error' | 'warning' | 'success' | 'info' | 'neutral'
+type DialogSize = 'md' | 'lg' | 'xl'
 
 export type ConfirmOptions = {
   title?: string
@@ -17,6 +18,7 @@ export type AlertOptions = {
   confirmText?: string
   color?: DialogColor
   icon?: string
+  size?: DialogSize
 }
 
 type DialogState = {
@@ -30,6 +32,7 @@ type DialogState = {
   cancelText: string
   color: DialogColor
   icon: string
+  size: DialogSize
   resolve: ((v: boolean) => void) | null
 }
 
@@ -44,6 +47,7 @@ const defaultState = (): DialogState => ({
   cancelText: '取消',
   color: 'primary',
   icon: '',
+  size: 'md',
   resolve: null,
 })
 
@@ -70,6 +74,7 @@ export const useDialog = () => {
         cancelText: o.cancelText || '取消',
         color: o.color || 'primary',
         icon: o.icon || (o.color === 'error' ? 'i-heroicons-exclamation-triangle' : ''),
+        size: 'md',
         resolve,
       }
     })
@@ -90,6 +95,7 @@ export const useDialog = () => {
         cancelText: '',
         color: o.color || 'primary',
         icon: o.icon || (o.color === 'error' ? 'i-heroicons-x-circle' : o.color === 'warning' ? 'i-heroicons-exclamation-triangle' : o.color === 'success' ? 'i-heroicons-check-circle' : 'i-heroicons-information-circle'),
+        size: o.size || 'md',
         resolve: () => resolve(),
       }
     })

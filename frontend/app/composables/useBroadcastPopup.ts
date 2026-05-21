@@ -35,6 +35,7 @@ export function useBroadcastPopup() {
           htmlBody: md.render(n.content || ''),
           persistent: true,
           confirmText: '知道了',
+          size: 'xl',
         })
       } catch {
         // If the dialog ever rejects, stop the queue — it's an unexpected state.
