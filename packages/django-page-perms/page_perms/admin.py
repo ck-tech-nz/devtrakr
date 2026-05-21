@@ -1,9 +1,14 @@
 from django.contrib import admin
 from .models import PageRoute
 
+try:
+    from unfold.admin import ModelAdmin as BaseModelAdmin
+except ImportError:
+    BaseModelAdmin = admin.ModelAdmin
+
 
 @admin.register(PageRoute)
-class PageRouteAdmin(admin.ModelAdmin):
+class PageRouteAdmin(BaseModelAdmin):
     list_display = (
         "path", "label", "is_group", "parent",
         "permission", "show_in_nav", "is_active", "sort_order", "source",
