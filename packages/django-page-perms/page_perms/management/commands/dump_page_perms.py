@@ -74,9 +74,9 @@ class Command(BaseCommand):
 
     def _dump_routes(self):
         rows = []
-        qs = PageRoute.objects.select_related("permission__content_type").order_by(
-            "sort_order", "pk"
-        )
+        qs = PageRoute.objects.select_related(
+            "permission__content_type", "parent"
+        ).order_by("sort_order", "pk")
         for route in qs:
             perm = route.permission
             perm_ref = (
@@ -87,6 +87,8 @@ class Command(BaseCommand):
                 "label": route.label,
                 "icon": route.icon,
                 "permission": perm_ref,
+                "parent": route.parent.path if route.parent_id else None,
+                "is_group": route.is_group,
                 "sort_order": route.sort_order,
                 "show_in_nav": route.show_in_nav,
                 "is_active": route.is_active,
