@@ -183,13 +183,55 @@ class IssueDetailSerializer(IssueListSerializer):
     github_issues = GitHubIssueBriefSerializer(many=True, read_only=True)
     attachments = AttachmentSerializer(many=True, read_only=True)
     assignments = IssueAssignmentSerializer(many=True, read_only=True)
+    related_issues_resolved = serializers.SerializerMethodField()
 
     class Meta(IssueListSerializer.Meta):
         fields = IssueListSerializer.Meta.fields + [
             "description", "estimated_completion",
             "actual_hours", "resolved_at", "github_issues", "attachments",
             "source_meta", "settlement", "assignments",
+            "related_issues", "related_issues_resolved",
         ]
+
+    def get_related_issues_resolved(self, obj):
+        """把 JSON 里的 id 拉成完整摘要 (title/status/priority); orphan id 丢弃。
+        一次 in-bulk 查询, N 个 id 一个 SQL, detail 页面只渲一次完全可接受。
+        """
+        entries = obj.related_issues or []
+        if not entries:
+            return []
+        ids = []
+        meta_by_id: dict[int, dict] = {}
+        for e in entries:
+            try:
+                rid = int(e.get("id"))
+            except (TypeError, ValueError):
+                continue
+            ids.append(rid)
+            meta_by_id[rid] = e
+        if not ids:
+            return []
+        rows = (
+            Issue.objects.filter(id__in=ids)
+            .values("id", "title", "status", "priority")
+        )
+        by_id = {r["id"]: r for r in rows}
+        out = []
+        for e in entries:
+            try:
+                rid = int(e.get("id"))
+            except (TypeError, ValueError):
+                continue
+            row = by_id.get(rid)
+            if not row:
+                continue  # orphan, 静默跳过
+            out.append({
+                **row,
+                "kind": e.get("kind") or "manual",
+                "reason": e.get("reason") or "",
+                "added_at": e.get("added_at") or "",
+            })
+        return out
 
 
 class IssueCreateUpdateSerializer(serializers.ModelSerializer):
@@ -199,6 +241,11 @@ class IssueCreateUpdateSerializer(serializers.ModelSerializer):
     attachment_ids = serializers.ListField(
         child=serializers.UUIDField(), required=False, write_only=True, default=list,
     )
+    # AI wizard 的 dup-hint 命中时, 客户端可把候选 id 列表 + reason 直接传过来,
+    # 创建后落到 related_issues 字段, kind="ai_dup"
+    ai_related = serializers.ListField(
+        child=serializers.DictField(), required=False, write_only=True, default=list,
+    )
 
     class Meta:
         model = Issue
@@ -206,7 +253,7 @@ class IssueCreateUpdateSerializer(serializers.ModelSerializer):
             "id", "project", "repo", "title", "description", "priority", "status",
             "labels", "assignee", "helpers", "reporter", "remark", "estimated_completion",
             "estimated_hours", "actual_hours", "cause", "solution", "attachment_ids",
-            "source", "source_meta",
+            "source", "source_meta", "ai_related",
         ]
         read_only_fields = ["id"]
 
@@ -251,6 +298,15 @@ class IssueCreateUpdateSerializer(serializers.ModelSerializer):
             )
         return value
 
+    def validate(self, attrs):
+        # repo 必须属于 issue 所在项目的关联仓库列表; 前端只让选项目内仓库,
+        # 这里防 UI 绕过. PATCH 时若只改其一, 缺失字段回退到实例当前值
+        repo = attrs.get("repo", getattr(self.instance, "repo", None))
+        project = attrs.get("project", getattr(self.instance, "project", None))
+        if repo and project and not project.repos.filter(pk=repo.pk).exists():
+            raise serializers.ValidationError({"repo": "所选仓库不属于该项目"})
+        return attrs
+
     def _user_can_edit_estimated_hours(self) -> bool:
         user = self.context["request"].user
         if not user.is_authenticated:
@@ -264,6 +320,7 @@ class IssueCreateUpdateSerializer(serializers.ModelSerializer):
         from .services import create_issue
         helpers = validated_data.pop("helpers", [])
         attachment_ids = validated_data.pop("attachment_ids", [])
+        ai_related = validated_data.pop("ai_related", []) or []
         # 非管理员创建时忽略客户端传入的 estimated_hours,使用模型默认值 (4h)
         if "estimated_hours" in validated_data and not self._user_can_edit_estimated_hours():
             validated_data.pop("estimated_hours")
@@ -289,6 +346,44 @@ class IssueCreateUpdateSerializer(serializers.ModelSerializer):
         if attachment_ids:
             atts = Attachment.objects.filter(id__in=attachment_ids, uploaded_by=actor)
             issue.attachments.add(*atts)
+        # AI wizard 命中重复检测时, 把候选记到 related_issues, kind=ai_dup
+        if ai_related:
+            from django.utils import timezone
+            ts = timezone.now().isoformat()
+            # 先做类型清洗 - 客户端可能传字符串/None, filter(id__in=) 不接受这些
+            requested_ids: list[int] = []
+            for r in ai_related:
+                if not isinstance(r, dict):
+                    continue
+                try:
+                    requested_ids.append(int(r.get("id")))
+                except (TypeError, ValueError):
+                    continue
+            valid_ids = set(
+                Issue.objects.filter(id__in=requested_ids)
+                .values_list("id", flat=True)
+            )
+            cleaned = []
+            seen_ids: set[int] = set()
+            for r in ai_related:
+                if not isinstance(r, dict):
+                    continue
+                try:
+                    rid = int(r.get("id"))
+                except (TypeError, ValueError):
+                    continue
+                if rid not in valid_ids or rid in seen_ids or rid == issue.id:
+                    continue
+                seen_ids.add(rid)
+                cleaned.append({
+                    "id": rid,
+                    "kind": "ai_dup",
+                    "reason": str(r.get("reason") or "")[:200],
+                    "added_at": ts,
+                })
+            if cleaned:
+                issue.related_issues = cleaned
+                issue.save(update_fields=["related_issues", "updated_at"])
         create_mention_notifications(
             issue=issue,
             old_description="",
@@ -359,6 +454,47 @@ class DuplicateCheckInputSerializer(serializers.Serializer):
 
 class AiDraftInputSerializer(serializers.Serializer):
     description = serializers.CharField(min_length=5, max_length=4000)
+    project = serializers.PrimaryKeyRelatedField(queryset=Project.objects.all())
+    attachment_ids = serializers.ListField(
+        child=serializers.UUIDField(), required=False, default=list,
+    )
+
+
+class AiChatInputSerializer(serializers.Serializer):
+    """对话式 issue 创建入参 - 客户端持有完整消息历史, 服务端无状态转发。
+
+    messages 每条 {role: user|assistant, content: str}, 服务端做严格校验:
+      - 必须以 user 开头/结尾 (LLM 协议要求)
+      - 单条 content ≤ 4000 字符
+      - 数组最大 20 条 (10 轮), 服务端会再截断
+
+    两类附件 ID:
+    - attachment_ids:                本轮新上传的图片 (挂到 LLM vision 的最后一条 user 上)
+    - conversation_attachment_ids:   全对话累计的所有图片 (用于 draft.description 渲染 markdown)
+                                     缺省时回退到 attachment_ids
+    """
+    messages = serializers.ListField(
+        child=serializers.DictField(),
+        min_length=1,
+        max_length=40,   # 服务端 _truncate 再砍到 20; 这里防超大 payload
+    )
+    project = serializers.PrimaryKeyRelatedField(queryset=Project.objects.all())
+    attachment_ids = serializers.ListField(
+        child=serializers.UUIDField(), required=False, default=list,
+    )
+    conversation_attachment_ids = serializers.ListField(
+        child=serializers.UUIDField(), required=False, default=list,
+    )
+
+
+class AiDraftReviseInputSerializer(serializers.Serializer):
+    """多轮草稿修订入参 — 客户端传当前草稿全貌 + 一句修订意见。
+
+    current_draft 接收 8 个白名单字段, 多传的字段会被 sanitize 步骤丢弃。
+    project 仍需传, 主要用于权限校验和 attachment owner 检查; LLM 不直接读项目。
+    """
+    current_draft = serializers.DictField(child=serializers.JSONField(), allow_empty=False)
+    instruction = serializers.CharField(min_length=1, max_length=2000)
     project = serializers.PrimaryKeyRelatedField(queryset=Project.objects.all())
     attachment_ids = serializers.ListField(
         child=serializers.UUIDField(), required=False, default=list,

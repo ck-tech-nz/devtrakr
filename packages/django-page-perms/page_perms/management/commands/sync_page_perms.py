@@ -6,7 +6,10 @@ from page_perms.models import PageRoute
 
 
 class Command(BaseCommand):
-    help = "Sync page routes and group permissions from PAGE_PERMS settings"
+    help = (
+        "Sync page routes and group permissions from the page_perms JSON seed file "
+        "(PAGE_PERMS_SEED_FILE) into the database."
+    )
 
     def handle(self, *args, **options):
         config = get_config()
@@ -50,7 +53,9 @@ class Command(BaseCommand):
                 "sort_order": route_data.get("sort_order", 0),
                 "is_active": route_data.get("is_active", True),
                 "meta": route_data.get("meta", {}),
-                "source": "seed",
+                # Respect explicit source in JSON so dump→sync round-trip preserves
+                # whether a route was originally created via UI (manual) or seed.
+                "source": route_data.get("source", "seed"),
             }
 
             route, created = PageRoute.objects.update_or_create(
@@ -77,8 +82,15 @@ class Command(BaseCommand):
                 )
 
             if "permissions" in config:
-                for codename in config["permissions"]:
-                    perms.update(Permission.objects.filter(codename=codename))
+                for entry in config["permissions"]:
+                    if "." in entry:
+                        # app_label.codename — unambiguous (used by dump_page_perms)
+                        perm = self._resolve_permission(entry)
+                        if perm:
+                            perms.add(perm)
+                    else:
+                        # Bare codename — match every Permission with this codename
+                        perms.update(Permission.objects.filter(codename=entry))
 
             if "permissions_startswith" in config:
                 for prefix in config["permissions_startswith"]:

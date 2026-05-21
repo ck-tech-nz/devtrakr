@@ -100,6 +100,14 @@ class Issue(models.Model):
         help_text="工单标记完成时冻结的价格/工时/规则,不受后续配置修改影响",
     )
 
+    # 关联到其它 issue 的轻量记录, 仅在 detail 页面展示。schema:
+    #   [{"id": int, "kind": "manual"|"ai_dup", "reason": str, "added_at": iso}]
+    # 选 JSON 而非 M2M(self) 因为读取场景只在 detail 渲染、写入低频、未来想扩 schema 免迁移。
+    # 引用完整性弱 (被删的 issue 会留 orphan id), 展示层负责跳过 + 真要做反查再加 GIN 索引。
+    related_issues = models.JSONField(
+        default=list, blank=True, verbose_name="关联 Issue",
+    )
+
     is_deleted = models.BooleanField(default=False, verbose_name="已删除")
     deleted_at = models.DateTimeField(null=True, blank=True, verbose_name="删除时间")
 

@@ -10,7 +10,7 @@
  * 偏移量 == 0 且无自定义时,后端按 ?period= 解析。
  */
 
-export type PeriodKey = 'week' | 'month' | 'quarter' | ''
+export type PeriodKey = 'week' | 'month' | 'quarter' | 'year' | ''
 
 function pad(n: number) {
   return String(n).padStart(2, '0')
@@ -51,6 +51,10 @@ export function computePeriodRange(period: PeriodKey, offset: number): { start: 
     const year = today.getFullYear() + yearDelta
     start = new Date(year, localQ * 3, 1)
     end = new Date(year, localQ * 3 + 3, 0)
+  } else if (period === 'year') {
+    const year = today.getFullYear() + offset
+    start = new Date(year, 0, 1)
+    end = new Date(year, 11, 31)
   } else {
     // month (default)
     const year = today.getFullYear()
@@ -74,6 +78,7 @@ export function formatPeriodLabel(period: PeriodKey, range: { start: string; end
     const qIdx = Math.floor((Number(m) - 1) / 3) + 1
     return `${y} Q${qIdx}`
   }
+  if (period === 'year') return range.start.slice(0, 4)
   return `${range.start} ~ ${range.end}`
 }
 

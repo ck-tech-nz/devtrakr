@@ -15,6 +15,16 @@ class TestGroupList:
         response = regular_client.get("/api/page-perms/groups/")
         assert response.status_code == 403
 
+    def test_user_with_auth_view_group_can_list(self, api_client):
+        from tests.factories import UserFactory
+        user = UserFactory()
+        user.user_permissions.add(Permission.objects.get(codename="view_group"))
+        api_client.force_authenticate(user=user)
+        Group.objects.create(name="TestGroup")
+        response = api_client.get("/api/page-perms/groups/")
+        assert response.status_code == 200
+        assert any(g["name"] == "TestGroup" for g in response.data)
+
 
 class TestGroupUpdate:
     def test_update_group_permissions(self, superuser_client):

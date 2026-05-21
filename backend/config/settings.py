@@ -155,6 +155,15 @@ MINIO_PUBLIC_URL = os.environ.get("MINIO_PUBLIC_URL", "/uploads")
 # v1 prompt rows are preserved for the 7-day rollback window post-deploy.
 AI_WIZARD_LEGACY = os.environ.get("AI_WIZARD_LEGACY", "False").lower() in ("true", "1")
 
+# 对话式 wizard 首份 draft 出来后, 是否额外跑一次重复检测 (issue_duplicate_check prompt)
+# 关掉的两种方式 (二选一即可):
+#   1. env: WIZARD_CHAT_DUP_CHECK_ENABLED=0  (需重启, 永久关停)
+#   2. /admin/ai/prompt/ 把 slug=issue_duplicate_check 的 prompt 设为 is_active=False
+#      (热切换, 不用重启, 同时也关闭老 /api/issues/check-duplicate/ 端点)
+WIZARD_CHAT_DUP_CHECK_ENABLED = os.environ.get(
+    "WIZARD_CHAT_DUP_CHECK_ENABLED", "True",
+).lower() in ("true", "1")
+
 REPO_CLONE_DIR = os.environ.get("REPO_CLONE_DIR", "/data/repos")
 BACKUP_DIR = os.environ.get("BACKUP_DIR", "/data/backups")
 
@@ -175,34 +184,8 @@ UPTIME_CHECK_RETENTION_DAYS = 30
 UPTIME_DEFAULT_TIMEOUT_SECS = 20
 UPTIME_SYSTEM_BOT_USERNAME = "bot"
 
-# Page permissions configuration
-PAGE_PERMS = {
-    "PROTECTED_PATHS": ["/app/permissions"],
-    "SEED_ROUTES": [
-        {"path": "/app/issues", "label": "问题跟踪", "icon": "i-heroicons-bug-ant", "permission": "issues.view_issue", "sort_order": 0},
-        {"path": "/app/dashboard", "label": "项目概览", "icon": "i-heroicons-squares-2x2", "permission": "issues.view_dashboard", "sort_order": 1},
-        {"path": "/app/projects", "label": "项目管理", "icon": "i-heroicons-folder-open", "permission": "projects.view_project", "sort_order": 2},
-        {"path": "/app/repos", "label": "GitHub 仓库", "icon": "i-heroicons-code-bracket", "permission": "repos.view_repo", "sort_order": 3, "meta": {"serviceKey": "github"}},
-        {"path": "/app/ai/team-analysis", "label": "团队分析", "icon": "i-heroicons-cpu-chip", "permission": "ai.view_analysis", "sort_order": 4, "meta": {"serviceKey": "ai", "adminOnly": True}},
-        {"path": "/app/ai/my-plan", "label": "我的提升计划", "icon": "i-heroicons-clipboard-document-check", "permission": None, "sort_order": 5, "show_in_nav": False},
-        {"path": "/app/ai/plans", "label": "团队计划管理", "icon": "i-heroicons-clipboard-document-list", "permission": "kpi.change_improvementplan", "sort_order": 6, "meta": {"adminOnly": True}},
-        {"path": "/app/users", "label": "用户管理", "icon": "i-heroicons-users", "permission": "users.view_user", "sort_order": 7},
-        {"path": "/app/kpi", "label": "KPI 分析", "icon": "i-heroicons-chart-bar-square", "permission": "kpi.view_kpisnapshot", "sort_order": 8},
-        {"path": "/app/notifications/manage", "label": "通知管理", "icon": "i-heroicons-bell-alert", "permission": "notifications.view_notification", "sort_order": 9},
-        {"path": "/app/settings/kpi-scoring", "label": "KPI 评分规则", "icon": "i-heroicons-adjustments-horizontal", "permission": None, "sort_order": 10, "meta": {"superuserOnly": True}},
-        {"path": "/app/settings/backups", "label": "数据库备份", "icon": "i-heroicons-circle-stack", "permission": None, "sort_order": 11, "meta": {"superuserOnly": True}},
-        {"path": "/app/permissions", "label": "权限管理", "icon": "i-heroicons-shield-check", "permission": None, "sort_order": 99, "meta": {"superuserOnly": True}},
-        {"path": "/app/api-docs", "label": "接口文档", "icon": "i-heroicons-document-text", "permission": "settings.view_externalapikey", "sort_order": 100},
-        {"path": "/app/about", "label": "关于系统", "icon": "i-heroicons-information-circle", "permission": None, "sort_order": 101},
-    ],
-    "SEED_GROUPS": {
-        "管理员": {"apps": ["projects", "issues", "settings", "repos", "ai", "users", "tools", "notifications", "kpi"]},
-        "开发者": {"permissions": ["view_project", "view_issue", "add_issue", "change_issue", "view_activity", "view_dashboard", "view_analysis", "add_analysis", "view_own_kpi", "view_own_plan"]},
-        "产品经理": {"inherit": "开发者", "permissions": ["add_project", "change_project", "manage_project_members", "view_own_plan"]},
-        "只读成员": {"permissions_startswith": ["view_"], "exclude_permissions": ["view_user"]},
-        "测试": {"permissions": ["view_project", "view_issue", "add_issue", "change_issue", "view_activity", "view_dashboard", "view_analysis", "add_analysis", "view_own_kpi", "view_own_plan"]},
-    },
-}
+# Page permissions seed file (DB ↔ JSON round-trip via sync_page_perms / dump_page_perms)
+PAGE_PERMS_SEED_FILE = BASE_DIR / "page_perms.json"
 
 UNFOLD = {
     "SITE_TITLE": "DevTrack",

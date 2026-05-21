@@ -1,45 +1,274 @@
 <template>
-  <div class="ai-wizard">
-    <h2 v-if="currentStep === 1" class="hero-title">有什么我可以帮你的？</h2>
+  <div
+    class="ai-wizard"
+    :class="{
+      'ai-wizard--chat': inChatMode,
+      'ai-wizard--draft-pending': draftPending,
+    }"
+  >
+    <h2 v-if="!inChatMode" class="hero-title">有什么我可以帮你的？</h2>
 
-    <StepDescribe
-      v-if="currentStep === 1"
-      :projects="projects"
-      :default-project-id="defaultProjectId"
-      @analyze="onAnalyze"
-    />
-    <StepAnalyzing
-      v-else-if="currentStep === 2"
-      :steps="wizard.steps.value"
-      :error-message="wizard.errorMessage.value"
-      @retry="onRetry"
-      @back="onBackToDescribe"
-    />
-    <StepDraft
-      v-else-if="currentStep === 3 && wizard.draft.value"
-      :draft="wizard.draft.value"
-      :projects="projects"
-      :initial-project-id="lastAnalyzedProject"
-      :modules="modules"
-      :users="users"
-      :valid-labels="validLabels"
-      :attachment-ids="lastAttachmentIds"
-      :original-input="lastOriginalInput"
-      :submitting="submitting"
-      :submit-error="submitError"
-      :success-issue-id="successIssueId"
-      :success-assignee="successAssignee"
-      @submit="onSubmit"
-      @back="onBackToDescribe"
-      @reset="onReset"
-    />
+    <!-- 清空对话按钮 — chat 模式下右上角 floating, 永远可见. 用 LiquidGlass 实现 iOS 26 折射效果 -->
+    <LiquidGlass
+      v-if="inChatMode"
+      class="clear-btn"
+      title="清空当前对话, 重新开始"
+      @click="onClearConversation"
+    >
+      <UIcon name="i-heroicons-x-mark" class="w-3.5 h-3.5" />
+      <span class="clear-btn-label">清空对话</span>
+    </LiquidGlass>
+
+    <!-- 对话 thread -->
+    <div v-if="inChatMode" ref="threadEl" class="thread">
+      <template v-for="turn in wizard.turns.value" :key="turn.id">
+        <!-- 用户消息 -->
+        <div v-if="turn.role === 'user'" class="msg msg--user">
+          <div v-if="turn.attachments.length" class="msg-attach-row">
+            <button
+              v-for="att in turn.attachments"
+              :key="att.id"
+              type="button"
+              class="msg-attach"
+              :class="{ 'msg-attach--image': isImage(att.file_name) }"
+              :title="isImage(att.file_name) ? `预览 ${att.file_name}` : att.file_name"
+              :disabled="!isImage(att.file_name)"
+              @click="isImage(att.file_name) && openPreview(att)"
+            >
+              <img v-if="isImage(att.file_name)" :src="att.file_url" :alt="att.file_name" />
+              <template v-else>
+                <UIcon name="i-heroicons-document" class="w-3.5 h-3.5" />
+                <span class="msg-attach-name">{{ att.file_name }}</span>
+              </template>
+            </button>
+          </div>
+          <div v-if="turn.text" class="msg-bubble">{{ turn.text }}</div>
+        </div>
+
+        <!-- AI 思考过程 -->
+        <div v-else-if="turn.role === 'ai-thinking'" class="msg msg--ai">
+          <div class="msg-brand">
+            <span class="msg-brand-mark">
+              <UIcon name="i-heroicons-sparkles" class="w-3 h-3" />
+            </span>
+            <span class="msg-brand-name">DevTrakr</span>
+            <span
+              v-if="isThinkingTurnRunning(turn)"
+              class="msg-brand-status"
+            >
+              <span class="brand-pulse" /> {{ turn.kind === 'revise' ? '正在更新' : '正在思考' }}
+            </span>
+            <span
+              v-else-if="turn.intent === 'submit'"
+              class="msg-brand-status msg-brand-status--draft"
+            >
+              ✓ 已确认,正在提交
+            </span>
+            <span
+              v-else-if="!turn.errorMessage"
+              class="msg-brand-status msg-brand-status--done"
+            >
+              {{ turn.kind === 'revise' ? '已更新' : '已分析' }}
+            </span>
+          </div>
+
+          <div class="msg-thinking">
+            <div
+              v-for="s in turn.steps"
+              :key="s.step"
+              class="think-line"
+              :class="`think-line--${s.status}`"
+            >
+              <UIcon v-if="s.status === 'done'" name="i-heroicons-check-circle" class="w-3.5 h-3.5 think-icon think-icon--done" />
+              <UIcon v-else-if="s.status === 'error'" name="i-heroicons-exclamation-circle" class="w-3.5 h-3.5 think-icon think-icon--error" />
+              <span v-else class="think-dot" />
+              <span class="think-label">{{ s.label }}</span>
+              <span v-if="s.status === 'running'" class="think-caret" aria-hidden="true">▍</span>
+            </div>
+          </div>
+
+          <div v-if="turn.errorMessage" class="msg-error">
+            <UIcon name="i-heroicons-exclamation-triangle" class="w-3.5 h-3.5" />
+            <span>{{ turn.errorMessage }}</span>
+          </div>
+
+          <div v-if="turn.errorMessage" class="msg-actions">
+            <button type="button" class="msg-action msg-action--primary" @click="onRetry">重试</button>
+            <button type="button" class="msg-action" @click="onBackToDescribe">重新描述</button>
+          </div>
+
+          <!-- 非致命警告 (截图过大被丢 / 视觉模型回退) - 黄色提示, 不阻塞流程 -->
+          <div v-if="turn.warnings && turn.warnings.length" class="msg-warnings">
+            <div v-for="(w, i) in turn.warnings" :key="i" class="msg-warning">
+              <UIcon name="i-heroicons-exclamation-triangle" class="w-3.5 h-3.5" />
+              <span>{{ w }}</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- AI 反问 (chat 路径 ask 动作): 信息不全时主动追问一个最关键的问题 -->
+        <div v-else-if="turn.role === 'ai-ask'" class="msg msg--ai msg--ai-ask">
+          <div class="msg-brand">
+            <span class="msg-brand-mark">
+              <UIcon name="i-heroicons-question-mark-circle" class="w-3 h-3" />
+            </span>
+            <span class="msg-brand-name">DevTrakr</span>
+            <span class="msg-brand-status msg-brand-status--ask">想确认一下</span>
+          </div>
+          <div class="msg-ask-bubble">{{ turn.question }}</div>
+        </div>
+
+        <!-- AI 查重提示 (chat 路径 dup 事件): 不拦截, 仅供对比 -->
+        <div v-else-if="turn.role === 'ai-dup-hint'" class="msg msg--ai msg--ai-dup">
+          <div class="msg-brand">
+            <span class="msg-brand-mark">
+              <UIcon name="i-heroicons-document-duplicate" class="w-3 h-3" />
+            </span>
+            <span class="msg-brand-name">DevTrakr</span>
+            <span class="msg-brand-status msg-brand-status--dup">我注意到类似 issue</span>
+          </div>
+          <div class="msg-dup-card">
+            <NuxtLink
+              v-for="c in turn.candidates"
+              :key="c.id"
+              :to="`/app/issues/${c.id}`"
+              target="_blank"
+              class="dup-item"
+            >
+              <span class="dup-id">ISS-{{ String(c.id).padStart(3, '0') }}</span>
+              <span class="dup-title">{{ c.title }}</span>
+              <span
+                class="dup-status"
+                :class="`dup-status--${c.status === '已解决' || c.status === '已关闭' || c.status === '已发布' ? 'closed' : 'open'}`"
+              >{{ c.status }}</span>
+            </NuxtLink>
+            <div class="dup-hint">仅供参考, 可点链接对比 · 也可直接提交新建</div>
+          </div>
+        </div>
+
+        <!-- 会话分隔: 上一个 issue 已落地, 下面是新会话.
+             视觉上像 iMessage 的 "Read" 时间戳 - 安静但明确告诉用户 "翻篇了" -->
+        <div v-else-if="turn.role === 'session-divider'" class="session-divider">
+          <span class="session-divider-line" aria-hidden="true" />
+          <NuxtLink
+            :to="`/app/issues/${turn.issueId}`"
+            target="_blank"
+            class="session-divider-pill"
+            :title="`查看 ISS-${String(turn.issueId).padStart(3, '0')}`"
+          >
+            <UIcon name="i-heroicons-check-circle" class="w-3.5 h-3.5" />
+            <span class="session-divider-id">ISS-{{ String(turn.issueId).padStart(3, '0') }} 已创建</span>
+            <span class="session-divider-hint">· 以上仅供查阅, 继续输入开启新对话</span>
+          </NuxtLink>
+          <span class="session-divider-line" aria-hidden="true" />
+        </div>
+
+        <!-- AI 草稿 (可能有多张, 最新可编辑) -->
+        <div v-else-if="turn.role === 'ai-draft'" class="msg msg--ai msg--ai-draft">
+          <div class="msg-brand">
+            <span class="msg-brand-mark">
+              <UIcon name="i-heroicons-sparkles" class="w-3 h-3" />
+            </span>
+            <span class="msg-brand-name">DevTrakr</span>
+            <span class="msg-brand-status msg-brand-status--draft">
+              {{ turn.version > 1 ? `草稿 v${turn.version} 已就绪` : '草稿已就绪' }}
+            </span>
+            <span v-if="isReplacedDraft(turn)" class="msg-brand-status msg-brand-status--stale">
+              · 已被新版替代
+            </span>
+          </div>
+          <div class="msg-draft-card" :class="{ 'msg-draft-card--stale': isReplacedDraft(turn) }">
+            <StepDraft
+              :ref="(el) => captureEditableDraftRef(el, turn.id)"
+              :draft="turn.draft"
+              :projects="projects"
+              :initial-project-id="lastAnalyzedProject"
+              :modules="modules"
+              :users="users"
+              :valid-labels="validLabels"
+              :attachment-ids="turn.attachmentIds"
+              :original-input="lastOriginalInput"
+              :submitting="submitting && isLiveDraft(turn)"
+              :submit-error="isLiveDraft(turn) ? submitError : ''"
+              :success-issue-id="turn.submittedIssueId || null"
+              :success-assignee="turn.submittedAssignee ?? null"
+              :editable="isLiveDraft(turn)"
+              :version="turn.version"
+              @submit="onSubmit"
+              @back="onBackToDescribe"
+              @reset="onReset"
+            />
+          </div>
+        </div>
+      </template>
+    </div>
+
+    <!-- 草稿就绪时的快捷操作: OK 提交 / 优先级点选. 用户聚焦/输入对话框后会收起, 给自由文字让出空间. -->
+    <Transition name="quick-actions">
+      <div v-if="showQuickActions" class="quick-actions">
+        <button
+          type="button"
+          class="qa-submit"
+          :disabled="submitting"
+          title="直接提交当前草稿 - 不再问 AI"
+          @click="onQuickSubmit"
+        >
+          <UIcon name="i-heroicons-check" class="w-3.5 h-3.5" />
+          <span>OK 提交</span>
+        </button>
+        <span class="qa-divider" aria-hidden="true" />
+        <span class="qa-label">优先级</span>
+        <button
+          v-for="opt in priorityQuickPicks"
+          :key="opt.value"
+          type="button"
+          class="qa-priority"
+          :class="[`qa-priority--${opt.value.toLowerCase()}`, { 'qa-priority--active': currentPriority === opt.value }]"
+          :title="`改为 ${opt.value} ${opt.label}`"
+          @click="onQuickPriority(opt.value)"
+        >
+          <span class="qa-priority-dot" />{{ opt.label }}
+        </button>
+      </div>
+    </Transition>
+
+    <!-- Composer -->
+    <div class="composer-slot">
+      <StepDescribe
+        ref="describeRef"
+        :projects="projects"
+        :default-project-id="defaultProjectId"
+        :analyzing="wizard.state.value === 'analyzing'"
+        :revise-mode="hasLiveDraft"
+        :ask-reply-mode="lastTurnIsAsk"
+        @analyze="onAnalyze"
+        @cancel="onBackToDescribe"
+        @composing-change="composerActive = $event"
+      />
+    </div>
+
+    <!-- 缩略图预览弹窗 -->
+    <UModal v-model:open="previewOpen" :ui="{ content: 'sm:max-w-4xl' }">
+      <template #content>
+        <div class="preview-modal">
+          <div class="preview-header">
+            <span class="preview-title" :title="previewAttachment?.file_name">{{ previewAttachment?.file_name }}</span>
+            <UButton icon="i-heroicons-x-mark" variant="ghost" color="neutral" size="sm" @click="previewOpen = false" />
+          </div>
+          <div class="preview-body" @click.self="previewOpen = false">
+            <img v-if="previewAttachment" :src="previewAttachment.file_url" :alt="previewAttachment.file_name" />
+          </div>
+        </div>
+      </template>
+    </UModal>
   </div>
 </template>
 
 <script setup lang="ts">
 import StepDescribe from './AiIssueWizard/StepDescribe.vue'
-import StepAnalyzing from './AiIssueWizard/StepAnalyzing.vue'
 import StepDraft from './AiIssueWizard/StepDraft.vue'
+import LiquidGlass from './LiquidGlass.vue'
+import type { Turn, AttachmentRef } from '~/composables/useAiWizard'
 
 const emit = defineEmits<{ created: [issueId: number] }>()
 
@@ -53,25 +282,92 @@ const modules = ref<string[]>([])
 const users = ref<{ id: string; name: string }[]>([])
 const validLabels = ref<string[]>([])
 const lastAnalyzedProject = ref<string>('')
-const lastAttachmentIds = ref<string[]>([])
-// 用户最初输入的原文 (未经 AI 拼装)，用于写入 source_meta.original_input
-// 避免把 AI 拼装后的 description 写进 source_meta 触发 4096 字节上限
 const lastOriginalInput = ref<string>('')
+
+const describeRef = ref<InstanceType<typeof StepDescribe> | null>(null)
+const threadEl = ref<HTMLElement | null>(null)
+// 最新可编辑的 StepDraft 实例 - affirmative auto-submit 用
+const editableDraftRef = ref<{ triggerSubmit: () => void } | null>(null)
+function captureEditableDraftRef(el: any, turnId: string) {
+  if (turnId === latestDraftId.value) editableDraftRef.value = el
+}
 
 const wizard = useAiWizard()
 const submitting = ref(false)
 const submitError = ref('')
-const successIssueId = ref<number | null>(null)
-// 后端可能基于 issue_auto_assign 自动挑人,这里记录响应中的 assignee 用于成功视图展示
-const successAssignee = ref<string | null>(null)
+// 用户聚焦/已在 composer 打字 = "正在自定义指令" - 收起快捷 chip 让出空间
+const composerActive = ref(false)
 
-const currentStep = computed(() => {
-  if (successIssueId.value) return 3
-  if (wizard.state.value === 'idle') return 1
-  if (wizard.state.value === 'analyzing' || wizard.state.value === 'error') return 2
-  if (wizard.state.value === 'drafting') return 3
-  return 1
+const priorityQuickPicks = [
+  { value: 'P0' as const, label: '紧急' },
+  { value: 'P1' as const, label: '高' },
+  { value: 'P2' as const, label: '中' },
+  { value: 'P3' as const, label: '低' },
+]
+const currentPriority = computed(() => wizard.latestDraft.value?.turn.draft.priority || 'P2')
+// 有 live draft && 没在 compose 时显示快捷 chip
+const showQuickActions = computed(() =>
+  hasLiveDraft.value && !composerActive.value && wizard.state.value !== 'analyzing',
+)
+
+function onQuickSubmit() {
+  // 直接走草稿卡的提交路径 - 跟"⌘+Enter / 点提交按钮"完全等价, 不打扰 LLM
+  editableDraftRef.value?.triggerSubmit()
+}
+
+function onQuickPriority(p: 'P0' | 'P1' | 'P2' | 'P3') {
+  const live = wizard.latestDraft.value?.turn
+  if (!live || live.role !== 'ai-draft') return
+  // 直接改本地草稿. 若用户接着发一条 LLM 消息让重写, LLM 可能不知道这次手动改 -
+  // 用户可再点一次, 成本极低. 不为这个加一轮 LLM 调用.
+  wizard.updateDraftInPlace(live.id, { priority: p })
+}
+
+// thread 内是否有任意 turn
+const inChatMode = computed(() => wizard.turns.value.length > 0)
+// 当前会话有没有 unsealed 的 draft (用来切 composer 的 revise placeholder)
+const hasLiveDraft = computed(() => {
+  const last = wizard.latestDraft.value?.turn
+  return !!last && !last.submittedIssueId
 })
+// 草稿待提交 (sticky composer 触发条件) - 有 thread 且最新 draft 还没 seal
+const draftPending = computed(() => inChatMode.value && hasLiveDraft.value)
+// 最后一条 turn 是 AI 反问 - composer placeholder 切到"回答 AI 的问题…"
+const lastTurnIsAsk = computed(() => {
+  const last = wizard.turns.value[wizard.turns.value.length - 1]
+  return !!last && last.role === 'ai-ask'
+})
+
+// 最新 ai-draft turn 的 id (无论 sealed 与否) — 给 ref 捕获用
+const latestDraftId = computed(() => wizard.latestDraft.value?.turn.id || null)
+
+/** draft 处于以下三态之一: live / sealed (已提交为 ISS-X) / replaced (被新版替代)
+ * 模板用这三个 helper 判定每张卡如何渲染 */
+function isSealed(turn: Turn): boolean {
+  return turn.role === 'ai-draft' && !!(turn as any).submittedIssueId
+}
+function isLiveDraft(turn: Turn): boolean {
+  return turn.role === 'ai-draft' && !isSealed(turn) && turn.id === latestDraftId.value
+}
+function isReplacedDraft(turn: Turn): boolean {
+  return turn.role === 'ai-draft' && !isSealed(turn) && turn.id !== latestDraftId.value
+}
+
+function isThinkingTurnRunning(turn: Turn & { role: 'ai-thinking' }): boolean {
+  return turn.steps.some(s => s.status === 'running' || s.status === 'pending') && !turn.errorMessage
+}
+
+// 缩略图预览
+const previewOpen = ref(false)
+const previewAttachment = ref<AttachmentRef | null>(null)
+function openPreview(att: AttachmentRef) {
+  previewAttachment.value = att
+  previewOpen.value = true
+}
+
+function isImage(name: string): boolean {
+  return /\.(png|jpe?g|gif|webp|bmp|svg)$/i.test(name || '')
+}
 
 onMounted(async () => {
   const [projectData, settingsData, usersData] = await Promise.all([
@@ -85,37 +381,107 @@ onMounted(async () => {
   users.value = (usersData || []).map((u: any) => ({ id: String(u.id), name: u.name || u.username }))
 })
 
-function onAnalyze(payload: { description: string; project: string; attachment_ids: string[] }) {
+function onAnalyze(payload: { description: string; project: string; attachments: AttachmentRef[] }) {
   lastAnalyzedProject.value = payload.project
-  lastAttachmentIds.value = payload.attachment_ids
   lastOriginalInput.value = payload.description
-  wizard.start(payload)
+  // 统一走对话式 chat - LLM 拿到完整 messages 历史, 自行判定 draft/ask/submit
+  wizard.chat({
+    text: payload.description,
+    project: payload.project,
+    attachments: payload.attachments,
+  })
 }
 
+// LLM 在 revise 路径中判定为"submit"意图时, useAiWizard 递增 submitIntentCounter,
+// 这里 watch 它 → 模拟点击最新草稿卡的"提交 Issue"按钮
+watch(() => wizard.submitIntentCounter.value, (n, prev) => {
+  if (n > (prev ?? 0)) {
+    nextTick(() => editableDraftRef.value?.triggerSubmit())
+  }
+})
+
 function onRetry() {
-  onBackToDescribe()
+  // 错误恢复: 把最后一条 user turn 的内容再发一次
+  const lastUser = [...wizard.turns.value].reverse().find(t => t.role === 'user') as
+    | (Turn & { role: 'user' })
+    | undefined
+  if (!lastUser || !lastAnalyzedProject.value) return
+
+  // 删除上一条出错的 ai-thinking turn, 让 retry 看起来干净 (不堆砌错误)
+  const last = wizard.turns.value[wizard.turns.value.length - 1]
+  if (last && last.role === 'ai-thinking' && last.errorMessage) {
+    wizard.turns.value.pop()
+    // 还要去掉对应的 user turn (它会被 start/revise 重新追加)
+    const newLast = wizard.turns.value[wizard.turns.value.length - 1]
+    if (newLast && newLast.role === 'user') wizard.turns.value.pop()
+  }
+
+  onAnalyze({
+    description: lastUser.text,
+    project: lastAnalyzedProject.value,
+    attachments: lastUser.attachments,
+  })
 }
 
 function onBackToDescribe() {
+  // 还原最后一条 user 内容到 composer, 清掉 thread
+  const lastUser = [...wizard.turns.value].reverse().find(t => t.role === 'user') as
+    | (Turn & { role: 'user' })
+    | undefined
+  if (describeRef.value && lastUser) {
+    describeRef.value.setText(lastUser.text)
+    describeRef.value.setAttachments(lastUser.attachments)
+  }
   wizard.reset()
-  successIssueId.value = null
-  successAssignee.value = null
   submitError.value = ''
 }
 
 function onReset() {
-  onBackToDescribe()
+  wizard.reset()
+  submitError.value = ''
+}
+
+function onClearConversation() {
+  onReset()
 }
 
 async function onSubmit(body: any) {
   submitting.value = true
   submitError.value = ''
+  // 把本会话 AI 提示过的查重候选记到 issue 上 (kind=ai_dup).
+  // 必须从 sessionStartIndex 起算, 否则上一个已 checkpoint issue 的 dup hint 会被串到这个新 issue 上.
+  const aiDupCandidates: Array<{ id: number; reason: string }> = []
+  const sessionStart = wizard.sessionStartIndex()
+  for (let i = sessionStart; i < wizard.turns.value.length; i++) {
+    const t = wizard.turns.value[i]
+    if (t && t.role === 'ai-dup-hint') {
+      for (const c of t.candidates) {
+        aiDupCandidates.push({ id: c.id, reason: c.reason || '' })
+      }
+    }
+  }
+  if (aiDupCandidates.length) {
+    body = { ...body, ai_related: aiDupCandidates }
+  }
   try {
     const created = await api<any>('/api/issues/', { method: 'POST', body, format: 'json' })
-    successIssueId.value = Number(created.id)
-    // created.assignee 为 null 表示后端无开发者候选或 LLM 未选中,前端提示"待项目经理指派"
-    successAssignee.value = created.assignee != null ? String(created.assignee) : null
-    emit('created', created.id)
+    let id = Number(created?.id)
+    // POST 响应理论上一定带 id, 但若上游代理改写过 / api 包装层丢字段, 用最新 issue 兜底
+    if (!id || Number.isNaN(id)) {
+      try {
+        const list = await api<any>('/api/issues/?ordering=-id&page_size=1')
+        const items = list?.results || list || []
+        const fallbackId = items[0]?.id
+        if (fallbackId) id = Number(fallbackId)
+      } catch { /* fallback 取不到就让 turn 留空 issue id; UI 仍显示 success 但无链接 */ }
+    }
+    if (id && !Number.isNaN(id) && latestDraftId.value) {
+      // 关键: checkpoint 让本张 draft 卡 morph 为 success 视图, 同时清空 LLM messages —
+      // 用户继续打字 = 新会话 (LLM 不会再当成 v4 修订当前 issue), thread 历史仍可滚动看。
+      const assignee = created?.assignee != null ? String(created.assignee) : null
+      wizard.checkpoint(latestDraftId.value, id, assignee)
+      emit('created', id)
+    }
   } catch (e: any) {
     const data = e?.data || e?.response?._data
     submitError.value = (data && typeof data === 'object') ? JSON.stringify(data) : (e?.message || '创建失败')
@@ -124,7 +490,12 @@ async function onSubmit(body: any) {
   }
 }
 
-// 组件卸载时取消进行中的 SSE 请求,避免后端继续白费 LLM 调用
+// 新消息进来时滚到底
+watch(() => wizard.turns.value.length, async () => {
+  await nextTick()
+  if (threadEl.value) threadEl.value.scrollTop = threadEl.value.scrollHeight
+})
+
 onBeforeUnmount(() => {
   wizard.abort()
 })
@@ -136,7 +507,98 @@ onBeforeUnmount(() => {
   flex-direction: column;
   gap: 1.25rem;
   padding: 1rem 0;
+  position: relative;  /* 锚 .clear-btn 的 absolute */
 }
+
+/* 清空对话: viewport-fixed 右上角胶囊, 页面/thread 怎么滚都不会消失.
+   做得稍大些 — 11px 字号在 1.5K 屏太隐形 */
+.clear-btn {
+  position: fixed;
+  top: 5rem;          /* 顶 navbar 之下 */
+  right: 1.5rem;
+  z-index: 50;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4375rem;
+  padding: 0.5rem 0.875rem;
+  /* iOS 26 Liquid Glass: 真折射由 <LiquidGlass> 通过 SVG feDisplacementMap 提供,
+     这里只负责形态 (边/影/高光) + 一丝冷色折射底, 让玻璃在纯白页面上也能看出来. */
+  background-image: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.05) 0%,
+    rgba(180, 200, 220, 0.04) 50%,
+    rgba(255, 255, 255, 0.08) 100%
+  );
+  background-color: transparent;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: 9999px;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: #374151;
+  cursor: pointer;
+  /* 上沿白高光 + 下沿暗线 = 玻璃厚度, 外加双层浮起阴影 */
+  box-shadow:
+    inset 0 1px 0.5px rgba(255, 255, 255, 0.6),
+    inset 0 -1px 0.5px rgba(0, 0, 0, 0.05),
+    0 8px 24px -6px rgba(15, 23, 42, 0.15),
+    0 3px 8px -2px rgba(15, 23, 42, 0.08);
+  transition: color 0.2s, background-color 0.2s, border-color 0.2s, transform 0.2s, box-shadow 0.2s;
+}
+.clear-btn:hover {
+  color: #dc2626;
+  border-color: rgba(252, 165, 165, 0.7);
+  background-color: rgba(254, 226, 226, 0.35);
+  transform: translateY(-1px);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.8),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.04),
+    0 8px 20px -4px rgba(220, 38, 38, 0.18),
+    0 2px 6px -2px rgba(0, 0, 0, 0.1);
+}
+:root.dark .clear-btn {
+  background-image: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.08) 0%,
+    rgba(255, 255, 255, 0.01) 50%,
+    rgba(255, 255, 255, 0.04) 100%
+  );
+  background-color: transparent;
+  border-color: rgba(255, 255, 255, 0.08);
+  color: #e5e7eb;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.18),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.4),
+    0 6px 16px -4px rgba(0, 0, 0, 0.5),
+    0 2px 6px -2px rgba(0, 0, 0, 0.3);
+}
+:root.dark .clear-btn:hover {
+  color: #fca5a5;
+  border-color: rgba(239, 68, 68, 0.45);
+  background-color: rgba(239, 68, 68, 0.18);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.2),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.4),
+    0 8px 20px -4px rgba(239, 68, 68, 0.3),
+    0 2px 6px -2px rgba(0, 0, 0, 0.35);
+}
+.clear-btn-label { letter-spacing: 0.01em; }
+@media (max-width: 480px) {
+  .clear-btn {
+    top: 4.25rem;
+    right: 0.75rem;
+    padding: 0.4375rem 0.5rem;
+  }
+  .clear-btn-label { display: none; }  /* 窄屏只剩 × 图标 */
+}
+
+/* chat 模式: wizard 占据视口可用高度, 内部 flex column 让 thread 滚动而 composer 钉底.
+   高度按 100dvh 减去 top navbar (≈4rem) + 页面 padding (≈2rem) + 缓冲 (≈3rem) = 9rem */
+.ai-wizard--chat {
+  gap: 1rem;
+  height: calc(100dvh - 9rem);
+  min-height: 32rem;   /* 极矮窗口下兜底, 避免对话区被挤没 */
+}
+
 .hero-title {
   font-size: 1.875rem;
   font-weight: 600;
@@ -145,4 +607,687 @@ onBeforeUnmount(() => {
   margin: 1rem 0 0.5rem;
 }
 :root.dark .hero-title { color: #f3f4f6; }
+
+/* ---------- Thread ---------- */
+/* chat 模式下: 占据 wizard 内剩余高度, 内部独立 scroll */
+.thread {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  padding: 0.5rem 0.25rem 1rem;
+}
+.ai-wizard--chat .thread {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  /* 自定义滚动条更轻量 */
+  scrollbar-width: thin;
+}
+.ai-wizard--chat .thread::-webkit-scrollbar { width: 6px; }
+.ai-wizard--chat .thread::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.12); border-radius: 3px;
+}
+:root.dark .ai-wizard--chat .thread::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.msg { display: flex; flex-direction: column; gap: 0.5rem; }
+
+.msg--user {
+  align-items: flex-end;
+  animation: msg-rise 0.32s ease both;
+}
+.msg--ai {
+  align-items: flex-start;
+  animation: msg-rise 0.32s ease both;
+  animation-delay: 80ms;
+}
+.msg--ai-draft {
+  animation-delay: 0ms;
+}
+@keyframes msg-rise {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ---------- 用户气泡 ---------- */
+.msg-bubble {
+  max-width: min(40rem, 90%);
+  padding: 0.625rem 0.875rem;
+  background-color: #f3f4f6;
+  color: #1f2937;
+  border-radius: 1rem 1rem 0.25rem 1rem;
+  font-size: 0.875rem;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+:root.dark .msg-bubble { background-color: #1f2937; color: #e5e7eb; }
+
+.msg-attach-row {
+  display: flex; flex-wrap: wrap; justify-content: flex-end;
+  gap: 0.375rem;
+  max-width: min(40rem, 90%);
+}
+.msg-attach {
+  display: inline-flex; align-items: center; gap: 0.25rem;
+  padding: 0;
+  border: 0;
+  border-radius: 0.5rem;
+  background: transparent;
+  overflow: hidden;
+  cursor: default;
+}
+.msg-attach--image {
+  width: 3.5rem;
+  height: 3.5rem;
+  border: 1px solid #e5e7eb;
+  background-color: #ffffff;
+  cursor: zoom-in;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.msg-attach--image:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px -2px rgba(0, 0, 0, 0.15);
+}
+:root.dark .msg-attach--image { border-color: #374151; background-color: #111827; }
+.msg-attach--image img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.msg-attach:not(.msg-attach--image) {
+  padding: 0.25rem 0.5rem;
+  background-color: #f9fafb;
+  border: 1px solid #e5e7eb;
+  font-size: 0.75rem;
+  color: #4b5563;
+}
+:root.dark .msg-attach:not(.msg-attach--image) {
+  background-color: #1f2937; border-color: #374151; color: #d1d5db;
+}
+.msg-attach-name {
+  max-width: 10rem;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+/* ---------- AI 品牌标识 ---------- */
+.msg-brand {
+  display: flex; align-items: center; gap: 0.5rem;
+  font-size: 0.75rem;
+  color: #6b7280;
+}
+:root.dark .msg-brand { color: #9ca3af; }
+
+.msg-brand-mark {
+  width: 1.125rem; height: 1.125rem;
+  border-radius: 0.375rem;
+  display: inline-flex; align-items: center; justify-content: center;
+  color: #ffffff;
+  background: linear-gradient(135deg, #7c3aed, #9333ea);
+  box-shadow: 0 1px 4px -1px rgba(124, 58, 237, 0.45);
+}
+
+.msg-brand-name {
+  font-weight: 600;
+  color: #374151;
+  letter-spacing: -0.005em;
+}
+:root.dark .msg-brand-name { color: #e5e7eb; }
+
+.msg-brand-status {
+  display: inline-flex; align-items: center; gap: 0.375rem;
+  font-size: 0.6875rem;
+  color: #9ca3af;
+  padding-left: 0.5rem;
+  border-left: 1px solid #e5e7eb;
+}
+:root.dark .msg-brand-status { color: #6b7280; border-left-color: #374151; }
+.msg-brand-status--done { color: #059669; }
+:root.dark .msg-brand-status--done { color: #34d399; }
+.msg-brand-status--draft { color: #7c3aed; }
+:root.dark .msg-brand-status--draft { color: #c4b5fd; }
+.msg-brand-status--stale {
+  color: #9ca3af;
+  padding-left: 0.25rem;
+  border-left: 0;
+}
+.msg-brand-status--ask {
+  color: #d97706;
+}
+:root.dark .msg-brand-status--ask { color: #fbbf24; }
+
+.msg-brand-status--dup { color: #0ea5e9; }
+:root.dark .msg-brand-status--dup { color: #7dd3fc; }
+
+/* AI 查重提示卡 - 蓝色边框, 表明"信息性"而非"警告/错误" */
+.msg-dup-card {
+  display: flex; flex-direction: column;
+  gap: 0.375rem;
+  margin-left: 1.625rem;
+  padding: 0.625rem 0.75rem;
+  max-width: min(40rem, 90%);
+  background-color: #f0f9ff;
+  border: 1px solid #bae6fd;
+  border-radius: 0.625rem;
+  animation: msg-rise 0.32s ease both;
+}
+:root.dark .msg-dup-card {
+  background-color: rgba(14, 165, 233, 0.08);
+  border-color: rgba(14, 165, 233, 0.25);
+}
+.dup-item {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.3125rem 0.5rem;
+  border-radius: 0.375rem;
+  font-size: 0.8125rem;
+  color: #0c4a6e;
+  text-decoration: none;
+  transition: background-color 0.15s;
+}
+.dup-item:hover { background-color: rgba(14, 165, 233, 0.12); }
+:root.dark .dup-item { color: #bae6fd; }
+:root.dark .dup-item:hover { background-color: rgba(14, 165, 233, 0.18); }
+.dup-id {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.6875rem;
+  color: #0284c7;
+  flex-shrink: 0;
+}
+:root.dark .dup-id { color: #7dd3fc; }
+.dup-title {
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.dup-status {
+  font-size: 0.625rem;
+  padding: 0.0625rem 0.375rem;
+  border-radius: 0.25rem;
+  flex-shrink: 0;
+}
+.dup-status--open {
+  background-color: #fef3c7; color: #92400e;
+}
+.dup-status--closed {
+  background-color: #d1fae5; color: #065f46;
+}
+:root.dark .dup-status--open { background-color: rgba(251, 191, 36, 0.18); color: #fde68a; }
+:root.dark .dup-status--closed { background-color: rgba(16, 185, 129, 0.18); color: #6ee7b7; }
+.dup-hint {
+  font-size: 0.6875rem;
+  color: #075985;
+  padding-top: 0.25rem;
+  border-top: 1px solid rgba(14, 165, 233, 0.18);
+}
+:root.dark .dup-hint { color: #7dd3fc; }
+
+/* ---------- 会话分隔 ---------- */
+/* 不是 .msg, 因为它不属于 user 或 AI, 而是会话流的"系统标记".
+   留白比 .msg 之间的 1.25rem gap 更大, 让分段感更强 */
+.session-divider {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin: 0.5rem 0;
+  animation: msg-rise 0.4s ease both;
+}
+.session-divider-line {
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(
+    to right,
+    transparent 0%,
+    rgba(16, 185, 129, 0.28) 50%,
+    transparent 100%
+  );
+}
+.session-divider-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.3125rem 0.75rem;
+  font-size: 0.6875rem;
+  color: #047857;
+  background-color: #ecfdf5;
+  border: 1px solid rgba(16, 185, 129, 0.25);
+  border-radius: 9999px;
+  text-decoration: none;
+  white-space: nowrap;
+  letter-spacing: 0.005em;
+  transition: background-color 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
+}
+.session-divider-pill:hover {
+  background-color: #d1fae5;
+  border-color: rgba(16, 185, 129, 0.45);
+  transform: translateY(-1px);
+}
+.session-divider-id { font-weight: 600; }
+.session-divider-hint {
+  color: #6b7280;
+  font-weight: 400;
+}
+:root.dark .session-divider-pill {
+  color: #6ee7b7;
+  background-color: rgba(16, 185, 129, 0.12);
+  border-color: rgba(16, 185, 129, 0.3);
+}
+:root.dark .session-divider-pill:hover {
+  background-color: rgba(16, 185, 129, 0.2);
+  border-color: rgba(16, 185, 129, 0.5);
+}
+:root.dark .session-divider-hint { color: #9ca3af; }
+:root.dark .session-divider-line {
+  background: linear-gradient(
+    to right,
+    transparent 0%,
+    rgba(16, 185, 129, 0.35) 50%,
+    transparent 100%
+  );
+}
+@media (max-width: 600px) {
+  .session-divider-hint { display: none; }
+}
+
+/* AI 反问气泡 - 跟用户气泡视觉成对, 但左对齐 + 暖色边框透露"求确认"语气 */
+.msg-ask-bubble {
+  max-width: min(36rem, 90%);
+  padding: 0.625rem 0.875rem;
+  background-color: #fffbeb;
+  color: #78350f;
+  border: 1px solid #fde68a;
+  border-radius: 0.25rem 1rem 1rem 1rem;
+  font-size: 0.875rem;
+  line-height: 1.55;
+  margin-left: 1.625rem;
+  animation: msg-rise 0.32s ease both;
+}
+:root.dark .msg-ask-bubble {
+  background-color: rgba(251, 191, 36, 0.08);
+  color: #fde68a;
+  border-color: rgba(251, 191, 36, 0.25);
+}
+
+.brand-pulse {
+  width: 0.4375rem; height: 0.4375rem;
+  border-radius: 9999px;
+  background-color: #7c3aed;
+  animation: brand-pulse 1.2s ease-in-out infinite;
+}
+@keyframes brand-pulse {
+  0%, 100% { opacity: 0.35; transform: scale(0.9); }
+  50% { opacity: 1; transform: scale(1.15); box-shadow: 0 0 0 4px rgba(124, 58, 237, 0.12); }
+}
+
+/* ---------- 思考流 ---------- */
+.msg-thinking {
+  display: flex; flex-direction: column;
+  gap: 0.5rem;
+  padding-left: 1.625rem;
+}
+
+.think-line {
+  display: flex; align-items: center; gap: 0.5rem;
+  font-size: 0.8125rem;
+  color: #6b7280;
+}
+.think-line--done { color: #059669; }
+.think-line--error { color: #dc2626; }
+.think-line--running { color: #4b5563; }
+:root.dark .think-line { color: #9ca3af; }
+:root.dark .think-line--running { color: #d1d5db; }
+:root.dark .think-line--done { color: #34d399; }
+:root.dark .think-line--error { color: #fca5a5; }
+
+.think-icon--done { color: #10b981; }
+.think-icon--error { color: #ef4444; }
+
+.think-dot {
+  width: 0.5rem; height: 0.5rem; border-radius: 9999px;
+  background-color: #c4b5fd;
+  animation: think-pulse 1s ease-in-out infinite alternate;
+}
+:root.dark .think-dot { background-color: #6d28d9; }
+@keyframes think-pulse {
+  from { opacity: 0.35; transform: scale(0.85); }
+  to { opacity: 1; transform: scale(1.05); }
+}
+
+.think-caret {
+  display: inline-block;
+  color: #7c3aed;
+  font-weight: 500;
+  animation: caret-blink 0.9s steps(2, end) infinite;
+  margin-left: -0.125rem;
+  line-height: 1;
+}
+:root.dark .think-caret { color: #c4b5fd; }
+@keyframes caret-blink {
+  0%, 49% { opacity: 1; }
+  50%, 100% { opacity: 0; }
+}
+
+/* ---------- 错误态 ---------- */
+.msg-error {
+  display: flex; align-items: center; gap: 0.375rem;
+  margin-left: 1.625rem;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.8125rem;
+  color: #b91c1c;
+  background-color: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 0.625rem;
+}
+:root.dark .msg-error {
+  color: #fca5a5;
+  background-color: rgba(239, 68, 68, 0.08);
+  border-color: rgba(239, 68, 68, 0.25);
+}
+
+.msg-warnings {
+  display: flex; flex-direction: column; gap: 0.375rem;
+  margin-left: 1.625rem;
+}
+.msg-warning {
+  display: flex; align-items: center; gap: 0.375rem;
+  padding: 0.4375rem 0.625rem;
+  font-size: 0.75rem;
+  color: #92400e;
+  background-color: #fffbeb;
+  border: 1px solid #fde68a;
+  border-radius: 0.5rem;
+}
+:root.dark .msg-warning {
+  color: #fde68a;
+  background-color: rgba(251, 191, 36, 0.10);
+  border-color: rgba(251, 191, 36, 0.30);
+}
+
+.msg-actions {
+  display: flex; gap: 0.5rem;
+  margin-left: 1.625rem;
+}
+.msg-action {
+  padding: 0.3125rem 0.75rem;
+  font-size: 0.75rem;
+  border-radius: 0.5rem;
+  border: 1px solid #e5e7eb;
+  background-color: #ffffff;
+  color: #4b5563;
+  cursor: pointer;
+  transition: background-color 0.15s, color 0.15s, border-color 0.15s;
+}
+.msg-action:hover { background-color: #f9fafb; color: #111827; }
+:root.dark .msg-action {
+  background-color: #1f2937; border-color: #374151; color: #d1d5db;
+}
+:root.dark .msg-action:hover { background-color: #111827; color: #f3f4f6; }
+.msg-action--primary {
+  background-color: #7c3aed; border-color: #7c3aed; color: #ffffff;
+}
+.msg-action--primary:hover {
+  background-color: #6d28d9; border-color: #6d28d9; color: #ffffff;
+}
+
+/* ---------- 草稿卡片容器 ---------- */
+.msg-draft-card {
+  width: min(72%, 44rem);
+  margin-left: 0;
+  animation: draft-rise 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+  transition: opacity 0.25s ease, filter 0.25s ease;
+}
+.msg-draft-card--stale {
+  opacity: 0.55;
+  filter: saturate(0.7);
+  pointer-events: none;
+}
+@keyframes draft-rise {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* 整体外壳收紧 */
+.msg-draft-card :deep(.draft-wrap) {
+  padding: 0.875rem 1rem 0.75rem;
+  border-radius: 0.75rem;
+  gap: 0.75rem;
+}
+.msg-draft-card :deep(.draft-header) {
+  padding-bottom: 0.625rem;
+}
+.msg-draft-card :deep(.header-icon) {
+  width: 1.375rem; height: 1.375rem;
+  border-radius: 0.375rem;
+}
+.msg-draft-card :deep(.header-title) { font-size: 0.8125rem; }
+.msg-draft-card :deep(.header-sub) { font-size: 0.6875rem; margin-top: 0.0625rem; }
+
+/* 两栏布局 */
+.msg-draft-card :deep(.draft-body) {
+  grid-template-columns: minmax(0, 1fr) 12rem;
+  gap: 1rem;
+}
+
+/* 左侧 */
+.msg-draft-card :deep(.content-col) { gap: 0.625rem; }
+.msg-draft-card :deep(.issue-title-input) {
+  font-size: 0.9375rem !important;
+  padding: 0.375rem 0.5rem !important;
+}
+.msg-draft-card :deep(.issue-desc-input),
+.msg-draft-card :deep(.issue-body-input) {
+  font-size: 0.75rem !important;
+  padding: 0.375rem 0.5rem !important;
+}
+.msg-draft-card :deep(.section) { gap: 0.25rem; padding-top: 0.125rem; }
+.msg-draft-card :deep(.section-label) { font-size: 0.6875rem; }
+
+/* MarkdownEditor */
+.msg-draft-card :deep(.markdown-editor) { border-radius: 0.5rem; }
+.msg-draft-card :deep(.markdown-editor textarea) {
+  min-height: 6.5rem !important;
+  font-size: 0.75rem !important;
+  padding: 0.625rem !important;
+}
+.msg-draft-card :deep(.markdown-editor .markdown-body) {
+  min-height: 6.5rem !important;
+  padding: 0.625rem 0.75rem !important;
+  font-size: 0.75rem;
+}
+.msg-draft-card :deep(.markdown-editor img) {
+  max-height: 9rem;
+  width: auto;
+}
+
+/* 右侧 meta */
+.msg-draft-card :deep(.meta-col) {
+  padding-left: 0.875rem;
+  gap: 0.625rem;
+}
+.msg-draft-card :deep(.meta-row) {
+  grid-template-columns: 3.25rem 1fr;
+  gap: 0.375rem;
+}
+.msg-draft-card :deep(.meta-label) { font-size: 0.6875rem; }
+
+.msg-draft-card :deep(.footer) { padding-top: 0.625rem; }
+.msg-draft-card :deep(.ai-suggest) { padding: 0.5rem 0.625rem; font-size: 0.6875rem; }
+
+@media (max-width: 768px) {
+  .msg-draft-card { width: 100%; }
+  .msg-draft-card :deep(.draft-body) { grid-template-columns: 1fr; }
+}
+
+/* ---------- 快捷操作 chip (草稿就绪时显示在 composer 上方) ---------- */
+/* 用户聚焦 composer 或开始打字后自动收起, 不抢空间 */
+.quick-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.4375rem;
+  flex-wrap: wrap;
+  padding: 0.375rem 0.125rem;
+  flex-shrink: 0;
+}
+.qa-submit {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3125rem;
+  padding: 0.3125rem 0.6875rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #047857;
+  background-color: #ecfdf5;
+  border: 1px solid rgba(16, 185, 129, 0.35);
+  border-radius: 9999px;
+  cursor: pointer;
+  transition: background-color 0.15s, border-color 0.15s, transform 0.15s, box-shadow 0.15s;
+}
+.qa-submit:hover {
+  background-color: #d1fae5;
+  border-color: rgba(16, 185, 129, 0.6);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 10px -4px rgba(16, 185, 129, 0.35);
+}
+.qa-submit:active { transform: translateY(0); }
+.qa-submit:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+:root.dark .qa-submit {
+  color: #6ee7b7;
+  background-color: rgba(16, 185, 129, 0.14);
+  border-color: rgba(16, 185, 129, 0.4);
+}
+:root.dark .qa-submit:hover {
+  background-color: rgba(16, 185, 129, 0.22);
+  border-color: rgba(16, 185, 129, 0.6);
+}
+
+.qa-divider {
+  width: 1px;
+  height: 1rem;
+  background-color: #e5e7eb;
+  margin: 0 0.125rem;
+}
+:root.dark .qa-divider { background-color: #374151; }
+
+.qa-label {
+  font-size: 0.6875rem;
+  color: #6b7280;
+  user-select: none;
+}
+:root.dark .qa-label { color: #9ca3af; }
+
+.qa-priority {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3125rem;
+  padding: 0.25rem 0.5625rem;
+  font-size: 0.6875rem;
+  font-weight: 500;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: #4b5563;
+  background-color: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 9999px;
+  cursor: pointer;
+  transition: background-color 0.15s, border-color 0.15s, color 0.15s;
+}
+.qa-priority:hover {
+  background-color: #f9fafb;
+  border-color: #d1d5db;
+}
+.qa-priority-dot {
+  width: 0.4375rem;
+  height: 0.4375rem;
+  border-radius: 9999px;
+  background-color: currentColor;
+}
+.qa-priority--p0 { color: #dc2626; }
+.qa-priority--p1 { color: #ea580c; }
+.qa-priority--p2 { color: #ca8a04; }
+.qa-priority--p3 { color: #6b7280; }
+.qa-priority--active {
+  background-color: #111827;
+  border-color: #111827;
+  color: #f9fafb;
+}
+.qa-priority--active .qa-priority-dot {
+  background-color: currentColor;
+}
+.qa-priority--active.qa-priority--p0 { background-color: #b91c1c; border-color: #b91c1c; }
+.qa-priority--active.qa-priority--p1 { background-color: #c2410c; border-color: #c2410c; }
+.qa-priority--active.qa-priority--p2 { background-color: #a16207; border-color: #a16207; }
+.qa-priority--active.qa-priority--p3 { background-color: #4b5563; border-color: #4b5563; }
+:root.dark .qa-priority {
+  color: #d1d5db;
+  background-color: #1f2937;
+  border-color: #374151;
+}
+:root.dark .qa-priority:hover {
+  background-color: #111827;
+  border-color: #4b5563;
+}
+
+/* Transition: 滑入/滑出 - 让收起的过程看起来"折叠"而不是消失 */
+.quick-actions-enter-active,
+.quick-actions-leave-active {
+  transition: opacity 0.18s ease, transform 0.22s cubic-bezier(0.4, 0, 0.2, 1), max-height 0.22s ease;
+  overflow: hidden;
+}
+.quick-actions-enter-from,
+.quick-actions-leave-to {
+  opacity: 0;
+  transform: translateY(4px);
+  max-height: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+.quick-actions-enter-to,
+.quick-actions-leave-from {
+  opacity: 1;
+  max-height: 3rem;
+}
+
+/* ---------- Composer slot ---------- */
+/* chat 模式下 composer 是 wizard flex 的末项, 自然贴底, 无需 sticky.
+   非 chat 模式 (首屏 idle) 时 composer 也只在自然流位置, 不做特殊处理 */
+.composer-slot {
+  flex-shrink: 0;
+}
+
+/* ---------- 图片预览弹窗 ---------- */
+.preview-modal {
+  display: flex; flex-direction: column;
+  max-height: 85vh;
+  background-color: #ffffff;
+  border-radius: 0.75rem;
+  overflow: hidden;
+}
+:root.dark .preview-modal { background-color: #1f2937; }
+.preview-header {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid #e5e7eb;
+}
+:root.dark .preview-header { border-bottom-color: #374151; }
+.preview-title {
+  font-size: 0.875rem; color: #374151;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+:root.dark .preview-title { color: #d1d5db; }
+.preview-body {
+  display: flex; align-items: center; justify-content: center;
+  padding: 1rem;
+  background-color: #f9fafb;
+  overflow: auto;
+  cursor: zoom-out;
+}
+:root.dark .preview-body { background-color: #111827; }
+.preview-body img {
+  max-width: 100%;
+  max-height: calc(85vh - 4rem);
+  object-fit: contain;
+  cursor: default;
+}
 </style>

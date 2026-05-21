@@ -14,6 +14,9 @@ class Attachment(models.Model):
     file_url = models.URLField(max_length=1000, verbose_name="访问地址")
     file_size = models.PositiveBigIntegerField(verbose_name="文件大小")
     mime_type = models.CharField(max_length=100, verbose_name="类型")
+    # sha256 of raw bytes; 上传时填入, 用于同 user 重复内容去重 (避免 LLM 多看一份同图)
+    # 老数据为空字符串, 无法匹配 - dedup 只对新上传生效
+    content_hash = models.CharField(max_length=64, blank=True, default="", db_index=True, verbose_name="内容哈希")
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

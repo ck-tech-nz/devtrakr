@@ -1,3 +1,5 @@
+import json
+
 import pytest
 
 from apps.ai.models import Prompt
@@ -1082,3 +1084,1164 @@ def test_ai_draft_endpoint_passes_project_and_attachments_to_service(api_client,
     assert captured["project_id"] == project.id
     assert captured["attachment_ids"] == []
     assert "event: draft" in body
+
+
+# ============================================================================
+# Multi-turn revise (wizard_revise prompt + /ai-draft/revise/ endpoint)
+# ============================================================================
+
+VALID_CURRENT_DRAFT = {
+    "title": "通知中心乱码",
+    "priority": "P2",
+    "module": "通知中心",
+    "repro_steps": "1. 进入首页\n2. 查看通知",
+    "expected_behavior": "应显示正常内容",
+    "labels": ["Bug"],
+    "follow_up_questions": [],
+    "inferred_env": "环境: prod | 角色: 普通用户 | 页面: 首页",
+}
+
+
+@pytest.mark.django_db
+def test_oneshot_revise_returns_updated_draft(site_settings):
+    """Happy path: LLM 返回完整更新后的草稿, sanitize 不破坏字段。"""
+    from apps.issues.services_ai_wizard import AiWizardService
+    from apps.settings.models import SiteSettings
+    from tests.factories import LLMConfigFactory
+    LLMConfigFactory(is_default=True, is_active=True)
+    SiteSettings.objects.update(
+        modules=["通知中心", "其他"],
+        labels={
+            "Bug": {"foreground": "#fff", "background": "#d00", "description": ""},
+            "前端": {"foreground": "#fff", "background": "#000", "description": ""},
+        },
+    )
+
+    fake = (
+        '{"title": "通知中心乱码", "priority": "P1", "module": "通知中心", '
+        '"repro_steps": "1. 进入首页\\n2. 查看通知\\n3. 切换深色模式 (新增)", '
+        '"expected_behavior": "应显示正常内容", '
+        '"labels": ["Bug", "前端"], '
+        '"follow_up_questions": [], '
+        '"inferred_env": "环境: prod | 角色: 普通用户 | 页面: 首页"}'
+    )
+
+    with patch(
+        "apps.issues.services_ai_wizard.LLMClient.complete_multimodal",
+        return_value=fake,
+    ):
+        svc = AiWizardService()
+        result = svc.oneshot_revise(
+            current_draft=VALID_CURRENT_DRAFT,
+            instruction="复现步骤增加第三条:切换深色模式后乱码;优先级提到 P1",
+            images=[],
+        )
+
+    assert result["priority"] == "P1"  # changed
+    assert result["title"] == "通知中心乱码"  # unchanged
+    assert "切换深色模式" in result["repro_steps"]  # appended
+    assert set(result["labels"]) >= {"Bug"}
+
+
+@pytest.mark.django_db
+def test_oneshot_revise_raises_on_missing_prompt(site_settings):
+    from apps.issues.services_ai_wizard import AiWizardService, AiWizardError
+    Prompt.objects.filter(slug="wizard_revise").update(is_active=False)
+    svc = AiWizardService()
+    with pytest.raises(AiWizardError) as exc:
+        svc.oneshot_revise(current_draft=VALID_CURRENT_DRAFT, instruction="x", images=[])
+    assert exc.value.code == "missing_prompt"
+
+
+@pytest.mark.django_db
+def test_oneshot_revise_retries_on_bad_json(site_settings):
+    """First JSON is malformed → retried once; second succeeds."""
+    from apps.issues.services_ai_wizard import AiWizardService
+    from tests.factories import LLMConfigFactory
+    LLMConfigFactory(is_default=True, is_active=True)
+
+    responses = iter([
+        "not json at all",
+        '{"title":"通知中心乱码","priority":"P2","module":"通知中心","repro_steps":"1. x","expected_behavior":"y","labels":[],"follow_up_questions":[],"inferred_env":""}',
+    ])
+
+    def fake(self, **kwargs):
+        return next(responses)
+
+    with patch("apps.issues.services_ai_wizard.LLMClient.complete_multimodal", new=fake):
+        svc = AiWizardService()
+        result = svc.oneshot_revise(VALID_CURRENT_DRAFT, "改", images=[])
+    assert result["module"] == "通知中心"
+
+
+@pytest.mark.django_db
+def test_stream_revise_emits_step_running_done_then_draft_and_done(site_settings):
+    from apps.issues.services_ai_wizard import AiWizardService
+    from tests.factories import LLMConfigFactory
+    LLMConfigFactory(is_default=True, is_active=True)
+
+    fake = (
+        '{"title": "通知中心乱码", "priority": "P0", "module": "通知中心", '
+        '"repro_steps": "1. x", "expected_behavior": "y", "labels": [], '
+        '"follow_up_questions": [], "inferred_env": ""}'
+    )
+
+    with patch(
+        "apps.issues.services_ai_wizard.LLMClient.complete_multimodal",
+        return_value=fake,
+    ):
+        svc = AiWizardService()
+        events = list(svc.stream_revise(
+            current_draft=VALID_CURRENT_DRAFT,
+            instruction="改 P0",
+        ))
+
+    names = [e[0] for e in events]
+    assert names == ["step", "step", "draft", "done"]
+    assert events[0][1]["status"] == "running"
+    assert events[1][1]["status"] == "done"
+    assert events[2][1]["priority"] == "P0"
+
+
+@pytest.mark.django_db
+def test_stream_revise_yields_error_event_on_llm_failure(site_settings):
+    from apps.issues.services_ai_wizard import AiWizardService
+    from tests.factories import LLMConfigFactory
+    LLMConfigFactory(is_default=True, is_active=True)
+
+    def boom(self, **kwargs):
+        raise RuntimeError("upstream timeout")
+
+    with patch("apps.issues.services_ai_wizard.LLMClient.complete_multimodal", new=boom):
+        svc = AiWizardService()
+        events = list(svc.stream_revise(VALID_CURRENT_DRAFT, "改", attachment_ids=[]))
+
+    names = [e[0] for e in events]
+    assert "error" in names
+    err = [e for e in events if e[0] == "error"][0][1]
+    assert err["code"] == "llm_call_failed"
+
+
+@pytest.mark.django_db
+def test_revise_endpoint_requires_authentication(api_client):
+    resp = api_client.post(
+        "/api/issues/ai-draft/revise/",
+        {"current_draft": VALID_CURRENT_DRAFT, "instruction": "改", "project": 1},
+        format="json",
+    )
+    assert resp.status_code == 401
+
+
+@pytest.mark.django_db
+def test_revise_endpoint_requires_add_issue_permission(api_client):
+    from tests.factories import UserFactory
+    user = UserFactory()
+    api_client.force_authenticate(user)
+    resp = api_client.post(
+        "/api/issues/ai-draft/revise/",
+        {"current_draft": VALID_CURRENT_DRAFT, "instruction": "改", "project": 1},
+        format="json",
+    )
+    assert resp.status_code == 403
+
+
+@pytest.mark.django_db
+def test_revise_endpoint_validates_instruction(api_client):
+    from django.contrib.auth.models import Permission
+    from tests.factories import UserFactory
+    user = UserFactory()
+    user.user_permissions.add(Permission.objects.get(codename="add_issue"))
+    api_client.force_authenticate(user)
+    resp = api_client.post(
+        "/api/issues/ai-draft/revise/",
+        {"current_draft": VALID_CURRENT_DRAFT, "instruction": "", "project": 1},
+        format="json",
+    )
+    assert resp.status_code == 400
+    assert "instruction" in resp.data
+
+
+@pytest.mark.django_db
+def test_revise_endpoint_streams_sse_events(api_client, site_settings):
+    from django.contrib.auth.models import Permission
+    from tests.factories import LLMConfigFactory, ProjectFactory, UserFactory
+    LLMConfigFactory(is_default=True, is_active=True)
+    project = ProjectFactory()
+    user = UserFactory()
+    user.user_permissions.add(Permission.objects.get(codename="add_issue"))
+    api_client.force_authenticate(user)
+
+    fake = (
+        '{"title": "通知中心乱码", "priority": "P0", "module": "通知中心", '
+        '"repro_steps": "1. x", "expected_behavior": "y", "labels": [], '
+        '"follow_up_questions": [], "inferred_env": ""}'
+    )
+
+    with patch(
+        "apps.issues.services_ai_wizard.LLMClient.complete_multimodal",
+        return_value=fake,
+    ):
+        resp = api_client.post(
+            "/api/issues/ai-draft/revise/",
+            {
+                "current_draft": VALID_CURRENT_DRAFT,
+                "instruction": "改 P0",
+                "project": str(project.id),
+            },
+            format="json",
+        )
+        body = b"".join(resp.streaming_content).decode()
+
+    assert resp.status_code == 200
+    assert resp["Content-Type"].startswith("text/event-stream")
+    assert "event: step" in body
+    assert "event: draft" in body
+    assert "event: done" in body
+    assert '"priority": "P0"' in body
+
+
+# ----- LLM-driven action classifier (submit vs update) -----
+
+@pytest.mark.django_db
+def test_oneshot_revise_returns_submit_action_when_llm_classifies_confirm(site_settings):
+    """LLM 输出 {action: submit} 时, oneshot_revise 短路返回 — 不走 draft 校验."""
+    from apps.issues.services_ai_wizard import AiWizardService
+    from tests.factories import LLMConfigFactory
+    LLMConfigFactory(is_default=True, is_active=True)
+
+    with patch(
+        "apps.issues.services_ai_wizard.LLMClient.complete_multimodal",
+        return_value='{"action": "submit"}',
+    ):
+        svc = AiWizardService()
+        result = svc.oneshot_revise(VALID_CURRENT_DRAFT, "OK 了", images=[])
+
+    assert result["action"] == "submit"
+
+
+@pytest.mark.django_db
+def test_oneshot_revise_tags_update_action_for_backward_compat(site_settings):
+    """LLM 输出标准 draft 字段时, oneshot_revise 也会贴 action=update 标记,
+    方便 stream_revise 统一分支."""
+    from apps.issues.services_ai_wizard import AiWizardService
+    from apps.settings.models import SiteSettings
+    from tests.factories import LLMConfigFactory
+    LLMConfigFactory(is_default=True, is_active=True)
+    SiteSettings.objects.update(
+        modules=["通知中心", "其他"],
+        labels={"Bug": {"foreground": "#fff", "background": "#d00", "description": ""}},
+    )
+
+    fake = (
+        '{"action": "update", "title": "通知中心乱码", "priority": "P0", "module": "通知中心", '
+        '"repro_steps": "1. x", "expected_behavior": "y", "labels": ["Bug"], '
+        '"follow_up_questions": [], "inferred_env": ""}'
+    )
+    with patch(
+        "apps.issues.services_ai_wizard.LLMClient.complete_multimodal",
+        return_value=fake,
+    ):
+        svc = AiWizardService()
+        result = svc.oneshot_revise(VALID_CURRENT_DRAFT, "改 P0", images=[])
+
+    assert result["action"] == "update"
+    assert result["priority"] == "P0"
+
+
+@pytest.mark.django_db
+def test_oneshot_revise_handles_missing_action_field_as_update(site_settings):
+    """老 prompt 没要求输出 action 字段时, 缺失应视为 update (backward compat)."""
+    from apps.issues.services_ai_wizard import AiWizardService
+    from apps.settings.models import SiteSettings
+    from tests.factories import LLMConfigFactory
+    LLMConfigFactory(is_default=True, is_active=True)
+    SiteSettings.objects.update(
+        modules=["通知中心"],
+        labels={"Bug": {"foreground": "#fff", "background": "#d00", "description": ""}},
+    )
+
+    fake = (
+        '{"title": "通知中心乱码", "priority": "P0", "module": "通知中心", '
+        '"repro_steps": "1. x", "expected_behavior": "y", "labels": [], '
+        '"follow_up_questions": [], "inferred_env": ""}'
+    )
+    with patch(
+        "apps.issues.services_ai_wizard.LLMClient.complete_multimodal",
+        return_value=fake,
+    ):
+        svc = AiWizardService()
+        result = svc.oneshot_revise(VALID_CURRENT_DRAFT, "改 P0", images=[])
+
+    assert result["action"] == "update"
+    assert result["priority"] == "P0"
+
+
+@pytest.mark.django_db
+def test_stream_revise_emits_submit_event_when_llm_classifies_confirm(site_settings):
+    """submit 路径下 SSE 序列是 step(running) → step(done) → submit → done, 不发 draft."""
+    from apps.issues.services_ai_wizard import AiWizardService
+    from tests.factories import LLMConfigFactory
+    LLMConfigFactory(is_default=True, is_active=True)
+
+    with patch(
+        "apps.issues.services_ai_wizard.LLMClient.complete_multimodal",
+        return_value='{"action": "submit"}',
+    ):
+        svc = AiWizardService()
+        events = list(svc.stream_revise(
+            current_draft=VALID_CURRENT_DRAFT,
+            instruction="OK 了",
+        ))
+
+    names = [e[0] for e in events]
+    assert names == ["step", "step", "submit", "done"]
+    # 没有 draft 事件
+    assert "draft" not in names
+
+
+@pytest.mark.django_db
+def test_revise_endpoint_streams_submit_event_through_sse(api_client, site_settings):
+    """端到端: 客户端拿到 SSE 流应包含 event: submit, 不含 event: draft."""
+    from django.contrib.auth.models import Permission
+    from tests.factories import LLMConfigFactory, ProjectFactory, UserFactory
+    LLMConfigFactory(is_default=True, is_active=True)
+    project = ProjectFactory()
+    user = UserFactory()
+    user.user_permissions.add(Permission.objects.get(codename="add_issue"))
+    api_client.force_authenticate(user)
+
+    with patch(
+        "apps.issues.services_ai_wizard.LLMClient.complete_multimodal",
+        return_value='{"action": "submit"}',
+    ):
+        resp = api_client.post(
+            "/api/issues/ai-draft/revise/",
+            {
+                "current_draft": VALID_CURRENT_DRAFT,
+                "instruction": "OK 了",
+                "project": str(project.id),
+            },
+            format="json",
+        )
+        body = b"".join(resp.streaming_content).decode()
+
+    assert resp.status_code == 200
+    assert "event: submit" in body
+    assert "event: draft" not in body
+    assert "event: done" in body
+
+
+# ============================================================================
+# wizard_chat: conversational multi-turn issue creation
+# ============================================================================
+
+@pytest.mark.django_db
+def test_chat_returns_draft_action_on_first_user_message(site_settings):
+    from apps.issues.services_ai_wizard import AiChatService
+    from apps.settings.models import SiteSettings
+    from tests.factories import LLMConfigFactory
+    LLMConfigFactory(is_default=True, is_active=True)
+    SiteSettings.objects.update(
+        modules=["通知中心", "其他"],
+        labels={"Bug": {"foreground": "#fff", "background": "#d00", "description": ""}},
+    )
+
+    fake = (
+        '{"action":"draft","title":"通知中心乱码","priority":"P2","module":"通知中心",'
+        '"repro_steps":"1. 打开首页","expected_behavior":"应显示正常",'
+        '"labels":["Bug"],"follow_up_questions":[],"inferred_env":""}'
+    )
+
+    with patch("apps.issues.services_ai_wizard.LLMClient.chat", return_value=fake):
+        svc = AiChatService()
+        result = svc.chat(
+            messages=[{"role": "user", "content": "通知中心乱码"}],
+            attachment_ids=[],
+            user=None,
+        )
+
+    assert result["action"] == "draft"
+    assert result["title"] == "通知中心乱码"
+    assert result["priority"] == "P2"
+
+
+@pytest.mark.django_db
+def test_chat_returns_ask_action_when_info_incomplete(site_settings):
+    from apps.issues.services_ai_wizard import AiChatService
+    from tests.factories import LLMConfigFactory
+    LLMConfigFactory(is_default=True, is_active=True)
+
+    with patch(
+        "apps.issues.services_ai_wizard.LLMClient.chat",
+        return_value='{"action":"ask","question":"你这边是 dev 还是 prod 环境?"}',
+    ):
+        svc = AiChatService()
+        result = svc.chat(
+            messages=[{"role": "user", "content": "有 bug"}],
+            attachment_ids=[],
+            user=None,
+        )
+
+    assert result["action"] == "ask"
+    assert result["question"] == "你这边是 dev 还是 prod 环境?"
+
+
+@pytest.mark.django_db
+def test_chat_returns_submit_action_on_user_confirmation(site_settings):
+    from apps.issues.services_ai_wizard import AiChatService
+    from tests.factories import LLMConfigFactory
+    LLMConfigFactory(is_default=True, is_active=True)
+
+    with patch(
+        "apps.issues.services_ai_wizard.LLMClient.chat",
+        return_value='{"action":"submit"}',
+    ):
+        svc = AiChatService()
+        result = svc.chat(
+            messages=[
+                {"role": "user", "content": "通知中心乱码"},
+                {"role": "assistant", "content": '{"action":"draft","title":"...","priority":"P2","module":"通知中心","repro_steps":"...","expected_behavior":"...","labels":[],"follow_up_questions":[],"inferred_env":""}'},
+                {"role": "user", "content": "OK 提交吧"},
+            ],
+            attachment_ids=[],
+            user=None,
+        )
+
+    assert result["action"] == "submit"
+
+
+@pytest.mark.django_db
+def test_chat_rejects_ask_with_empty_question(site_settings):
+    from apps.issues.services_ai_wizard import AiChatService, AiWizardError
+    from tests.factories import LLMConfigFactory
+    LLMConfigFactory(is_default=True, is_active=True)
+
+    with patch(
+        "apps.issues.services_ai_wizard.LLMClient.chat",
+        return_value='{"action":"ask","question":""}',
+    ):
+        svc = AiChatService()
+        with pytest.raises(AiWizardError) as exc:
+            svc.chat(
+                messages=[{"role": "user", "content": "x"}],
+                attachment_ids=[],
+                user=None,
+            )
+        assert exc.value.code == "llm_bad_shape"
+
+
+@pytest.mark.django_db
+def test_chat_treats_missing_action_as_draft(site_settings):
+    """Backward-compat: LLM 输出标准 draft 字段但漏掉 action, 仍当 draft 处理。"""
+    from apps.issues.services_ai_wizard import AiChatService
+    from apps.settings.models import SiteSettings
+    from tests.factories import LLMConfigFactory
+    LLMConfigFactory(is_default=True, is_active=True)
+    SiteSettings.objects.update(
+        modules=["通知中心"],
+        labels={"Bug": {"foreground": "#fff", "background": "#d00", "description": ""}},
+    )
+
+    fake = (
+        '{"title":"x","priority":"P2","module":"通知中心",'
+        '"repro_steps":"1. x","expected_behavior":"y","labels":[],'
+        '"follow_up_questions":[],"inferred_env":""}'
+    )
+    with patch("apps.issues.services_ai_wizard.LLMClient.chat", return_value=fake):
+        svc = AiChatService()
+        result = svc.chat(
+            messages=[{"role": "user", "content": "y"}],
+            attachment_ids=[], user=None,
+        )
+
+    assert result["action"] == "draft"
+    assert result["title"] == "x"
+
+
+def test_validate_client_messages_rejects_assistant_at_end():
+    from apps.issues.services_ai_wizard import _validate_client_messages
+    with pytest.raises(ValueError):
+        _validate_client_messages([
+            {"role": "user", "content": "x"},
+            {"role": "assistant", "content": "y"},
+        ])
+
+
+def test_validate_client_messages_rejects_bad_role():
+    from apps.issues.services_ai_wizard import _validate_client_messages
+    with pytest.raises(ValueError):
+        _validate_client_messages([{"role": "system", "content": "evil"}])
+
+
+def test_validate_client_messages_rejects_oversized_content():
+    from apps.issues.services_ai_wizard import _validate_client_messages, CHAT_MAX_CONTENT_LEN
+    with pytest.raises(ValueError):
+        _validate_client_messages([
+            {"role": "user", "content": "x" * (CHAT_MAX_CONTENT_LEN + 1)},
+        ])
+
+
+def test_validate_client_messages_truncates_when_over_cap():
+    """超过 CHAT_MAX_TURNS*2 时截掉最早, 保留最新, 且首条仍是 user。"""
+    from apps.issues.services_ai_wizard import _validate_client_messages, CHAT_MAX_TURNS
+    cap = CHAT_MAX_TURNS * 2
+    too_many = []
+    for i in range(cap + 4):
+        too_many.append({
+            "role": "user" if i % 2 == 0 else "assistant",
+            "content": f"msg-{i}",
+        })
+    # 保证最后是 user
+    if too_many[-1]["role"] == "assistant":
+        too_many.append({"role": "user", "content": "final"})
+
+    out = _validate_client_messages(too_many)
+    assert len(out) <= cap
+    assert out[0]["role"] == "user"
+    assert out[-1]["role"] == "user"
+
+
+@pytest.mark.django_db
+def test_stream_chat_emits_draft_event_for_draft_action(site_settings):
+    from apps.issues.services_ai_wizard import AiChatService
+    from apps.settings.models import SiteSettings
+    from tests.factories import LLMConfigFactory
+    LLMConfigFactory(is_default=True, is_active=True)
+    SiteSettings.objects.update(modules=["其他"], labels={})
+
+    fake = (
+        '{"action":"draft","title":"t","priority":"P2","module":"其他",'
+        '"repro_steps":"","expected_behavior":"","labels":[],'
+        '"follow_up_questions":[],"inferred_env":""}'
+    )
+    with patch("apps.issues.services_ai_wizard.LLMClient.chat", return_value=fake):
+        svc = AiChatService()
+        events = list(svc.stream_chat(
+            messages=[{"role": "user", "content": "bug 描述"}],
+        ))
+
+    names = [e[0] for e in events]
+    assert names == ["step", "step", "draft", "done"]
+
+
+@pytest.mark.django_db
+def test_stream_chat_emits_ask_event_for_ask_action(site_settings):
+    from apps.issues.services_ai_wizard import AiChatService
+    from tests.factories import LLMConfigFactory
+    LLMConfigFactory(is_default=True, is_active=True)
+
+    with patch(
+        "apps.issues.services_ai_wizard.LLMClient.chat",
+        return_value='{"action":"ask","question":"哪个环境?"}',
+    ):
+        svc = AiChatService()
+        events = list(svc.stream_chat(messages=[{"role": "user", "content": "bug"}]))
+
+    names = [e[0] for e in events]
+    assert names == ["step", "step", "ask", "done"]
+    ask_payload = [e[1] for e in events if e[0] == "ask"][0]
+    assert ask_payload["question"] == "哪个环境?"
+
+
+@pytest.mark.django_db
+def test_stream_chat_emits_submit_event_for_submit_action(site_settings):
+    from apps.issues.services_ai_wizard import AiChatService
+    from tests.factories import LLMConfigFactory
+    LLMConfigFactory(is_default=True, is_active=True)
+
+    with patch(
+        "apps.issues.services_ai_wizard.LLMClient.chat",
+        return_value='{"action":"submit"}',
+    ):
+        svc = AiChatService()
+        events = list(svc.stream_chat(messages=[{"role": "user", "content": "OK"}]))
+
+    names = [e[0] for e in events]
+    assert names == ["step", "step", "submit", "done"]
+
+
+@pytest.mark.django_db
+def test_chat_endpoint_requires_authentication(api_client):
+    resp = api_client.post(
+        "/api/issues/ai-draft/chat/",
+        {"messages": [{"role": "user", "content": "x"}], "project": 1},
+        format="json",
+    )
+    assert resp.status_code == 401
+
+
+@pytest.mark.django_db
+def test_chat_endpoint_requires_add_issue_permission(api_client):
+    from tests.factories import UserFactory
+    user = UserFactory()
+    api_client.force_authenticate(user)
+    resp = api_client.post(
+        "/api/issues/ai-draft/chat/",
+        {"messages": [{"role": "user", "content": "x"}], "project": 1},
+        format="json",
+    )
+    assert resp.status_code == 403
+
+
+@pytest.mark.django_db
+def test_chat_endpoint_rejects_assistant_last_message(api_client, site_settings):
+    from django.contrib.auth.models import Permission
+    from tests.factories import LLMConfigFactory, ProjectFactory, UserFactory
+    LLMConfigFactory(is_default=True, is_active=True)
+    project = ProjectFactory()
+    user = UserFactory()
+    user.user_permissions.add(Permission.objects.get(codename="add_issue"))
+    api_client.force_authenticate(user)
+
+    resp = api_client.post(
+        "/api/issues/ai-draft/chat/",
+        {
+            "messages": [
+                {"role": "user", "content": "x"},
+                {"role": "assistant", "content": "y"},
+            ],
+            "project": str(project.id),
+        },
+        format="json",
+    )
+    assert resp.status_code == 400
+
+
+@pytest.mark.django_db
+def test_chat_endpoint_streams_sse_with_multi_turn_history(api_client, site_settings):
+    """End-to-end: 多轮 history 送进去, LLM 返回 submit 信号, SSE body 含 event: submit。"""
+    from django.contrib.auth.models import Permission
+    from tests.factories import LLMConfigFactory, ProjectFactory, UserFactory
+    LLMConfigFactory(is_default=True, is_active=True)
+    project = ProjectFactory()
+    user = UserFactory()
+    user.user_permissions.add(Permission.objects.get(codename="add_issue"))
+    api_client.force_authenticate(user)
+
+    # 捕获实际传给 LLM 的 messages, 验证 history 完整透传
+    captured = {}
+    def fake_chat(self, **kwargs):
+        captured["messages"] = kwargs.get("messages")
+        return '{"action":"submit"}'
+
+    with patch("apps.issues.services_ai_wizard.LLMClient.chat", new=fake_chat):
+        resp = api_client.post(
+            "/api/issues/ai-draft/chat/",
+            {
+                "messages": [
+                    {"role": "user", "content": "通知中心乱码"},
+                    {"role": "assistant", "content": '{"action":"draft","title":"x"}'},
+                    {"role": "user", "content": "OK 提交"},
+                ],
+                "project": str(project.id),
+            },
+            format="json",
+        )
+        body = b"".join(resp.streaming_content).decode()
+
+    assert resp.status_code == 200
+    assert "event: submit" in body
+    assert "event: done" in body
+    # 校验客户端送的 3 条 history 都到了 LLM 那里 (不计 service 自己注入的 system_prompt)
+    assert captured["messages"] is not None
+    assert len(captured["messages"]) == 3
+    assert captured["messages"][0]["role"] == "user"
+    assert captured["messages"][-1]["content"] == "OK 提交"
+
+
+@pytest.mark.django_db
+def test_chat_draft_description_includes_first_user_text_env_and_images(site_settings, monkeypatch):
+    """chat 路径的 draft 必须把"原始用户描述 + AI 推断环境 + 本轮上传图片 markdown"塞进 description。
+    LLM schema 不输出 description, 服务端负责拼装 (与老 oneshot 一致)。"""
+    from apps.issues.services_ai_wizard import AiChatService, AiWizardService
+    from apps.settings.models import SiteSettings
+    from tests.factories import LLMConfigFactory
+    LLMConfigFactory(is_default=True, is_active=True)
+    SiteSettings.objects.update(
+        modules=["通知中心"],
+        labels={"Bug": {"foreground": "#fff", "background": "#d00", "description": ""}},
+    )
+
+    # Mock attachment metadata so we don't need real DB rows for images
+    def fake_load_image_metadata(self, attachment_ids, owner):
+        if not attachment_ids:
+            return []
+        return [
+            {"file_name": "screenshot.png", "file_url": "/uploads/2026/05/screenshot.png"},
+        ]
+    monkeypatch.setattr(AiWizardService, "_load_image_metadata", fake_load_image_metadata)
+
+    fake = (
+        '{"action":"draft","title":"通知中心乱码","priority":"P2","module":"通知中心",'
+        '"repro_steps":"1. x","expected_behavior":"y","labels":[],'
+        '"follow_up_questions":[],"inferred_env":"环境: prod | 角色: 普通用户 | 页面: 首页"}'
+    )
+    with patch("apps.issues.services_ai_wizard.LLMClient.chat", return_value=fake):
+        svc = AiChatService()
+        result = svc.chat(
+            messages=[{"role": "user", "content": "通知中心显示乱码"}],
+            attachment_ids=["00000000-0000-0000-0000-000000000001"],
+            user=None,
+        )
+
+    desc = result["description"]
+    assert "通知中心显示乱码" in desc                                 # 原始用户文本
+    assert "环境: prod | 角色: 普通用户 | 页面: 首页" in desc        # AI 推断环境
+    assert "![screenshot.png](/uploads/2026/05/screenshot.png)" in desc  # 图片 markdown
+
+
+@pytest.mark.django_db
+def test_chat_draft_uses_cumulative_attachments_for_description_after_ask_reply(site_settings, monkeypatch):
+    """重现用户报告的 bug: turn 1 附图触发 AI ask, turn 2 用户回答(无新图)生成 draft.
+    description 必须依然包含 turn 1 的图片 markdown (累计 attachment_ids 的作用)。"""
+    from apps.issues.services_ai_wizard import AiChatService, AiWizardService
+    from apps.settings.models import SiteSettings
+    from tests.factories import LLMConfigFactory
+    LLMConfigFactory(is_default=True, is_active=True)
+    SiteSettings.objects.update(modules=["其他"], labels={})
+
+    def fake_load_image_metadata(self, attachment_ids, owner):
+        # 只对那张 turn 1 的图返回元数据; 其它 ID 返回空
+        if "11111111-1111-1111-1111-111111111111" in [str(x) for x in attachment_ids]:
+            return [{"file_name": "screenshot.png", "file_url": "/uploads/screenshot.png"}]
+        return []
+    monkeypatch.setattr(AiWizardService, "_load_image_metadata", fake_load_image_metadata)
+
+    fake_draft = (
+        '{"action":"draft","title":"刷新页面后 session 未清除","priority":"P2","module":"其他",'
+        '"repro_steps":"1. 登录\\n2. 刷新页面","expected_behavior":"应清除当前 session",'
+        '"labels":[],"follow_up_questions":[],"inferred_env":"环境: dev | 角色: 未知 | 页面: 未知"}'
+    )
+    with patch("apps.issues.services_ai_wizard.LLMClient.chat", return_value=fake_draft):
+        svc = AiChatService()
+        result = svc.chat(
+            messages=[
+                {"role": "user", "content": "刷新页面应该 clear session"},
+                {"role": "assistant", "content": '{"action":"ask","question":"哪个环境?"}'},
+                {"role": "user", "content": "dev"},
+            ],
+            attachment_ids=[],                                       # 本轮无新图
+            conversation_attachment_ids=["11111111-1111-1111-1111-111111111111"],  # 但 turn 1 有
+            user=None,
+        )
+
+    desc = result["description"]
+    assert "刷新页面应该 clear session" in desc
+    assert "![screenshot.png](/uploads/screenshot.png)" in desc, (
+        "draft.description 应包含 turn 1 上传的截图 markdown, 即便本轮 attachment_ids 是空的"
+    )
+
+
+@pytest.mark.django_db
+def test_chat_endpoint_accepts_conversation_attachment_ids(api_client, site_settings, monkeypatch):
+    """端到端: 客户端送 conversation_attachment_ids, 服务端透传到 chat() 用于 description 渲染。"""
+    from django.contrib.auth.models import Permission
+    from apps.issues.services_ai_wizard import AiWizardService
+    from tests.factories import LLMConfigFactory, ProjectFactory, UserFactory
+    LLMConfigFactory(is_default=True, is_active=True)
+    project = ProjectFactory()
+    user = UserFactory()
+    user.user_permissions.add(Permission.objects.get(codename="add_issue"))
+    api_client.force_authenticate(user)
+
+    def fake_load_image_metadata(self, attachment_ids, owner):
+        if attachment_ids:
+            return [{"file_name": "old.png", "file_url": "/uploads/old.png"}]
+        return []
+    monkeypatch.setattr(AiWizardService, "_load_image_metadata", fake_load_image_metadata)
+
+    fake_draft = (
+        '{"action":"draft","title":"t","priority":"P2","module":"其他",'
+        '"repro_steps":"","expected_behavior":"","labels":[],'
+        '"follow_up_questions":[],"inferred_env":""}'
+    )
+    with patch("apps.issues.services_ai_wizard.LLMClient.chat", return_value=fake_draft):
+        resp = api_client.post(
+            "/api/issues/ai-draft/chat/",
+            {
+                "messages": [{"role": "user", "content": "dev"}],
+                "project": str(project.id),
+                "attachment_ids": [],
+                "conversation_attachment_ids": ["11111111-1111-1111-1111-111111111111"],
+            },
+            format="json",
+        )
+        body = b"".join(resp.streaming_content).decode()
+
+    assert resp.status_code == 200
+    assert "event: draft" in body
+    assert "/uploads/old.png" in body, "累计附件应出现在 draft.description 渲染里"
+
+
+# ============================================================================
+# Image vision diagnostics — surface size/read warnings instead of silent drop
+# ============================================================================
+
+@pytest.mark.django_db
+def test_load_image_attachments_returns_warning_for_oversize(site_settings, monkeypatch):
+    """超过 10MB 的截图被丢弃, 同时返回用户可见的警告字串。"""
+    from apps.issues.services_ai_wizard import AiWizardService, MAX_IMAGE_BYTES
+    from apps.tools.models import Attachment
+    from tests.factories import UserFactory
+
+    user = UserFactory()
+    over = Attachment.objects.create(
+        uploaded_by=user,
+        file_name="big.png",
+        file_key="2026/05/over.png",
+        file_url="http://x/over.png",
+        file_size=MAX_IMAGE_BYTES + 1024,
+        mime_type="image/png",
+    )
+
+    helper = AiWizardService()
+    images, warnings = helper._load_image_attachments_with_warnings([str(over.id)], user)
+    assert images == []
+    assert any("big.png" in w and "10MB" in w for w in warnings)
+
+
+@pytest.mark.django_db
+def test_chat_emits_warning_event_when_image_oversize(site_settings, monkeypatch):
+    """大图被过滤时, stream_chat 应 emit 'warning' 事件让前端有机会显示给用户。"""
+    from apps.issues.services_ai_wizard import AiChatService, MAX_IMAGE_BYTES
+    from apps.tools.models import Attachment
+    from tests.factories import LLMConfigFactory, UserFactory
+    LLMConfigFactory(is_default=True, is_active=True)
+
+    user = UserFactory()
+    over = Attachment.objects.create(
+        uploaded_by=user,
+        file_name="huge.png",
+        file_key="2026/05/huge.png",
+        file_url="http://x/huge.png",
+        file_size=MAX_IMAGE_BYTES + 1,
+        mime_type="image/png",
+    )
+
+    with patch(
+        "apps.issues.services_ai_wizard.LLMClient.chat",
+        return_value='{"action":"ask","question":"补充一下"}',
+    ):
+        svc = AiChatService()
+        events = list(svc.stream_chat(
+            messages=[{"role": "user", "content": "x"}],
+            attachment_ids=[str(over.id)],
+            user=user,
+        ))
+
+    names = [e[0] for e in events]
+    assert "warning" in names, f"应包含 warning 事件, 实际: {names}"
+    warning_payload = [e[1] for e in events if e[0] == "warning"][0]
+    assert "huge.png" in warning_payload["message"]
+
+
+@pytest.mark.django_db
+def test_chat_no_warning_event_for_under_limit_images(site_settings, monkeypatch):
+    """正常大小的图片不应触发警告事件 (smoke test 防回归)。"""
+    from apps.issues.services_ai_wizard import AiChatService, AiWizardService
+    from tests.factories import LLMConfigFactory
+    LLMConfigFactory(is_default=True, is_active=True)
+
+    monkeypatch.setattr(AiWizardService, "_load_image_attachments_with_warnings",
+                        lambda self, ids, owner: ([], []))
+
+    with patch(
+        "apps.issues.services_ai_wizard.LLMClient.chat",
+        return_value='{"action":"ask","question":"x"}',
+    ):
+        svc = AiChatService()
+        events = list(svc.stream_chat(
+            messages=[{"role": "user", "content": "y"}],
+            attachment_ids=[],
+        ))
+
+    assert "warning" not in [e[0] for e in events]
+
+
+# ============================================================================
+# Duplicate-check hint in chat flow (热插拔, 受 WIZARD_CHAT_DUP_CHECK_ENABLED 控制)
+# ============================================================================
+
+@pytest.mark.django_db
+def test_stream_chat_emits_dup_event_on_first_draft_when_candidates_exist(site_settings, monkeypatch, settings):
+    from apps.issues.services_ai_wizard import AiChatService
+    from apps.settings.models import SiteSettings
+    from tests.factories import LLMConfigFactory, ProjectFactory
+    LLMConfigFactory(is_default=True, is_active=True)
+    SiteSettings.objects.update(modules=["其他"], labels={})
+    settings.WIZARD_CHAT_DUP_CHECK_ENABLED = True
+    project = ProjectFactory()
+
+    fake_draft = (
+        '{"action":"draft","title":"通知中心乱码","priority":"P2","module":"其他",'
+        '"repro_steps":"","expected_behavior":"","labels":[],'
+        '"follow_up_questions":[],"inferred_env":""}'
+    )
+    fake_candidates = [
+        {"id": 145, "title": "通知中心乱码刷新就好", "status": "进行中", "reason": "几乎一致"},
+    ]
+    with patch("apps.issues.services_ai_wizard.LLMClient.chat", return_value=fake_draft), \
+         patch("apps.issues.services.check_duplicates", return_value=fake_candidates):
+        svc = AiChatService()
+        events = list(svc.stream_chat(
+            messages=[{"role": "user", "content": "通知中心显示乱码"}],
+            project=project,
+        ))
+
+    dup_payloads = [e[1] for e in events if e[0] == "dup"]
+    assert len(dup_payloads) == 1
+    assert dup_payloads[0]["candidates"] == fake_candidates
+    # 事件顺序: draft 在 dup 之前 (用户先看到草稿, 再看到查重提示)
+    names = [e[0] for e in events]
+    assert names.index("draft") < names.index("dup") < names.index("done")
+
+
+@pytest.mark.django_db
+def test_stream_chat_skips_dup_check_when_flag_disabled(site_settings, monkeypatch, settings):
+    from apps.issues.services_ai_wizard import AiChatService
+    from tests.factories import LLMConfigFactory, ProjectFactory
+    LLMConfigFactory(is_default=True, is_active=True)
+    settings.WIZARD_CHAT_DUP_CHECK_ENABLED = False
+    project = ProjectFactory()
+
+    fake_draft = (
+        '{"action":"draft","title":"t","priority":"P2","module":"其他",'
+        '"repro_steps":"","expected_behavior":"","labels":[],'
+        '"follow_up_questions":[],"inferred_env":""}'
+    )
+    called = {"n": 0}
+    def fake_check(*args, **kwargs):
+        called["n"] += 1
+        return [{"id": 1, "title": "x", "status": "进行中", "reason": "x"}]
+
+    with patch("apps.issues.services_ai_wizard.LLMClient.chat", return_value=fake_draft), \
+         patch("apps.issues.services.check_duplicates", side_effect=fake_check):
+        svc = AiChatService()
+        events = list(svc.stream_chat(
+            messages=[{"role": "user", "content": "x"}],
+            project=project,
+        ))
+
+    assert "dup" not in [e[0] for e in events], "WIZARD_CHAT_DUP_CHECK_ENABLED=False 时不应跑/发送 dup"
+    assert called["n"] == 0, "flag 关闭时 check_duplicates 完全不被调用 (省 token)"
+
+
+@pytest.mark.django_db
+def test_stream_chat_skips_dup_check_on_revise(site_settings, monkeypatch, settings):
+    """messages 里已经有过 action:draft 的 assistant 消息 = 用户在 revise, 跳过 dup-check"""
+    from apps.issues.services_ai_wizard import AiChatService
+    from tests.factories import LLMConfigFactory, ProjectFactory
+    LLMConfigFactory(is_default=True, is_active=True)
+    settings.WIZARD_CHAT_DUP_CHECK_ENABLED = True
+    project = ProjectFactory()
+
+    fake_draft = (
+        '{"action":"draft","title":"t","priority":"P0","module":"其他",'
+        '"repro_steps":"","expected_behavior":"","labels":[],'
+        '"follow_up_questions":[],"inferred_env":""}'
+    )
+    called = {"n": 0}
+    def fake_check(*args, **kwargs):
+        called["n"] += 1
+        return [{"id": 1, "title": "x", "status": "进行中", "reason": "x"}]
+
+    with patch("apps.issues.services_ai_wizard.LLMClient.chat", return_value=fake_draft), \
+         patch("apps.issues.services.check_duplicates", side_effect=fake_check):
+        svc = AiChatService()
+        events = list(svc.stream_chat(
+            messages=[
+                {"role": "user", "content": "通知中心乱码"},
+                {"role": "assistant", "content": '{"action":"draft","title":"v1"}'},
+                {"role": "user", "content": "改 P0"},
+            ],
+            project=project,
+        ))
+
+    assert "dup" not in [e[0] for e in events]
+    assert called["n"] == 0, "revise 路径不该调 check_duplicates"
+
+
+@pytest.mark.django_db
+def test_stream_chat_no_dup_event_when_no_candidates(site_settings, monkeypatch, settings):
+    """跑了 check_duplicates 但返回空 → 不 emit dup 事件保持 thread 干净"""
+    from apps.issues.services_ai_wizard import AiChatService
+    from tests.factories import LLMConfigFactory, ProjectFactory
+    LLMConfigFactory(is_default=True, is_active=True)
+    settings.WIZARD_CHAT_DUP_CHECK_ENABLED = True
+    project = ProjectFactory()
+
+    fake_draft = (
+        '{"action":"draft","title":"t","priority":"P2","module":"其他",'
+        '"repro_steps":"","expected_behavior":"","labels":[],'
+        '"follow_up_questions":[],"inferred_env":""}'
+    )
+    with patch("apps.issues.services_ai_wizard.LLMClient.chat", return_value=fake_draft), \
+         patch("apps.issues.services.check_duplicates", return_value=[]):
+        svc = AiChatService()
+        events = list(svc.stream_chat(
+            messages=[{"role": "user", "content": "x"}],
+            project=project,
+        ))
+
+    assert "dup" not in [e[0] for e in events]
+
+
+@pytest.mark.django_db
+def test_stream_chat_dup_check_failure_swallowed(site_settings, monkeypatch, settings):
+    """check_duplicates 抛异常时不影响 draft / done 发送 (degrade gracefully)"""
+    from apps.issues.services_ai_wizard import AiChatService
+    from tests.factories import LLMConfigFactory, ProjectFactory
+    LLMConfigFactory(is_default=True, is_active=True)
+    settings.WIZARD_CHAT_DUP_CHECK_ENABLED = True
+    project = ProjectFactory()
+
+    fake_draft = (
+        '{"action":"draft","title":"t","priority":"P2","module":"其他",'
+        '"repro_steps":"","expected_behavior":"","labels":[],'
+        '"follow_up_questions":[],"inferred_env":""}'
+    )
+    def boom(*args, **kwargs):
+        raise RuntimeError("LLM down")
+
+    with patch("apps.issues.services_ai_wizard.LLMClient.chat", return_value=fake_draft), \
+         patch("apps.issues.services.check_duplicates", side_effect=boom):
+        svc = AiChatService()
+        events = list(svc.stream_chat(
+            messages=[{"role": "user", "content": "x"}],
+            project=project,
+        ))
+
+    names = [e[0] for e in events]
+    assert "draft" in names and "done" in names
+    assert "dup" not in names
+
+
+@pytest.mark.django_db
+def test_chat_injects_project_name_into_system_prompt(site_settings):
+    """LLM 即使在 messages 被清空后, 也必须能从 system_prompt 知道当前项目.
+    捕获实际送给 LLM 的 system_prompt, 断言包含项目名 + 说明。"""
+    from apps.issues.services_ai_wizard import AiChatService
+    from tests.factories import LLMConfigFactory, ProjectFactory
+    LLMConfigFactory(is_default=True, is_active=True)
+    project = ProjectFactory(name="贷后智能体", description="信贷催收自动化平台")
+
+    captured = {}
+    def fake_chat(self, **kwargs):
+        captured["system_prompt"] = kwargs.get("system_prompt")
+        return '{"action":"ask","question":"x"}'
+
+    with patch("apps.issues.services_ai_wizard.LLMClient.chat", new=fake_chat):
+        svc = AiChatService()
+        svc.chat(
+            messages=[{"role": "user", "content": "y"}],
+            attachment_ids=[], user=None,
+            project=project,
+        )
+
+    sp = captured["system_prompt"]
+    assert "当前项目: 贷后智能体" in sp, f"system_prompt 缺项目名: {sp!r}"
+    assert "信贷催收自动化平台" in sp, "system_prompt 缺项目说明"
+
+
+@pytest.mark.django_db
+def test_chat_omits_project_block_when_no_project(site_settings):
+    """没传 project 时 (理论不应发生, 但容错) system_prompt 不该有空白的'当前项目:' 块"""
+    from apps.issues.services_ai_wizard import AiChatService
+    from tests.factories import LLMConfigFactory
+    LLMConfigFactory(is_default=True, is_active=True)
+
+    captured = {}
+    def fake_chat(self, **kwargs):
+        captured["system_prompt"] = kwargs.get("system_prompt")
+        return '{"action":"ask","question":"x"}'
+
+    with patch("apps.issues.services_ai_wizard.LLMClient.chat", new=fake_chat):
+        svc = AiChatService()
+        svc.chat(messages=[{"role": "user", "content": "y"}], attachment_ids=[], user=None)
+
+    assert "当前项目:" not in captured["system_prompt"]
+
+
+def test_strip_assembled_blocks_removes_env_and_image_lines():
+    """Unit: 服务端拼装的 env blockquote + 图片 markdown 行必须被剥掉, 段落文本保留."""
+    from apps.issues.services_ai_wizard import _strip_assembled_blocks
+    assembled = (
+        "用户原话第一段\n\n"
+        "用户原话第二段\n\n"
+        "> 🤖 *AI 推断环境*: 环境: prod | 角色: 普通用户\n\n"
+        "![screenshot.png](/uploads/x.png)\n\n"
+        "![another.png](/uploads/y.png)"
+    )
+    out = _strip_assembled_blocks(assembled)
+    assert out == "用户原话第一段\n\n用户原话第二段"
+
+
+def test_strip_assembled_blocks_keeps_raw_when_no_appendix():
+    from apps.issues.services_ai_wizard import _strip_assembled_blocks
+    raw = "只有用户文本, 没有任何拼装块"
+    assert _strip_assembled_blocks(raw) == raw
+
+
+@pytest.mark.django_db
+def test_chat_strips_assembled_blocks_from_history_before_calling_llm(site_settings, monkeypatch):
+    """重现用户报告: 改描述时图片被重复显示 — 因为 history 里 description 含图片 markdown,
+    LLM 照搬, 拼装时再追加. sanitize 必须把 history 里的拼装块剥掉, 再发给 LLM."""
+    from apps.issues.services_ai_wizard import AiChatService, AiWizardService
+    from apps.settings.models import SiteSettings
+    from tests.factories import LLMConfigFactory
+    LLMConfigFactory(is_default=True, is_active=True)
+    SiteSettings.objects.update(modules=["通知中心"], labels={})
+
+    def fake_load_image_metadata(self, attachment_ids, owner):
+        if not attachment_ids:
+            return []
+        return [{"file_name": "x.png", "file_url": "/uploads/x.png"}]
+    monkeypatch.setattr(AiWizardService, "_load_image_metadata", fake_load_image_metadata)
+
+    # 模拟 v1 已落地: assistant 历史里的 description 是服务端拼装后的成品
+    assembled_v1 = (
+        "用户原描述\n\n"
+        "> 🤖 *AI 推断环境*: 环境: prod | 角色: 普通用户 | 页面: 看板\n\n"
+        "![x.png](/uploads/x.png)"
+    )
+    history = [
+        {"role": "user", "content": "用户原描述"},
+        {"role": "assistant", "content": json.dumps({
+            "action": "draft", "title": "T", "description": assembled_v1,
+            "priority": "P2", "module": "通知中心", "repro_steps": "1. a",
+            "expected_behavior": "b", "labels": [], "follow_up_questions": [],
+            "inferred_env": "环境: prod | 角色: 普通用户 | 页面: 看板",
+        }, ensure_ascii=False)},
+        {"role": "user", "content": "改一下描述, 应该是 X"},
+    ]
+
+    captured_messages: list = []
+    def fake_chat(self, **kwargs):
+        captured_messages.extend(kwargs.get("messages") or [])
+        # LLM 输出新描述 (按 prompt 规则: 只写纯文本)
+        return json.dumps({
+            "action": "draft", "title": "T", "description": "用户改写后的描述 X",
+            "priority": "P2", "module": "通知中心", "repro_steps": "1. a",
+            "expected_behavior": "b", "labels": [], "follow_up_questions": [],
+            "inferred_env": "环境: prod | 角色: 普通用户 | 页面: 看板",
+        }, ensure_ascii=False)
+
+    with patch("apps.issues.services_ai_wizard.LLMClient.chat", new=fake_chat):
+        svc = AiChatService()
+        result = svc.chat(
+            messages=history, attachment_ids=[], user=None,
+            conversation_attachment_ids=["00000000-0000-0000-0000-000000000001"],
+        )
+
+    # LLM 应该只看到 raw 描述, 不应看到拼装块
+    asst_msg = next(m for m in captured_messages if m.get("role") == "assistant")
+    asst_content = json.loads(asst_msg["content"])
+    assert asst_content["description"] == "用户原描述"
+    assert "> 🤖" not in asst_content["description"]
+    assert "![x.png]" not in asst_content["description"]
+
+    # 最终拼装的 description: env + 图片各只出现一次
+    final_desc = result["description"]
+    assert final_desc.count("> 🤖 *AI 推断环境*") == 1
+    assert final_desc.count("![x.png](/uploads/x.png)") == 1
+    assert "用户改写后的描述 X" in final_desc

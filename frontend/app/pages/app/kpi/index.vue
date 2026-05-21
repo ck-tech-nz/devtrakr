@@ -41,20 +41,20 @@
           />
         </div>
 
-        <!-- 自定义日期 -->
-        <UPopover>
-          <UButton size="sm" variant="outline" color="neutral" icon="i-heroicons-calendar-days">
-            {{ isCustom ? `${customStart} ~ ${customEnd}` : '自定义' }}
+        <!-- 自定义日期 (兼显示当前区间) -->
+        <UPopover v-model:open="popoverOpen">
+          <UButton size="sm" variant="outline" color="neutral" icon="i-heroicons-calendar-days" :title="isCustom ? '自定义区间' : '点击自定义区间'">
+            {{ range.start }} ~ {{ range.end }}
           </UButton>
           <template #content>
             <div class="p-3 space-y-3">
               <div class="space-y-1">
                 <label class="text-xs text-gray-500 dark:text-gray-400">开始日期</label>
-                <UInput v-model="customStart" type="date" size="sm" />
+                <UInput v-model="draftStart" type="date" size="sm" />
               </div>
               <div class="space-y-1">
                 <label class="text-xs text-gray-500 dark:text-gray-400">结束日期</label>
-                <UInput v-model="customEnd" type="date" size="sm" />
+                <UInput v-model="draftEnd" type="date" size="sm" />
               </div>
               <UButton size="sm" block @click="applyCustomRange">应用</UButton>
             </div>
@@ -254,18 +254,31 @@ const data = ref<any>(null)
 const selectedRole = ref('开发者')
 
 const period = usePeriodRange('month')
-const { activePeriod, customStart, customEnd, isCustom, periodOffset } = period
+const { activePeriod, customStart, customEnd, isCustom, periodOffset, range } = period
 
 const periods = [
   { label: '周', value: 'week' as const },
   { label: '月', value: 'month' as const },
   { label: '季度', value: 'quarter' as const },
+  { label: '年', value: 'year' as const },
 ]
 
 const periodUnitLabel = computed(() => {
   if (activePeriod.value === 'week') return '周'
   if (activePeriod.value === 'quarter') return '季度'
+  if (activePeriod.value === 'year') return '年'
   return '月'
+})
+
+// 自定义日期弹窗:本地草稿,打开时用当前区间预填,点"应用"才写入 period
+const popoverOpen = ref(false)
+const draftStart = ref('')
+const draftEnd = ref('')
+watch(popoverOpen, (open) => {
+  if (open) {
+    draftStart.value = customStart.value || range.value.start
+    draftEnd.value = customEnd.value || range.value.end
+  }
 })
 
 const roleOptions = [
@@ -437,7 +450,11 @@ function buildQuery() {
 }
 
 function applyCustomRange() {
+  if (!draftStart.value || !draftEnd.value) return
+  customStart.value = draftStart.value
+  customEnd.value = draftEnd.value
   period.applyCustom()
+  popoverOpen.value = false
   fetchData()
 }
 

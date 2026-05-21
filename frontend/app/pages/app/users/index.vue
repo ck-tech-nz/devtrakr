@@ -157,19 +157,23 @@ async function handleCreate() {
 }
 
 onMounted(async () => {
-  try {
-    const [usersData, groupsData] = await Promise.all([
-      api<any>('/api/users/'),
-      api<any>('/api/page-perms/groups/'),
-    ])
-    users.value = Array.isArray(usersData) ? usersData : usersData.results || []
-    const groups = Array.isArray(groupsData) ? groupsData : groupsData.results || []
-    availableGroups.value = groups.map((g: any) => g.name)
-  } catch (e) {
-    console.error('Failed to load data:', e)
-  } finally {
-    loading.value = false
+  // 用 allSettled 避免 groups 接口对非超管返回 403 时把 users 列表也带挂
+  const [usersResult, groupsResult] = await Promise.allSettled([
+    api<any>('/api/users/'),
+    api<any>('/api/page-perms/groups/'),
+  ])
+  if (usersResult.status === 'fulfilled') {
+    const data = usersResult.value
+    users.value = Array.isArray(data) ? data : data.results || []
+  } else {
+    console.error('Failed to load users:', usersResult.reason)
   }
+  if (groupsResult.status === 'fulfilled') {
+    const data = groupsResult.value
+    const groups = Array.isArray(data) ? data : data.results || []
+    availableGroups.value = groups.map((g: any) => g.name)
+  }
+  loading.value = false
 })
 </script>
 

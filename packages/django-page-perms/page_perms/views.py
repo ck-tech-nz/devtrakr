@@ -95,8 +95,21 @@ class PermissionViewSet(viewsets.ViewSet):
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
+class _HasAuthGroupView(IsAuthenticated):
+    def has_permission(self, request, view):
+        return bool(
+            super().has_permission(request, view)
+            and request.user.has_perm("auth.view_group")
+        )
+
+
 class GroupViewSet(viewsets.ViewSet):
-    permission_classes = [IsSuperUser]
+    def get_permissions(self):
+        # Read-only access gated by auth.view_group (e.g. HR listing groups for
+        # user mgmt); group mutation stays superuser-only.
+        if self.action in ("list", "retrieve"):
+            return [_HasAuthGroupView()]
+        return [IsSuperUser()]
 
     def list(self, request):
         groups = Group.objects.prefetch_related("permissions__content_type").all()

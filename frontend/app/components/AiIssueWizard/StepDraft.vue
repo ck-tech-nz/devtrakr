@@ -21,96 +21,133 @@
     <div v-else class="draft-wrap">
       <!-- Header -->
       <div class="draft-header">
-        <div class="header-icon"><UIcon name="i-heroicons-check" class="w-4 h-4 text-white" /></div>
-        <div class="header-title">Issue 已生成 · 确认后一键提交</div>
-        <span class="header-sub">AI 自动分析完成</span>
-      </div>
-
-      <!-- Title (centered, large) -->
-      <div class="field-row">
-        <UInput v-model="form.title" :ui="{ base: 'text-center text-lg font-semibold' }" />
-      </div>
-
-      <!-- Description -->
-      <div class="field-row">
-        <UTextarea v-model="form.description" :rows="2" autoresize :ui="{ base: 'text-center text-sm text-gray-500' }" />
-      </div>
-
-      <!-- Pills row: priority / module / assignee -->
-      <div class="pills-row">
-        <USelect
-          v-model="form.priority"
-          :items="priorityOptions"
-          value-key="value"
-          size="xs"
-          icon="i-heroicons-flag"
-          class="pill-select"
-        />
-        <USelect
-          v-model="form.module"
-          :items="moduleOptions"
-          size="xs"
-          icon="i-heroicons-folder"
-          class="pill-select"
-        />
-        <USelect
-          v-model="form.assignee"
-          :items="assigneeOptions"
-          value-key="value"
-          size="xs"
-          icon="i-heroicons-user"
-          placeholder="（AI 后台自动分派）"
-          class="pill-select"
-        />
-      </div>
-
-      <!-- Follow-up questions hint (if any) -->
-      <div v-if="draft.follow_up_questions && draft.follow_up_questions.length" class="hint-box">
-        <div class="hint-head">
-          <UIcon name="i-heroicons-chat-bubble-bottom-center-text" class="w-4 h-4" />
-          <span>AI 建议补充以下信息后再提交</span>
+        <div class="header-icon"><UIcon name="i-heroicons-sparkles" class="w-4 h-4 text-white" /></div>
+        <div class="header-text">
+          <div class="header-title">
+            Issue 草稿
+            <span v-if="(version || 0) > 1" class="header-version">v{{ version }}</span>
+          </div>
+          <div class="header-sub">{{ isEditable ? '可直接编辑下方字段后点提交, 或在底部对话框告诉 AI 怎么改' : '该版本已被新版替代,仅供查看' }}</div>
         </div>
-        <ul class="hint-list">
-          <li v-for="q in draft.follow_up_questions" :key="q">{{ q }}</li>
-        </ul>
+        <AiBadge kind="generated" class="header-badge" />
       </div>
 
-      <!-- 复现步骤 sub-card -->
-      <div class="repro-card">
-        <div class="repro-head">
-          <span class="repro-label">复现步骤</span>
-          <AiBadge v-if="form.repro_steps.trim()" kind="generated" />
+      <!-- Body: 2-column layout -->
+      <div class="draft-body">
+        <!-- Left: issue content -->
+        <div class="content-col">
+          <UInput
+            v-model="form.title"
+            placeholder="问题标题"
+            :ui="{ base: 'issue-title-input' }"
+            :disabled="!isEditable"
+          />
+
+          <!-- AI 生成的描述里会带 ![image](url) 之类的 markdown, 默认进入预览模式让图片直接渲染;
+               点击"编辑"tab 可改文本 -->
+          <MarkdownEditor
+            ref="descEditorRef"
+            v-model="form.description"
+            placeholder="一句话补充上下文（可选）"
+            default-mode="preview"
+          />
+
+          <div class="section">
+            <div class="section-label">复现步骤</div>
+            <UTextarea
+              v-model="form.repro_steps"
+              :rows="4"
+              autoresize
+              placeholder="1. ...&#10;2. ...&#10;3. ..."
+              :ui="{ base: 'issue-body-input' }"
+              :disabled="!isEditable"
+            />
+          </div>
+
+          <div class="section">
+            <div class="section-label">预期行为</div>
+            <UInput
+              v-model="form.expected_behavior"
+              placeholder="应该发生什么？"
+              :ui="{ base: 'issue-body-input' }"
+              :disabled="!isEditable"
+            />
+          </div>
         </div>
-        <UTextarea
-          v-model="form.repro_steps"
-          :rows="4"
-          autoresize
-          placeholder="（请按 1. 2. 3. 列出具体步骤）"
-          :ui="{ base: 'text-center text-sm' }"
-        />
-      </div>
 
-      <!-- Expected behavior -->
-      <div class="field-row">
-        <label class="field-label">预期行为 <AiBadge v-if="form.expected_behavior.trim()" kind="generated" /></label>
-        <UInput v-model="form.expected_behavior" placeholder="（应该发生什么？）" />
-      </div>
+        <!-- Right: meta sidebar -->
+        <aside class="meta-col">
+          <div class="meta-group">
+            <div class="meta-row">
+              <span class="meta-label">项目</span>
+              <USelect
+                v-model="form.project"
+                :items="projectOptions"
+                value-key="value"
+                size="xs"
+                class="meta-select"
+                :disabled="!isEditable"
+              />
+            </div>
+            <div class="meta-row">
+              <span class="meta-label">优先级</span>
+              <USelect
+                v-model="form.priority"
+                :items="priorityOptions"
+                value-key="value"
+                size="xs"
+                class="meta-select"
+                :disabled="!isEditable"
+              />
+            </div>
+            <div class="meta-row">
+              <span class="meta-label">模块</span>
+              <USelect
+                v-model="form.module"
+                :items="moduleOptions"
+                size="xs"
+                class="meta-select"
+                :disabled="!isEditable"
+              />
+            </div>
+            <div class="meta-row">
+              <span class="meta-label">指派人</span>
+              <USelect
+                v-model="form.assignee"
+                :items="assigneeOptions"
+                value-key="value"
+                size="xs"
+                placeholder="AI 自动分派"
+                class="meta-select"
+                :disabled="!isEditable"
+              />
+            </div>
+          </div>
 
-      <!-- Project (preserved for fix-on-final-step) -->
-      <div class="field-row">
-        <label class="field-label">项目</label>
-        <USelect v-model="form.project" :items="projectOptions" value-key="value" size="sm" />
+          <!-- AI suggestions callout (only if present) -->
+          <div v-if="draft.follow_up_questions && draft.follow_up_questions.length" class="ai-suggest">
+            <div class="ai-suggest-head">
+              <UIcon name="i-heroicons-light-bulb" class="w-3.5 h-3.5" />
+              <span>AI 建议补充</span>
+            </div>
+            <ul class="ai-suggest-list">
+              <li v-for="q in draft.follow_up_questions" :key="q">{{ q }}</li>
+            </ul>
+          </div>
+        </aside>
       </div>
 
       <p v-if="submitError" class="submit-error">{{ submitError }}</p>
 
-      <!-- Footer -->
-      <div class="footer">
-        <span class="footer-hint">✦ AI 已自动判断优先级、模块与指派人 · 如有异议可点击修改</span>
-        <UButton variant="outline" color="neutral" size="sm" @click="emit('back')">重新描述</UButton>
+      <!-- Footer (历史 draft 不展示, 只有可编辑卡才显示操作区) -->
+      <div v-if="isEditable" class="footer">
+        <UButton variant="ghost" color="neutral" size="sm" icon="i-heroicons-arrow-uturn-left" @click="emit('back')">
+          重新描述
+        </UButton>
+        <div class="footer-spacer" />
         <UButton
           size="sm"
-          icon="i-heroicons-check"
+          icon="i-heroicons-paper-airplane"
           :loading="submitting"
           :disabled="!canSubmit"
           @click="onSubmit"
@@ -143,6 +180,10 @@ const props = defineProps<{
   // 后端创建 Issue 后返回的 assignee — 同步路径下一般为 null(分派走 Celery),
   // 留空时 UI 提示"暂未分派,AI 后台正在自动分派"
   successAssignee: string | null
+  /** false 时整张卡只读 — 用于多轮修订后的历史 draft */
+  editable?: boolean
+  /** 草稿版本号; >1 时 header 显示 v2/v3 徽标 */
+  version?: number
 }>()
 
 const emit = defineEmits<{
@@ -150,6 +191,21 @@ const emit = defineEmits<{
   back: []
   reset: []
 }>()
+
+// 强制 description 编辑器进入预览态 — 避免某些环境下 default-mode prop 时序不稳
+const descEditorRef = ref<{ setMode: (m: 'edit' | 'preview') => void } | null>(null)
+onMounted(() => { descEditorRef.value?.setMode('preview') })
+
+// editable 默认为 true (向后兼容旧调用方); false 时整张卡只读 — 多轮修订下的历史 draft 用
+const isEditable = computed(() => props.editable !== false)
+
+// 父级通过 ref 调用, 在 affirmative auto-submit 路径下直接走与"提交 Issue"按钮相同的逻辑
+defineExpose({
+  triggerSubmit() {
+    if (!isEditable.value || !canSubmit.value) return
+    onSubmit()
+  },
+})
 
 const form = ref({
   title: props.draft.title,
@@ -162,7 +218,14 @@ const form = ref({
   // 默认留空;提交后 Celery 异步跑 issue_auto_assign 自动挑人,
   // 用户在下拉里手动选择会优先于自动分派
   assignee: '',
-  project: props.initialProjectId,
+  // 父级 lastAnalyzedProject 可能是 number/string, 显式 String() 让 USelect 严格比对成功
+  project: props.initialProjectId ? String(props.initialProjectId) : '',
+})
+
+// 兜底: 若 props.initialProjectId 在 mount 之后才推到 (上游异步加载),
+// 自动同步进 form.project. 用户手动改过 (form.project 非空) 时不覆盖.
+watch(() => props.initialProjectId, (v) => {
+  if (v && !form.value.project) form.value.project = String(v)
 })
 
 const priorityOptions = [
@@ -175,11 +238,6 @@ const priorityOptions = [
 const projectOptions = computed(() => props.projects.map(p => ({ label: p.name, value: String(p.id) })))
 const moduleOptions = computed(() => props.modules)
 const assigneeOptions = computed(() => props.users.map(u => ({ label: u.name, value: String(u.id) })))
-
-const assigneeName = computed(() => {
-  const u = props.users.find(x => String(x.id) === String(form.value.assignee))
-  return u?.name || ''
-})
 
 // 成功视图里展示后端实际分派到的人 (form.assignee 在自动分派路径下是空字符串)
 const successAssigneeName = computed(() => {
@@ -230,7 +288,7 @@ function onSubmit() {
   background-color: #ffffff;
   border: 1px solid #e5e7eb;
   border-radius: 1rem;
-  padding: 1.5rem;
+  padding: 1.25rem 1.5rem 1.125rem;
   display: flex;
   flex-direction: column;
   gap: 1rem;
@@ -238,6 +296,7 @@ function onSubmit() {
 }
 :root.dark .draft-wrap { background-color: #1f2937; border-color: #374151; }
 
+/* ---------- Header ---------- */
 .draft-header {
   display: flex; align-items: center; gap: 0.625rem;
   padding-bottom: 0.875rem;
@@ -246,51 +305,157 @@ function onSubmit() {
 :root.dark .draft-header { border-bottom-color: #374151; }
 .header-icon {
   width: 1.75rem; height: 1.75rem; border-radius: 0.5rem;
-  background-color: #7c3aed; display: flex; align-items: center; justify-content: center;
+  background: linear-gradient(135deg, #7c3aed, #9333ea);
+  display: flex; align-items: center; justify-content: center;
   flex-shrink: 0;
+  box-shadow: 0 2px 8px -2px rgba(124, 58, 237, 0.4);
 }
-.header-title { font-size: 0.9375rem; font-weight: 600; color: #111827; }
+.header-text { display: flex; flex-direction: column; line-height: 1.2; }
+.header-title {
+  font-size: 0.9375rem; font-weight: 600; color: #111827;
+  display: inline-flex; align-items: center; gap: 0.375rem;
+}
+.header-version {
+  font-size: 0.625rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: #ffffff;
+  background: linear-gradient(135deg, #7c3aed, #9333ea);
+  padding: 0.0625rem 0.375rem;
+  border-radius: 0.25rem;
+  text-transform: lowercase;
+}
 :root.dark .header-title { color: #f3f4f6; }
-.header-sub { font-size: 0.75rem; color: #9ca3af; margin-left: auto; }
+.header-sub { font-size: 0.75rem; color: #9ca3af; margin-top: 0.125rem; }
+.header-badge { margin-left: auto; }
 
-.field-row { display: flex; flex-direction: column; gap: 0.375rem; }
-.field-label { font-size: 0.8125rem; font-weight: 500; color: #374151; display: flex; align-items: center; }
-:root.dark .field-label { color: #d1d5db; }
-
-.pills-row {
-  display: flex; flex-wrap: wrap; gap: 0.5rem; padding: 0.25rem 0;
+/* ---------- Body grid ---------- */
+.draft-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 18rem;
+  gap: 1.75rem;
 }
-.pill-select :deep(button) { font-size: 0.75rem; min-width: auto; }
-
-.hint-box {
-  background-color: #fffbeb;
-  border: 1px solid #fde68a;
-  border-radius: 0.5rem;
-  padding: 0.75rem 1rem;
-  font-size: 0.8125rem;
+@media (max-width: 768px) {
+  .draft-body { grid-template-columns: 1fr; gap: 1rem; }
 }
-:root.dark .hint-box { background-color: rgba(251, 191, 36, 0.08); border-color: rgba(251, 191, 36, 0.3); }
-.hint-head {
-  display: flex; align-items: center; gap: 0.375rem;
-  color: #92400e; font-weight: 500; margin-bottom: 0.375rem;
-}
-:root.dark .hint-head { color: #fcd34d; }
-.hint-list { list-style: disc; padding-left: 1.5rem; color: #78350f; }
-:root.dark .hint-list { color: #fde68a; }
-.hint-list li { padding: 0.125rem 0; }
 
-.repro-card {
+/* ---------- Left content column ---------- */
+.content-col {
+  display: flex; flex-direction: column; gap: 1.125rem;
+  min-width: 0;
+}
+.content-col :deep(.issue-title-input) {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: #111827;
+  letter-spacing: -0.01em;
+  padding: 0.5rem 0.75rem;
+}
+:root.dark .content-col :deep(.issue-title-input) { color: #f3f4f6; }
+.content-col :deep(.issue-desc-input) {
+  font-size: 0.875rem;
+  color: #4b5563;
+  line-height: 1.55;
+  padding: 0.5rem 0.75rem;
+}
+:root.dark .content-col :deep(.issue-desc-input) { color: #9ca3af; }
+
+.section {
+  display: flex; flex-direction: column; gap: 0.4375rem;
+  padding-top: 0.25rem;
+  border-top: 1px dashed #f3f4f6;
+}
+:root.dark .section { border-top-color: #374151; }
+.section-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+:root.dark .section-label { color: #9ca3af; }
+.content-col :deep(.issue-body-input) {
+  font-size: 0.875rem;
+  color: #1f2937;
+  line-height: 1.6;
+}
+:root.dark .content-col :deep(.issue-body-input) { color: #e5e7eb; }
+
+/* ---------- Right meta sidebar ---------- */
+.meta-col {
+  display: flex; flex-direction: column; gap: 0.875rem;
+  padding-left: 1.25rem;
+  border-left: 1px solid #f3f4f6;
+}
+:root.dark .meta-col { border-left-color: #374151; }
+@media (max-width: 768px) {
+  .meta-col { padding-left: 0; border-left: 0; border-top: 1px solid #f3f4f6; padding-top: 1rem; }
+  :root.dark .meta-col { border-top-color: #374151; }
+}
+
+.meta-group { display: flex; flex-direction: column; gap: 0.5rem; }
+.meta-row {
+  display: grid;
+  grid-template-columns: 4.5rem 1fr;
+  align-items: center;
+  gap: 0.5rem;
+}
+.meta-label {
+  font-size: 0.75rem;
+  color: #6b7280;
+  font-weight: 500;
+}
+:root.dark .meta-label { color: #9ca3af; }
+.meta-select { width: 100%; }
+.meta-select :deep(button) {
+  font-size: 0.75rem;
+  width: 100%;
+  justify-content: space-between;
   background-color: #f9fafb;
-  border: 1px solid #f3f4f6;
-  border-radius: 0.625rem;
-  padding: 1rem;
-  display: flex; flex-direction: column; gap: 0.625rem;
+  border-color: #e5e7eb;
 }
-:root.dark .repro-card { background-color: #111827; border-color: #1f2937; }
-.repro-head { display: flex; align-items: center; gap: 0.375rem; }
-.repro-label { font-size: 0.8125rem; font-weight: 500; color: #374151; }
-:root.dark .repro-label { color: #d1d5db; }
+:root.dark .meta-select :deep(button) {
+  background-color: #111827;
+  border-color: #374151;
+}
 
+/* AI suggest callout */
+.ai-suggest {
+  background: linear-gradient(135deg, rgba(124, 58, 237, 0.04), rgba(245, 158, 11, 0.04));
+  border: 1px solid rgba(124, 58, 237, 0.12);
+  border-radius: 0.625rem;
+  padding: 0.625rem 0.75rem;
+  font-size: 0.75rem;
+}
+:root.dark .ai-suggest {
+  background: linear-gradient(135deg, rgba(124, 58, 237, 0.12), rgba(245, 158, 11, 0.08));
+  border-color: rgba(124, 58, 237, 0.3);
+}
+.ai-suggest-head {
+  display: flex; align-items: center; gap: 0.3125rem;
+  color: #7c3aed; font-weight: 600; margin-bottom: 0.375rem;
+}
+:root.dark .ai-suggest-head { color: #c4b5fd; }
+.ai-suggest-list {
+  list-style: none; padding: 0; margin: 0;
+  display: flex; flex-direction: column; gap: 0.25rem;
+  color: #6b7280;
+  line-height: 1.5;
+}
+:root.dark .ai-suggest-list { color: #d1d5db; }
+.ai-suggest-list li {
+  padding-left: 0.75rem;
+  position: relative;
+}
+.ai-suggest-list li::before {
+  content: '·';
+  position: absolute;
+  left: 0.25rem;
+  color: #7c3aed;
+  font-weight: 700;
+}
+
+/* ---------- Footer ---------- */
 .submit-error { font-size: 0.8125rem; color: #dc2626; }
 
 .footer {
@@ -298,8 +463,9 @@ function onSubmit() {
   padding-top: 0.875rem; border-top: 1px solid #f3f4f6;
 }
 :root.dark .footer { border-top-color: #374151; }
-.footer-hint { font-size: 0.75rem; color: #9ca3af; flex: 1; }
+.footer-spacer { flex: 1; }
 
+/* ---------- Success ---------- */
 .success { display: flex; flex-direction: column; align-items: center; gap: 0.75rem; padding: 2rem 0; }
 .success-icon {
   width: 4rem; height: 4rem; border-radius: 9999px;
@@ -313,5 +479,4 @@ function onSubmit() {
 .success-iss:hover { color: #6d28d9; text-decoration: underline; }
 .success-sub { font-size: 0.8125rem; color: #6b7280; margin-bottom: 0.5rem; }
 :root.dark .success-sub { color: #9ca3af; }
-
 </style>

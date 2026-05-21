@@ -1,5 +1,6 @@
 import openai
 from django.contrib import admin, messages
+from django.utils.html import format_html, format_html_join
 from unfold.admin import ModelAdmin
 
 from .forms import PromptAdminForm
@@ -33,13 +34,54 @@ class LLMConfigAdmin(ModelAdmin):
         "name", "base_url", "model_count", "supports_json_mode",
         "is_default", "is_active",
     )
-    readonly_fields = ("created_at", "updated_at")
+    # available_models 用只读 capsule 渲染;来源是 fetch_models_from_provider
+    # 动作,不在表单里手工编辑。
+    readonly_fields = ("available_models_display", "created_at", "updated_at")
+    exclude = ("available_models",)
     actions = (fetch_models_from_provider,)
+    fieldsets = (
+        (None, {
+            "fields": (
+                "name", "api_key", "base_url",
+                "available_models_display",
+                "supports_json_mode", "is_default", "is_active",
+            ),
+        }),
+        ("时间", {
+            "classes": ("collapse",),
+            "fields": ("created_at", "updated_at"),
+        }),
+    )
     # api_key absent from list_display to avoid plaintext exposure in list view
 
     @admin.display(description="可用模型数")
     def model_count(self, obj):
         return len(obj.available_models or [])
+
+    @admin.display(description="可用模型")
+    def available_models_display(self, obj):
+        ids = list(obj.available_models or [])
+        if not ids:
+            return format_html(
+                '<div class="text-font-subtle-light dark:text-font-subtle-dark text-sm">'
+                '留空。可通过右上角「动作 → 从提供商获取可用模型」拉取。'
+                '</div>'
+            )
+        chips = format_html_join(
+            "",
+            '<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs '
+            'font-medium border bg-base-50 text-base-700 border-base-200 '
+            'dark:bg-base-800 dark:text-base-200 dark:border-base-700">{}</span>',
+            ((m,) for m in ids),
+        )
+        return format_html(
+            '<div class="text-font-subtle-light dark:text-font-subtle-dark text-sm mb-2">'
+            '共 {} 个模型'
+            '</div>'
+            '<div class="flex flex-wrap gap-1 max-h-96 overflow-y-auto">{}</div>',
+            len(ids),
+            chips,
+        )
 
 
 @admin.register(Prompt)

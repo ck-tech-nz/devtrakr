@@ -361,19 +361,128 @@
 
         <div class="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 p-5 space-y-3">
           <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100">关联仓库</h3>
-          <div v-if="issueRepo" class="flex items-center gap-2">
+
+          <div class="space-y-2">
+            <div>
+              <div class="text-xs text-gray-500 dark:text-gray-400 mb-1">项目</div>
+              <USelect
+                v-model="form.project"
+                :items="projectOptions"
+                placeholder="选择项目"
+                value-key="value"
+                class="w-full"
+                @update:model-value="(v: string) => onProjectChange(v)"
+              />
+            </div>
+
+            <div>
+              <div class="text-xs text-gray-500 dark:text-gray-400 mb-1">仓库</div>
+              <USelect
+                v-model="form.repo"
+                :items="issueProjectRepoOptions"
+                placeholder="选择仓库"
+                value-key="value"
+                class="w-full"
+                :disabled="!form.project || issueProjectRepoOptions.length === 0"
+                @update:model-value="(v: string) => autoSave('repo', v)"
+              />
+              <p v-if="form.project && issueProjectRepoOptions.length === 0" class="text-xs text-gray-400 dark:text-gray-500 mt-1">
+                该项目暂无关联仓库
+              </p>
+            </div>
+          </div>
+
+          <div v-if="issueRepo" class="flex items-center gap-2 pt-1">
             <UIcon name="i-heroicons-code-bracket" class="w-4 h-4 text-gray-400" />
-            <NuxtLink :to="`/app/repos/${issueRepo.id}`" class="text-sm text-blue-600 dark:text-blue-400 hover:underline">
+            <NuxtLink :to="`/app/repos/${issueRepo.id}`" class="text-sm text-blue-600 dark:text-blue-400 hover:underline truncate">
               {{ issueRepo.full_name }}
             </NuxtLink>
             <UBadge v-if="issueRepo.clone_status === 'cloned'" color="success" variant="subtle" size="xs">已克隆</UBadge>
             <UBadge v-else-if="issueRepo.clone_status === 'cloning'" color="warning" variant="subtle" size="xs">克隆中</UBadge>
             <UBadge v-else color="neutral" variant="subtle" size="xs">未克隆</UBadge>
           </div>
-          <p v-else class="text-sm text-gray-400 dark:text-gray-500">未关联仓库</p>
         </div>
 
-        <div class="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 p-5 space-y-3">
+        <!-- 关联 Issues — 自动 (AI 创建时去重命中) + 手动 -->
+        <div v-if="relatedIssuesResolved.length || relatedSearchOpen" class="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 p-5 space-y-3">
+          <div class="flex items-center justify-between">
+            <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100">关联 Issues</h3>
+            <UButton
+              v-if="!relatedSearchOpen"
+              size="xs"
+              variant="ghost"
+              color="neutral"
+              icon="i-heroicons-plus"
+              title="关联其它 issue"
+              @click="openRelatedSearch"
+            />
+          </div>
+
+          <div v-if="relatedIssuesResolved.length" class="space-y-1.5">
+            <div
+              v-for="r in relatedIssuesResolved"
+              :key="r.id"
+              class="group flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-gray-50 dark:hover:bg-gray-800"
+            >
+              <span
+                v-if="r.kind === 'ai_dup'"
+                class="text-[0.625rem] px-1.5 py-px rounded bg-violet-50 text-violet-600 dark:bg-violet-900/30 dark:text-violet-300"
+                :title="r.reason || 'AI 创建时识别为相似'"
+              >AI</span>
+              <span
+                v-else
+                class="text-[0.625rem] px-1.5 py-px rounded bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400"
+              >人工</span>
+              <NuxtLink
+                :to="`/app/issues/${r.id}`"
+                class="font-mono text-xs text-violet-600 dark:text-violet-400 hover:underline shrink-0"
+              >ISS-{{ String(r.id).padStart(3, '0') }}</NuxtLink>
+              <span class="text-sm text-gray-700 dark:text-gray-300 truncate flex-1">{{ r.title }}</span>
+              <span
+                class="text-[0.625rem] px-1.5 py-px rounded shrink-0"
+                :class="['已解决', '已发布', '已关闭'].includes(r.status)
+                  ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-300'
+                  : 'bg-amber-50 text-amber-600 dark:bg-amber-900/30 dark:text-amber-300'"
+              >{{ r.status }}</span>
+              <button
+                class="text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100"
+                title="解除关联"
+                @click="removeRelated(r.id)"
+              >
+                <UIcon name="i-heroicons-x-mark" class="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+
+          <!-- 手动添加: 搜索框 + 结果列表 -->
+          <div v-if="relatedSearchOpen" class="space-y-2 pt-1">
+            <UInput
+              v-model="relatedSearchQ"
+              placeholder="搜索 issue 标题或 ID..."
+              icon="i-heroicons-magnifying-glass"
+              size="sm"
+              @update:model-value="onRelatedSearchInput"
+            />
+            <div v-if="relatedSearchResults.length" class="max-h-48 overflow-y-auto space-y-1">
+              <button
+                v-for="cand in relatedSearchResults"
+                :key="cand.id"
+                type="button"
+                class="w-full flex items-center gap-2 px-2 py-1.5 text-left text-sm rounded hover:bg-gray-100 dark:hover:bg-gray-800"
+                @click="addRelated(cand.id)"
+              >
+                <span class="font-mono text-xs text-gray-400 shrink-0">ISS-{{ String(cand.id).padStart(3, '0') }}</span>
+                <span class="text-gray-700 dark:text-gray-300 truncate">{{ cand.title }}</span>
+              </button>
+            </div>
+            <p v-else-if="relatedSearchQ && !relatedSearching" class="text-xs text-gray-400">无匹配结果</p>
+            <div class="flex justify-end">
+              <UButton size="xs" variant="ghost" color="neutral" @click="closeRelatedSearch">取消</UButton>
+            </div>
+          </div>
+        </div>
+
+        <div v-if="issue.github_issues?.length" class="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 p-5 space-y-3">
           <div class="flex items-center justify-between">
             <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100">GitHub 关联</h3>
             <ServiceStatusDot :online="isOnline('github')" />
@@ -405,8 +514,8 @@
           </div>
         </div>
 
-        <!-- 外部来源 -->
-        <div v-if="issue.source" class="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 p-5 space-y-3">
+        <!-- 外部来源 — 仅当真正来自第三方接口且带有元数据时才显示 (ai_wizard 内部生成不算) -->
+        <div v-if="hasExternalSource" class="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 p-5 space-y-3">
           <button class="flex items-center justify-between w-full" @click="showSourceMeta = !showSourceMeta">
             <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100">外部来源</h3>
             <UIcon :name="showSourceMeta ? 'i-heroicons-chevron-up' : 'i-heroicons-chevron-down'" class="w-4 h-4 text-gray-400" />
@@ -467,8 +576,8 @@
           </div>
         </div>
 
-        <!-- 更新历史 (仅管理员) -->
-        <div v-if="isManager" class="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 p-5 space-y-3">
+        <!-- 更新历史 (仅管理员; 内容为空 + 已加载完成时整张卡隐藏) -->
+        <div v-if="isManager && (historyLoading || history.length)" class="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 p-5 space-y-3">
           <button class="flex items-center justify-between w-full" @click="toggleHistory">
             <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100">更新历史</h3>
             <UIcon :name="showHistory ? 'i-heroicons-chevron-up' : 'i-heroicons-chevron-down'" class="w-4 h-4 text-gray-400" />
@@ -915,6 +1024,7 @@ const filteredLabelNames = computed(() => {
   return names.filter(n => n.toLowerCase().includes(q) || labelItems.value[n]?.description.toLowerCase().includes(q))
 })
 const repos = ref<any[]>([])
+const projects = ref<any[]>([])
 const allGHIssues = ref<any[]>([])
 const descriptionEditor = ref<{ setMode: (m: 'edit' | 'preview') => void } | null>(null)
 
@@ -933,6 +1043,92 @@ const ghCreateError = ref('')
 // GitHub 关联
 const showLinkGH = ref(false)
 const showSourceMeta = ref(true)
+
+// 关联 Issues — JSON 字段, 后端 detail serializer 已经 resolved 出 title/status
+type RelatedItem = { id: number; title: string; status: string; priority?: string; kind: string; reason: string; added_at: string }
+const relatedIssuesResolved = computed<RelatedItem[]>(() => (issue.value as any)?.related_issues_resolved || [])
+const relatedSearchOpen = ref(false)
+const relatedSearchQ = ref('')
+const relatedSearching = ref(false)
+const relatedSearchResults = ref<Array<{ id: number; title: string }>>([])
+let relatedSearchTimer: ReturnType<typeof setTimeout> | null = null
+
+function openRelatedSearch() {
+  relatedSearchOpen.value = true
+  relatedSearchQ.value = ''
+  relatedSearchResults.value = []
+}
+function closeRelatedSearch() {
+  relatedSearchOpen.value = false
+  relatedSearchQ.value = ''
+  relatedSearchResults.value = []
+  if (relatedSearchTimer) { clearTimeout(relatedSearchTimer); relatedSearchTimer = null }
+}
+function onRelatedSearchInput(q: string) {
+  if (relatedSearchTimer) clearTimeout(relatedSearchTimer)
+  const query = (q || '').trim()
+  if (!query) {
+    relatedSearchResults.value = []
+    return
+  }
+  // debounce 250ms 避免每键一次 API
+  relatedSearchTimer = setTimeout(async () => {
+    relatedSearching.value = true
+    try {
+      // 直接复用 issues 列表搜索 (search 参数); 排除当前 issue
+      const res = await api<any>(`/api/issues/?search=${encodeURIComponent(query)}&page_size=10`)
+      const all = (res?.results || res || []) as Array<{ id: number; title: string }>
+      const linkedIds = new Set([
+        issue.value?.id,
+        ...relatedIssuesResolved.value.map(r => r.id),
+      ])
+      relatedSearchResults.value = all.filter(x => !linkedIds.has(x.id)).slice(0, 8)
+    } catch {
+      relatedSearchResults.value = []
+    } finally {
+      relatedSearching.value = false
+    }
+  }, 250)
+}
+async function addRelated(relatedId: number) {
+  if (!issue.value?.id) return
+  try {
+    await api(`/api/issues/${issue.value.id}/related/`, {
+      method: 'POST',
+      body: { id: relatedId },
+    })
+    issue.value = await api<any>(`/api/issues/${route.params.id}/`)
+    closeRelatedSearch()
+  } catch (e) {
+    console.error('Add related failed:', e)
+  }
+}
+async function removeRelated(relatedId: number) {
+  if (!issue.value?.id) return
+  try {
+    await api(`/api/issues/${issue.value.id}/related/${relatedId}/`, { method: 'DELETE' })
+    issue.value = await api<any>(`/api/issues/${route.params.id}/`)
+  } catch (e) {
+    console.error('Remove related failed:', e)
+  }
+}
+
+// 外部来源: ai_wizard 是内部 AI 生成不算外部; 仅 github / external_api 等第三方接口
+// 且 source_meta 含具体字段 (feedback_id / reporter / context / attachments) 时才有展示价值
+const hasExternalSource = computed(() => {
+  const issue_val: any = issue.value
+  if (!issue_val) return false
+  const src = issue_val.source
+  if (!src || src === 'ai_wizard') return false
+  const meta = issue_val.source_meta
+  if (!meta || typeof meta !== 'object') return false
+  return !!(
+    meta.feedback_id
+    || meta.reporter
+    || meta.context
+    || (Array.isArray(meta.attachments) && meta.attachments.length)
+  )
+})
 const ghLinkRepoFilter = ref('')
 const ghSelectedIds = ref<number[]>([])
 const ghLinking = ref(false)
@@ -941,6 +1137,18 @@ const repoOptions = computed(() => repos.value.map(r => ({ label: r.full_name, v
 const issueRepo = computed(() => {
   if (!issue.value?.repo) return null
   return repos.value.find(r => r.id === issue.value.repo) || null
+})
+const projectOptions = computed(() => projects.value.map(p => ({ label: p.name, value: String(p.id) })))
+// 当前所选项目允许的仓库 — 仓库下拉只能在项目关联的仓库里选
+const issueProjectRepoOptions = computed(() => {
+  const pid = form.value.project
+  if (!pid) return [] as { label: string; value: string }[]
+  const project = projects.value.find(p => String(p.id) === String(pid))
+  const repoIds: (string | number)[] = project?.repos || []
+  const allowed = new Set(repoIds.map(String))
+  return repos.value
+    .filter(r => allowed.has(String(r.id)))
+    .map(r => ({ label: r.full_name, value: String(r.id) }))
 })
 
 const linkedGHIds = computed(() => new Set((issue.value?.github_issues || []).map((g: any) => g.id)))
@@ -965,6 +1173,8 @@ const form = ref({
   estimated_completion: '',
   estimated_hours: '',
   actual_hours: '',
+  project: '' as string,
+  repo: '' as string,
 })
 
 const priorityItems = PRIORITY_ITEMS
@@ -1005,6 +1215,8 @@ function populateForm(data: any) {
     estimated_completion: data.estimated_completion || '',
     estimated_hours: data.estimated_hours != null ? String(data.estimated_hours) : '',
     actual_hours: data.actual_hours != null ? String(data.actual_hours) : '',
+    project: data.project != null ? String(data.project) : '',
+    repo: data.repo != null ? String(data.repo) : '',
   }
   savedForm.value = JSON.parse(JSON.stringify(form.value))
 }
@@ -1057,7 +1269,7 @@ function pollAnalysisStatus(analysisId: number | undefined) {
         aiAnalyzing.value = false
       }
     }
-  }, 3000)
+  }, 5000)
 }
 
 
@@ -1090,12 +1302,31 @@ async function autoSave(field: string, rawValue: any) {
   if (field === 'assignee') value = rawValue === '_none' ? null : rawValue
   if (field === 'helpers') value = (rawValue as string[]).map(Number)
   if (field === 'estimated_completion') value = rawValue || null
+  if (field === 'repo') value = rawValue ? Number(rawValue) : null
   try {
     await api(`/api/issues/${issue.value.id}/`, { method: 'PATCH', body: { [field]: value } })
     issue.value = await api<any>(`/api/issues/${route.params.id}/`)
     populateForm(issue.value)
   } catch (e) {
     console.error(`Auto-save ${field} failed:`, e)
+  }
+}
+
+// 切换项目时, 若原 repo 不在新项目的仓库列表里, 同 PATCH 清空 repo
+async function onProjectChange(newProjectId: string) {
+  if (!issue.value || !newProjectId) return
+  const project = projects.value.find(p => String(p.id) === String(newProjectId))
+  const newRepoIds = new Set<string>((project?.repos || []).map((r: any) => String(r)))
+  const body: any = { project: Number(newProjectId) }
+  if (issue.value.repo && !newRepoIds.has(String(issue.value.repo))) {
+    body.repo = null
+  }
+  try {
+    await api(`/api/issues/${issue.value.id}/`, { method: 'PATCH', body })
+    issue.value = await api<any>(`/api/issues/${route.params.id}/`)
+    populateForm(issue.value)
+  } catch (e) {
+    console.error('Project change failed:', e)
   }
 }
 
@@ -1200,16 +1431,18 @@ async function fetchGHIssues() {
 }
 
 onMounted(async () => {
-  const [issueData, usersData, settingsData, reposData] = await Promise.all([
+  const [issueData, usersData, settingsData, reposData, projectsData] = await Promise.all([
     api<any>(`/api/issues/${route.params.id}/`).catch(() => null),
     api<any[]>('/api/users/choices/').catch(() => []),
     api<any>('/api/settings/').catch(() => ({ labels: [] })),
     api<any[]>('/api/repos/').catch(() => []),
+    api<any>('/api/projects/').catch(() => ({ results: [] })),
   ])
   issue.value = issueData
   users.value = usersData || []
   labelItems.value = settingsData?.labels || {}
   repos.value = reposData?.results || reposData || []
+  projects.value = (projectsData as any)?.results || projectsData || []
   if (issueData) populateForm(issueData)
   loading.value = false
   // 异步加载 GitHub Issues 列表（用于关联弹窗）
