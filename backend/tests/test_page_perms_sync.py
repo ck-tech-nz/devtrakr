@@ -90,3 +90,78 @@ class TestSyncPagePerms:
         assert route.permission is None
         assert route.show_in_nav is True
         assert route.source == "seed"
+
+
+class TestSyncHierarchy:
+    def test_sync_creates_group_with_is_group(self, settings):
+        settings.PAGE_PERMS = {
+            "SEED_ROUTES": [
+                {
+                    "path": "#group:proj",
+                    "label": "项目管理",
+                    "icon": "i-heroicons-folder",
+                    "is_group": True,
+                    "sort_order": 10,
+                },
+            ],
+            "SEED_GROUPS": {},
+        }
+        call_command("sync_page_perms")
+        group = PageRoute.objects.get(path="#group:proj")
+        assert group.is_group is True
+        assert group.label == "项目管理"
+
+    def test_sync_links_leaf_to_parent(self, settings):
+        settings.PAGE_PERMS = {
+            "SEED_ROUTES": [
+                {"path": "#group:proj", "label": "项目管理",
+                 "is_group": True, "sort_order": 10},
+                {"path": "/app/projects", "label": "项目列表",
+                 "parent": "#group:proj", "sort_order": 11},
+            ],
+            "SEED_GROUPS": {},
+        }
+        call_command("sync_page_perms")
+        leaf = PageRoute.objects.get(path="/app/projects")
+        assert leaf.parent and leaf.parent.path == "#group:proj"
+
+    def test_sync_handles_child_before_parent_in_json(self, settings):
+        # Child 行在 parent 之前出现 —— 两遍 sync 必须能搞定
+        settings.PAGE_PERMS = {
+            "SEED_ROUTES": [
+                {"path": "/app/projects", "label": "项目列表",
+                 "parent": "#group:proj", "sort_order": 11},
+                {"path": "#group:proj", "label": "项目管理",
+                 "is_group": True, "sort_order": 10},
+            ],
+            "SEED_GROUPS": {},
+        }
+        call_command("sync_page_perms")
+        leaf = PageRoute.objects.get(path="/app/projects")
+        assert leaf.parent and leaf.parent.path == "#group:proj"
+
+    def test_sync_clears_parent_when_removed_from_seed(self, settings):
+        # 先 sync 出 parent 关系
+        settings.PAGE_PERMS = {
+            "SEED_ROUTES": [
+                {"path": "#group:proj", "label": "项目管理",
+                 "is_group": True, "sort_order": 10},
+                {"path": "/app/projects", "label": "项目列表",
+                 "parent": "#group:proj", "sort_order": 11},
+            ],
+            "SEED_GROUPS": {},
+        }
+        call_command("sync_page_perms")
+        # 再次 sync，叶子的 parent 字段被显式置空
+        settings.PAGE_PERMS = {
+            "SEED_ROUTES": [
+                {"path": "#group:proj", "label": "项目管理",
+                 "is_group": True, "sort_order": 10},
+                {"path": "/app/projects", "label": "项目列表",
+                 "parent": None, "sort_order": 11},
+            ],
+            "SEED_GROUPS": {},
+        }
+        call_command("sync_page_perms")
+        leaf = PageRoute.objects.get(path="/app/projects")
+        assert leaf.parent is None

@@ -40,6 +40,8 @@ class Command(BaseCommand):
 
     def _sync_routes(self, seed_routes):
         self.stdout.write("Syncing page routes...")
+
+        # Pass 1: upsert 所有行（不设 parent，避免 forward reference）
         for route_data in seed_routes:
             path = route_data["path"]
             perm_string = route_data.get("permission")
@@ -49,6 +51,7 @@ class Command(BaseCommand):
                 "label": route_data["label"],
                 "icon": route_data.get("icon", ""),
                 "permission": permission,
+                "is_group": route_data.get("is_group", False),
                 "show_in_nav": route_data.get("show_in_nav", True),
                 "sort_order": route_data.get("sort_order", 0),
                 "is_active": route_data.get("is_active", True),
@@ -63,6 +66,23 @@ class Command(BaseCommand):
             )
             action = "Created" if created else "Updated"
             self.stdout.write(f"  {action}: {path}")
+
+        # Pass 2: 设 parent，等所有行都已存在
+        for route_data in seed_routes:
+            path = route_data["path"]
+            parent_path = route_data.get("parent")
+            if parent_path:
+                try:
+                    parent = PageRoute.objects.get(path=parent_path)
+                except PageRoute.DoesNotExist:
+                    self.stderr.write(
+                        f"  Warning: parent '{parent_path}' not found for '{path}', skipping link"
+                    )
+                    continue
+                PageRoute.objects.filter(path=path).update(parent=parent)
+            elif "parent" in route_data:
+                # 显式 null —— 清掉 parent
+                PageRoute.objects.filter(path=path).update(parent=None)
 
         self.stdout.write(self.style.SUCCESS(f"  Synced {len(seed_routes)} routes"))
 
