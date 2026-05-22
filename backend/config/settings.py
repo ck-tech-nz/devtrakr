@@ -241,28 +241,6 @@ UNFOLD = {
                 ],
             },
             {
-                "title": "AI 配置",
-                "separator": True,
-                "collapsible": True,
-                "items": [
-                    {
-                        "title": "LLM 配置",
-                        "icon": "smart_toy",
-                        "link": reverse_lazy("admin:ai_llmconfig_changelist"),
-                    },
-                    {
-                        "title": "提示词",
-                        "icon": "description",
-                        "link": reverse_lazy("admin:ai_prompt_changelist"),
-                    },
-                    {
-                        "title": "分析记录",
-                        "icon": "analytics",
-                        "link": reverse_lazy("admin:ai_analysis_changelist"),
-                    },
-                ],
-            },
-            {
                 "title": "用户与权限",
                 "separator": True,
                 "collapsible": True,
@@ -297,40 +275,6 @@ UNFOLD = {
                 ],
             },
             {
-                "title": "系统",
-                "separator": True,
-                "collapsible": True,
-                "items": [
-                    {
-                        "title": "站点设置",
-                        "icon": "settings",
-                        "link": reverse_lazy("admin:settings_sitesettings_changelist"),
-                    },
-                    {
-                        "title": "附件",
-                        "icon": "attach_file",
-                        "link": reverse_lazy("admin:tools_attachment_changelist"),
-                    },
-                    {
-                        "title": "外部 API Keys",
-                        "icon": "key",
-                        "link": reverse_lazy("admin:settings_externalapikey_changelist"),
-                    },
-                ],
-            },
-            {
-                "title": "页面权限",
-                "separator": True,
-                "collapsible": True,
-                "items": [
-                    {
-                        "title": "页面路由",
-                        "icon": "menu",
-                        "link": reverse_lazy("admin:page_perms_pageroute_changelist"),
-                    },
-                ],
-            },
-            {
                 "title": "定时任务",
                 "separator": True,
                 "collapsible": True,
@@ -357,6 +301,55 @@ UNFOLD = {
                     },
                 ],
             },
+            {
+                "title": "AI 配置",
+                "separator": True,
+                "collapsible": True,
+                "items": [
+                    {
+                        "title": "LLM 配置",
+                        "icon": "smart_toy",
+                        "link": reverse_lazy("admin:ai_llmconfig_changelist"),
+                    },
+                    {
+                        "title": "提示词",
+                        "icon": "description",
+                        "link": reverse_lazy("admin:ai_prompt_changelist"),
+                    },
+                    {
+                        "title": "分析记录",
+                        "icon": "analytics",
+                        "link": reverse_lazy("admin:ai_analysis_changelist"),
+                    },
+                ],
+            },
+            {
+                "title": "系统",
+                "separator": True,
+                "collapsible": True,
+                "items": [
+                    {
+                        "title": "站点设置",
+                        "icon": "settings",
+                        "link": reverse_lazy("admin:settings_sitesettings_changelist"),
+                    },
+                    {
+                        "title": "页面路由",
+                        "icon": "menu",
+                        "link": reverse_lazy("admin:page_perms_pageroute_changelist"),
+                    },
+                    {
+                        "title": "附件",
+                        "icon": "attach_file",
+                        "link": reverse_lazy("admin:tools_attachment_changelist"),
+                    },
+                    {
+                        "title": "外部 API Keys",
+                        "icon": "key",
+                        "link": reverse_lazy("admin:settings_externalapikey_changelist"),
+                    },
+                ],
+            }
         ],
     },
 }

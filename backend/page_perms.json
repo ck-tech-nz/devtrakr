@@ -5,19 +5,6 @@
   ],
   "seed_routes": [
     {
-      "path": "/app/roadmap",
-      "label": "产品路线图",
-      "icon": "i-heroicons-map",
-      "permission": null,
-      "parent": null,
-      "is_group": false,
-      "sort_order": 0,
-      "show_in_nav": true,
-      "is_active": true,
-      "meta": {},
-      "source": "seed"
-    },
-    {
       "path": "/app/issues",
       "label": "问题跟踪",
       "icon": "i-heroicons-bug-ant",
@@ -272,6 +259,19 @@
       "parent": "#group:system",
       "is_group": false,
       "sort_order": 20,
+      "show_in_nav": true,
+      "is_active": true,
+      "meta": {},
+      "source": "seed"
+    },
+    {
+      "path": "/app/roadmap",
+      "label": "产品路线图",
+      "icon": "i-heroicons-map",
+      "permission": null,
+      "parent": "#group:system",
+      "is_group": false,
+      "sort_order": 21,
       "show_in_nav": true,
       "is_active": true,
       "meta": {},
