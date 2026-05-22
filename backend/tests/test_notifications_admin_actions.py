@@ -110,3 +110,106 @@ class TestNotificationAdminPublishActions:
 
         assert isinstance(resp, HttpResponseRedirect)
         assert str(notif.pk) in resp.url
+
+
+@pytest.mark.django_db
+class TestPublishDraftAction:
+    def test_action_registered_in_actions_detail(self, admin_instance):
+        assert "publish_draft" in admin_instance.actions_detail
+
+    def test_publish_draft_flips_is_draft_and_generates_recipients(self, admin_instance):
+        UserFactory()
+        UserFactory()
+        notif = NotificationFactory(target_type="all", is_draft=True)
+        request = _admin_request()
+
+        admin_instance.publish_draft(request, str(notif.pk))
+
+        notif.refresh_from_db()
+        assert notif.is_draft is False
+        assert notif.recipients.count() >= 2
+
+    def test_publish_draft_success_message_includes_count(self, admin_instance):
+        UserFactory()
+        notif = NotificationFactory(target_type="all", is_draft=True)
+        request = _admin_request()
+
+        admin_instance.publish_draft(request, str(notif.pk))
+
+        msgs = list(request._messages)
+        assert any(m.level_tag == "success" for m in msgs)
+
+    def test_publish_draft_on_non_draft_warns(self, admin_instance):
+        notif = NotificationFactory(target_type="all", is_draft=False)
+        request = _admin_request()
+        before_count = notif.recipients.count()
+
+        admin_instance.publish_draft(request, str(notif.pk))
+
+        notif.refresh_from_db()
+        msgs = list(request._messages)
+        assert any(m.level_tag == "warning" for m in msgs)
+        assert notif.recipients.count() == before_count
+
+
+@pytest.mark.django_db
+class TestSaveModelDraftTransition:
+    """save_model + save_related should auto-generate recipients on draft→published."""
+
+    def _save_via_admin(self, admin_instance, notif, request, was_draft, now_draft, change=True):
+        """Simulate Django admin's save_model + save_related lifecycle."""
+        notif.is_draft = now_draft
+        admin_instance.save_model(request, notif, form=None, change=change)
+        from unittest.mock import MagicMock
+        form = MagicMock()
+        form.instance = notif
+        admin_instance.save_related(request, form, formsets=[], change=change)
+
+    def test_create_as_non_draft_generates_recipients(self, admin_instance):
+        UserFactory()
+        UserFactory()
+        from apps.notifications.models import Notification
+        request = _admin_request()
+        notif = Notification(
+            notification_type="broadcast",
+            title="t", content="c", target_type="all", is_draft=False,
+        )
+        self._save_via_admin(admin_instance, notif, request, was_draft=None, now_draft=False, change=False)
+        assert notif.recipients.count() >= 2
+
+    def test_create_as_draft_does_not_generate(self, admin_instance):
+        UserFactory()
+        from apps.notifications.models import Notification
+        request = _admin_request()
+        notif = Notification(
+            notification_type="broadcast",
+            title="t", content="c", target_type="all", is_draft=True,
+        )
+        self._save_via_admin(admin_instance, notif, request, was_draft=None, now_draft=True, change=False)
+        assert notif.recipients.count() == 0
+
+    def test_edit_draft_to_published_generates_recipients(self, admin_instance):
+        UserFactory()
+        UserFactory()
+        notif = NotificationFactory(target_type="all", is_draft=True)
+        assert notif.recipients.count() == 0
+        request = _admin_request()
+
+        self._save_via_admin(admin_instance, notif, request, was_draft=True, now_draft=False, change=True)
+
+        assert notif.recipients.count() >= 2
+
+    def test_edit_published_stays_published_does_not_regenerate(self, admin_instance):
+        UserFactory()
+        notif = NotificationFactory(target_type="all", is_draft=False)
+        # Pre-seed a recipient row
+        from apps.notifications.models import NotificationRecipient
+        from tests.factories import UserFactory as UF
+        NotificationRecipient.objects.create(notification=notif, user=UF())
+        existing = notif.recipients.count()
+        request = _admin_request()
+
+        self._save_via_admin(admin_instance, notif, request, was_draft=False, now_draft=False, change=True)
+
+        # No duplicate rows created (bulk_create uses ignore_conflicts but also "publish_now" should be False)
+        assert notif.recipients.count() == existing

@@ -128,18 +128,16 @@ class TestDeleteNotification:
 
 class TestBroadcastAdmin:
     def test_broadcast_creates_recipients(self, auth_user):
-        """Verify the admin save_model hook creates recipients for all active users."""
+        """Verify the recipient-generation service builds recipients for all active users."""
         from apps.notifications.models import Notification, NotificationRecipient
+        from apps.notifications.services import generate_recipients
         n = Notification.objects.create(
             notification_type="broadcast",
             title="系统公告",
             content="维护通知",
             target_type="all",
         )
-        # Simulate what admin does
-        from apps.notifications.admin import NotificationAdmin
-        admin_instance = NotificationAdmin(Notification, None)
-        admin_instance._create_recipients(n)
+        generate_recipients(n)
         assert NotificationRecipient.objects.filter(notification=n, user=auth_user).exists()
 
 

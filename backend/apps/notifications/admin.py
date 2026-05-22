@@ -1,14 +1,11 @@
 from django.contrib import admin, messages
-from django.contrib.auth import get_user_model
 from django.core.exceptions import ImproperlyConfigured
 from django.http import HttpResponseRedirect
 from django.urls import reverse
 from unfold.admin import ModelAdmin, TabularInline
 from unfold.decorators import action
 from .models import Notification, NotificationRecipient
-from .services import RemotePublishError, publish_notification_to_remote
-
-User = get_user_model()
+from .services import RemotePublishError, generate_recipients, publish_notification_to_remote
 
 
 class RecipientInline(TabularInline):
@@ -23,25 +20,40 @@ class NotificationAdmin(ModelAdmin):
     list_filter = ("notification_type", "target_type", "is_draft")
     search_fields = ("title",)
     inlines = [RecipientInline]
-    actions_detail = ["publish_to_test", "publish_to_prod"]
+    actions_detail = ["publish_draft", "publish_to_test", "publish_to_prod"]
 
     def save_model(self, request, obj, form, change):
+        request._notification_was_draft = None
+        if change:
+            try:
+                request._notification_was_draft = Notification.objects.get(pk=obj.pk).is_draft
+            except Notification.DoesNotExist:
+                pass
         super().save_model(request, obj, form, change)
-        if not change:
-            self._create_recipients(obj)
 
-    def _create_recipients(self, notification):
-        if notification.target_type == Notification.TargetType.ALL:
-            users = User.objects.filter(is_active=True)
-        elif notification.target_type == Notification.TargetType.GROUP and notification.target_group:
-            users = notification.target_group.user_set.filter(is_active=True)
+    def save_related(self, request, form, formsets, change):
+        super().save_related(request, form, formsets, change)
+        obj = form.instance
+        was_draft = getattr(request, "_notification_was_draft", None)
+        publish_now = (not change and not obj.is_draft) or (
+            change and was_draft is True and not obj.is_draft
+        )
+        if publish_now:
+            generate_recipients(obj)
+
+    @action(description="发布草稿")
+    def publish_draft(self, request, object_id):
+        notification = Notification.objects.get(pk=object_id)
+        if not notification.is_draft:
+            messages.warning(request, "该通知不是草稿,无需发布")
         else:
-            return
-        recipients = [
-            NotificationRecipient(notification=notification, user=u)
-            for u in users
-        ]
-        NotificationRecipient.objects.bulk_create(recipients, ignore_conflicts=True)
+            notification.is_draft = False
+            notification.save(update_fields=["is_draft"])
+            count = generate_recipients(notification)
+            messages.success(request, f"已发布,接收人 {count}")
+        return HttpResponseRedirect(
+            reverse("admin:notifications_notification_change", args=[object_id]),
+        )
 
     def _publish_to(self, request, object_id, env):
         notification = Notification.objects.get(pk=object_id)
