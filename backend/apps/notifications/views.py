@@ -7,6 +7,7 @@ from rest_framework.views import APIView
 from apps.permissions import FullDjangoModelPermissions
 from .models import Notification, NotificationRecipient
 from .serializers import NotificationSerializer, NotificationManageSerializer
+from .services import create_broadcast_notification, generate_recipients
 
 User = get_user_model()
 
@@ -129,20 +130,6 @@ class NotificationDetailView(APIView):
 # Admin manage endpoints (requires permissions)
 # ──────────────────────────────────────────────
 
-def _generate_recipients(notification):
-    """Generate NotificationRecipient rows based on target_type. Idempotent."""
-    if notification.target_type == Notification.TargetType.ALL:
-        users = User.objects.filter(is_active=True)
-    elif notification.target_type == Notification.TargetType.GROUP and notification.target_group:
-        users = notification.target_group.user_set.filter(is_active=True)
-    elif notification.target_type == Notification.TargetType.USER:
-        users = notification.target_users.filter(is_active=True)
-    else:
-        return 0
-    recipients = [NotificationRecipient(notification=notification, user=u) for u in users]
-    NotificationRecipient.objects.bulk_create(recipients, ignore_conflicts=True)
-    return len(recipients)
-
 
 class ManageListView(generics.ListAPIView):
     serializer_class = NotificationManageSerializer
@@ -187,29 +174,15 @@ class ManageCreateView(APIView):
         if not title:
             return Response({"detail": "标题不能为空"}, status=status.HTTP_400_BAD_REQUEST)
 
-        content = request.data.get("content", "")
-        target_type = request.data.get("target_type", "all")
-        is_draft = request.data.get("is_draft", False)
-
-        notification = Notification.objects.create(
-            notification_type=Notification.Type.BROADCAST,
+        notification, recipient_count = create_broadcast_notification(
             title=title,
-            content=content,
+            content=request.data.get("content", ""),
+            target_type=request.data.get("target_type", "all"),
+            target_group_id=request.data.get("target_group"),
+            target_user_ids=request.data.get("target_user_ids", []),
+            is_draft=request.data.get("is_draft", False),
             source_user=request.user,
-            target_type=target_type,
-            target_group_id=request.data.get("target_group") or None,
-            is_draft=is_draft,
         )
-
-        # Set target users for user-type notifications
-        target_user_ids = request.data.get("target_user_ids", [])
-        if target_type == Notification.TargetType.USER and target_user_ids:
-            notification.target_users.set(target_user_ids)
-
-        recipient_count = 0
-        if not is_draft:
-            recipient_count = _generate_recipients(notification)
-
         return Response(
             {"id": str(notification.id), "recipients": recipient_count},
             status=status.HTTP_201_CREATED,
@@ -245,7 +218,7 @@ class ManageUpdateView(APIView):
         # If publishing (draft → not draft), generate recipients
         recipient_count = notification.recipients.count()
         if was_draft and not notification.is_draft:
-            recipient_count = _generate_recipients(notification)
+            recipient_count = generate_recipients(notification)
 
         serializer = NotificationManageSerializer(notification)
         data = serializer.data

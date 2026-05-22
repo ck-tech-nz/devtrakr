@@ -59,6 +59,51 @@ def extract_mentioned_user_ids(text: str) -> set[int]:
     return {int(m.group(2)) for m in MENTION_RE.finditer(text)}
 
 
+def generate_recipients(notification) -> int:
+    """Generate NotificationRecipient rows based on target_type. Idempotent."""
+    if notification.target_type == Notification.TargetType.ALL:
+        users = User.objects.filter(is_active=True)
+    elif notification.target_type == Notification.TargetType.GROUP and notification.target_group:
+        users = notification.target_group.user_set.filter(is_active=True)
+    elif notification.target_type == Notification.TargetType.USER:
+        users = notification.target_users.filter(is_active=True)
+    else:
+        return 0
+    recipients = [NotificationRecipient(notification=notification, user=u) for u in users]
+    NotificationRecipient.objects.bulk_create(recipients, ignore_conflicts=True)
+    return len(recipients)
+
+
+def create_broadcast_notification(
+    *,
+    title: str,
+    content: str = "",
+    target_type: str = "all",
+    target_group_id=None,
+    target_user_ids=None,
+    is_draft: bool = False,
+    source_user=None,
+):
+    """Create a broadcast notification and (unless draft) materialize recipients.
+
+    Returns (notification, recipient_count).
+    """
+    notification = Notification.objects.create(
+        notification_type=Notification.Type.BROADCAST,
+        title=title,
+        content=content,
+        source_user=source_user,
+        target_type=target_type,
+        target_group_id=target_group_id or None,
+        is_draft=is_draft,
+    )
+    if target_type == Notification.TargetType.USER and target_user_ids:
+        notification.target_users.set(target_user_ids)
+
+    recipient_count = 0 if is_draft else generate_recipients(notification)
+    return notification, recipient_count
+
+
 def create_mention_notifications(*, issue, old_description: str, new_description: str, actor):
     old_ids = extract_mentioned_user_ids(old_description)
     new_ids = extract_mentioned_user_ids(new_description)

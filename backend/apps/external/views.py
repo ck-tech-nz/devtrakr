@@ -4,8 +4,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.pagination import PageNumberPagination
 from apps.issues.models import Issue, Activity
-from apps.notifications.models import Notification
-from apps.notifications.views import _generate_recipients
+from apps.notifications.services import create_broadcast_notification
 from .authentication import APIKeyAuthentication
 from .serializers import (
     ExternalIssueCreateSerializer,
@@ -138,22 +137,15 @@ class ExternalNotificationCreateView(APIView):
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
 
-        notification = Notification.objects.create(
-            notification_type=Notification.Type.BROADCAST,
+        notification, recipient_count = create_broadcast_notification(
             title=data["title"],
             content=data["content"],
-            source_user=request.api_key.default_assignee,
             target_type=data["target_type"],
             target_group_id=data["target_group_id"],
+            target_user_ids=data["target_user_ids"],
             is_draft=data["is_draft"],
+            source_user=request.api_key.default_assignee,
         )
-        if data["target_type"] == Notification.TargetType.USER and data["target_user_ids"]:
-            notification.target_users.set(data["target_user_ids"])
-
-        recipient_count = 0
-        if not data["is_draft"]:
-            recipient_count = _generate_recipients(notification)
-
         return Response(
             {"id": str(notification.id), "recipients": recipient_count},
             status=status.HTTP_201_CREATED,
