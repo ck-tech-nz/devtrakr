@@ -8,6 +8,7 @@
         <main class="flex-1 overflow-y-auto overscroll-contain p-3 md:p-6 lg:p-8 pb-20 md:pb-6 lg:pb-8">
           <slot />
         </main>
+        <AppFooter />
       </div>
     </div>
   </div>

@@ -10,18 +10,17 @@ function getBuildInfo() {
   const versionFile = resolve(__dirname, 'VERSION')
   if (existsSync(versionFile)) {
     const content = readFileSync(versionFile, 'utf-8').trim()
-    const parts = content.split('-')
-    if (parts.length >= 4) {
-      const gitHash = parts[parts.length - 1]
-      const buildDate = parts.slice(0, -1).join('-')
-      return { gitHash, buildDate }
-    }
+    // VERSION written by CI: "env/prod v2026-5-22 abc1234"
+    const parts = content.split(' ')
+    const gitHash = parts[parts.length - 1]
+    const buildDate = parts.slice(0, -1).join(' ')
+    return { version: content, gitHash, buildDate }
   }
   try {
     const gitHash = execSync('git rev-parse --short HEAD', { encoding: 'utf-8' }).trim()
-    return { gitHash, buildDate: null }
+    return { version: `dev ${gitHash}`, gitHash, buildDate: null }
   } catch {
-    return { gitHash: null, buildDate: null }
+    return { version: 'dev', gitHash: null, buildDate: null }
   }
 }
 
@@ -39,6 +38,7 @@ export default defineNuxtConfig({
   colorMode: { preference: 'light', fallback: 'light' },
   runtimeConfig: {
     public: {
+      version: buildInfo.version,
       gitHash: buildInfo.gitHash || '',
       buildDate: buildInfo.buildDate || '',
       nuxtVersion,
