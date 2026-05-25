@@ -174,6 +174,19 @@
       "source": "seed"
     },
     {
+      "path": "/app/kpi/me",
+      "label": "我的 KPI",
+      "icon": "i-heroicons-chart-bar-square",
+      "permission": "kpi.view_own_kpi",
+      "parent": null,
+      "is_group": false,
+      "sort_order": 0,
+      "show_in_nav": false,
+      "is_active": true,
+      "meta": {},
+      "source": "seed"
+    },
+    {
       "path": "/app/notifications/manage",
       "label": "通知管理",
       "icon": "i-heroicons-bell-alert",

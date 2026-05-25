@@ -7,10 +7,16 @@
       class="h-16 border-b border-gray-50 dark:border-gray-800 flex items-center"
       :class="expanded ? 'px-4 gap-2' : 'justify-center px-2'"
     >
-      <img v-if="expanded" src="~/assets/images/logo-icon.svg" alt="DevTrakr" class="w-8 h-8 flex-shrink-0" />
-      <transition name="fade">
-        <span v-if="expanded" class="font-semibold text-gray-900 dark:text-gray-100 whitespace-nowrap">DevTrakr</span>
-      </transition>
+      <NuxtLink
+        v-if="expanded"
+        to="/app/home"
+        class="flex items-center gap-2 min-w-0 hover:opacity-80 transition-opacity"
+      >
+        <img src="~/assets/images/logo-icon.svg" alt="DevTrakr" class="w-8 h-8 flex-shrink-0" />
+        <transition name="fade">
+          <span class="font-semibold text-gray-900 dark:text-gray-100 whitespace-nowrap">DevTrakr</span>
+        </transition>
+      </NuxtLink>
       <div v-if="expanded" class="flex-1" />
       <button
         class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 flex-shrink-0 p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800"

@@ -26,14 +26,16 @@ export default defineNuxtRouteMiddleware(async (to) => {
     return navigateTo('/app/forbidden')
   }
 
-  // Permission code check (existing)
+  // Permission code check — use longest matching prefix so more specific
+  // routes (e.g. /app/kpi/me) win over broader ones (/app/kpi)
   const perms = routePermissions.value
-  for (const [prefix, perm] of Object.entries(perms)) {
-    if (to.path === prefix || to.path.startsWith(prefix + '/')) {
-      if (!can(perm)) {
-        return navigateTo('/app/forbidden')
-      }
-      break
+  const entries = Object.entries(perms)
+    .filter(([prefix]) => to.path === prefix || to.path.startsWith(prefix + '/'))
+    .sort((a, b) => b[0].length - a[0].length)
+  if (entries.length > 0) {
+    const [, perm] = entries[0]!
+    if (!can(perm)) {
+      return navigateTo('/app/forbidden')
     }
   }
 

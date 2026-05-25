@@ -1,9 +1,10 @@
 from django.urls import path
 from .views import (
-    KPITeamView, KPIUserSummaryView, KPIUserIssuesView, KPIUserCommitsView,
-    KPIUserWorkloadView, KPIUserTrendsView, KPIUserSuggestionsView, KPIRefreshView,
+    KPITeamView, KPITeamTrendView, KPIUserSummaryView, KPIUserIssuesView, KPIUserCommitsView,
+    KPIUserWorkloadView, KPIUserTrendsView, KPIUserResolutionTrendView,
+    KPIUserSuggestionsView, KPIRefreshView,
     KPIMeSummaryView, KPIMeIssuesView, KPIMeCommitsView, KPIMeWorkloadView,
-    KPIMeTrendsView, KPIMeSuggestionsView,
+    KPIMeTrendsView, KPIMeResolutionTrendView, KPIMeSuggestionsView,
     KPIScoringConfigView,
 )
 from .plan_views import (
@@ -14,6 +15,7 @@ from .plan_views import (
 
 urlpatterns = [
     path("team/", KPITeamView.as_view(), name="kpi-team"),
+    path("team/trend/", KPITeamTrendView.as_view(), name="kpi-team-trend"),
     path("refresh/", KPIRefreshView.as_view(), name="kpi-refresh"),
     path("scoring-config/", KPIScoringConfigView.as_view(), name="kpi-scoring-config"),
     path("me/summary/", KPIMeSummaryView.as_view(), name="kpi-me-summary"),
@@ -21,12 +23,14 @@ urlpatterns = [
     path("me/commits/", KPIMeCommitsView.as_view(), name="kpi-me-commits"),
     path("me/workload/", KPIMeWorkloadView.as_view(), name="kpi-me-workload"),
     path("me/trends/", KPIMeTrendsView.as_view(), name="kpi-me-trends"),
+    path("me/resolution-trend/", KPIMeResolutionTrendView.as_view(), name="kpi-me-resolution-trend"),
     path("me/suggestions/", KPIMeSuggestionsView.as_view(), name="kpi-me-suggestions"),
     path("users/<int:user_id>/summary/", KPIUserSummaryView.as_view(), name="kpi-user-summary"),
     path("users/<int:user_id>/issues/", KPIUserIssuesView.as_view(), name="kpi-user-issues"),
     path("users/<int:user_id>/commits/", KPIUserCommitsView.as_view(), name="kpi-user-commits"),
     path("users/<int:user_id>/workload/", KPIUserWorkloadView.as_view(), name="kpi-user-workload"),
     path("users/<int:user_id>/trends/", KPIUserTrendsView.as_view(), name="kpi-user-trends"),
+    path("users/<int:user_id>/resolution-trend/", KPIUserResolutionTrendView.as_view(), name="kpi-user-resolution-trend"),
     path("users/<int:user_id>/suggestions/", KPIUserSuggestionsView.as_view(), name="kpi-user-suggestions"),
     # 提升计划
     path("plans/", PlanListView.as_view(), name="plan-list"),

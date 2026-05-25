@@ -42,24 +42,30 @@ def compute_issue_metrics(
     start_dt = timezone.make_aware(datetime.combine(period_start, datetime.min.time()))
     end_dt = timezone.make_aware(datetime.combine(period_end, datetime.max.time()))
 
-    # 分配给该用户且在时间范围内创建的 Issues
+    # 本期分配 (创建于本期, intake 口径)
     assigned_qs = Issue.objects.filter(
         assignee=user,
         created_at__gte=start_dt,
         created_at__lte=end_dt,
     )
-
     assigned_count = assigned_qs.count()
 
-    if assigned_count == 0:
+    # 本期解决 (resolved_at 落在本期, output 口径) — 不依赖 created_at
+    resolved_qs = Issue.objects.filter(
+        assignee=user,
+        status__in=RESOLVED_STATUSES,
+        resolved_at__gte=start_dt,
+        resolved_at__lte=end_dt,
+    )
+    resolved_count = resolved_qs.count()
+
+    if assigned_count == 0 and resolved_count == 0:
         return _empty_issue_metrics()
 
-    resolved_qs = assigned_qs.filter(status__in=RESOLVED_STATUSES)
-    resolved_count = resolved_qs.count()
     resolution_rate = round(resolved_count / assigned_count, 4) if assigned_count else 0
 
-    # 平均解决时间（小时）
-    resolved_with_time = resolved_qs.filter(resolved_at__isnull=False)
+    # 平均解决时间 (基于本期解决的工单)
+    resolved_with_time = resolved_qs.filter(created_at__isnull=False)
     if resolved_with_time.exists():
         total_hours = sum(
             (issue.resolved_at - issue.created_at).total_seconds() / 3600
@@ -74,12 +80,11 @@ def compute_issue_metrics(
     daily_resolved_avg = round(resolved_count / period_days, 4)
     weekly_resolved_avg = round(daily_resolved_avg * 7, 4)
 
-    # 按优先级拆分
+    # 按优先级拆分 (assigned 按 intake; resolved 按 output)
     priority_breakdown = {}
     for prio in ("P0", "P1", "P2", "P3"):
-        prio_qs = assigned_qs.filter(priority=prio)
-        prio_assigned = prio_qs.count()
-        prio_resolved_qs = prio_qs.filter(status__in=RESOLVED_STATUSES, resolved_at__isnull=False)
+        prio_assigned = assigned_qs.filter(priority=prio).count()
+        prio_resolved_qs = resolved_qs.filter(priority=prio, created_at__isnull=False)
         prio_resolved = prio_resolved_qs.count()
 
         if prio_resolved:
@@ -97,7 +102,7 @@ def compute_issue_metrics(
             "avg_hours": prio_avg_hours,
         }
 
-    # 加权 Issue 价值
+    # 加权 Issue 价值 (基于本期解决的工单)
     weighted_issue_value = 0
     for issue in resolved_with_time:
         resolution_hours = (issue.resolved_at - issue.created_at).total_seconds() / 3600

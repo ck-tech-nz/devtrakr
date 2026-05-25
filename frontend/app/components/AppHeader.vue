@@ -39,7 +39,7 @@
 
 <script setup lang="ts">
 const { breadcrumbs } = useNavigation()
-const { user, logout } = useAuth()
+const { user, logout, can } = useAuth()
 const { settings, update } = useUserSettings()
 const { resolveAvatarUrl } = useAvatars()
 const { api } = useApi()
@@ -69,20 +69,28 @@ function cycleTheme() {
 }
 
 const userMenuItems = computed(() => {
-  const items: any[][] = [
-    [
-      {
-        label: '个人资料',
-        icon: 'i-heroicons-user-circle',
-        onSelect: () => navigateTo('/app/profile'),
-      },
-      {
-        label: '我的提升计划',
-        icon: 'i-heroicons-clipboard-document-check',
-        onSelect: () => navigateTo('/app/ai/my-plan'),
-      },
-    ],
+  const personal: any[] = [
+    {
+      label: '个人资料',
+      icon: 'i-heroicons-user-circle',
+      onSelect: () => navigateTo('/app/profile'),
+    },
   ]
+  if (can('kpi.view_own_kpi')) {
+    personal.push({
+      label: '我的 KPI',
+      icon: 'i-heroicons-chart-bar-square',
+      onSelect: () => navigateTo('/app/kpi/me'),
+    })
+  }
+  if (can('kpi.view_own_plan')) {
+    personal.push({
+      label: '我的提升计划',
+      icon: 'i-heroicons-clipboard-document-check',
+      onSelect: () => navigateTo('/app/ai/my-plan'),
+    })
+  }
+  const items: any[][] = [personal]
   if (user.value?.is_superuser) {
     items.push([{
       label: '系统管理',

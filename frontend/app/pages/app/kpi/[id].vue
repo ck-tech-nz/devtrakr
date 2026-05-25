@@ -1,9 +1,9 @@
 <template>
   <div class="space-y-6">
     <!-- 返回按钮 -->
-    <NuxtLink to="/app/kpi" class="inline-flex items-center gap-1 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300">
+    <NuxtLink :to="backLink.to" class="inline-flex items-center gap-1 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300">
       <UIcon name="i-heroicons-arrow-left" class="w-4 h-4" />
-      返回团队 KPI
+      {{ backLink.label }}
     </NuxtLink>
 
     <!-- 加载中 -->
@@ -549,7 +549,13 @@ definePageMeta({ layout: 'default' })
 const route = useRoute()
 const { api } = useApi()
 const { resolveAvatarUrl } = useAvatars()
-const { user: authUser } = useAuth()
+const { user: authUser, can } = useAuth()
+
+const backLink = computed(() =>
+  can('kpi.view_kpisnapshot')
+    ? { to: '/app/kpi', label: '返回团队 KPI' }
+    : { to: '/app/kpi/me', label: '返回我的 KPI' }
+)
 
 const loading = ref(true)
 const activeTab = ref('arena')
