@@ -7,7 +7,7 @@ on:
       - env/prod
 
 env:
-  REGISTRY: registry.cktech.hk
+  REGISTRY: registry.matrixai.xin
   REGISTRY_USERNAME: ck
   PROJECT_NAME: devtrakr
 

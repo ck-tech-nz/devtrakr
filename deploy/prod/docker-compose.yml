@@ -1,6 +1,6 @@
 services:
   backend:
-    image: registry.aimenu.tech/devtrack/backend-prod
+    image: registry.matrixai.xin/devtrakr/backend-prod
     container_name: devtrack-backend
     restart: unless-stopped
     env_file:
@@ -24,7 +24,7 @@ services:
              uv run python manage.py runserver 0.0.0.0:8000"
 
   frontend:
-    image: registry.aimenu.tech/devtrack/frontend-prod
+    image: registry.matrixai.xin/devtrakr/frontend-prod
     container_name: devtrack-frontend
     restart: unless-stopped
     networks:
@@ -41,7 +41,7 @@ services:
       - "traefik.http.routers.devtrack-frontend.priority=1"
 
   celery-worker:
-    image: registry.aimenu.tech/devtrack/backend-prod
+    image: registry.matrixai.xin/devtrakr/backend-prod
     container_name: devtrack-celery-worker
     restart: unless-stopped
     env_file:
@@ -56,7 +56,7 @@ services:
     command: uv run celery -A config worker -l info
 
   celery-beat:
-    image: registry.aimenu.tech/devtrack/backend-prod
+    image: registry.matrixai.xin/devtrakr/backend-prod
     container_name: devtrack-celery-beat
     restart: unless-stopped
     env_file:

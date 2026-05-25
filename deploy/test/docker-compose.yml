@@ -1,53 +1,59 @@
 services:
   backend:
-    image: registry.aimenu.tech/devtrack/backend-test
-    container_name: devtrack-backend-test
+    image: registry.matrixai.xin/devtrakr/backend-test
+    container_name: devtrakr
     env_file:
       - .env
     networks:
       - db-network
       - traefik-network
     labels:
+      - com.centurylinklabs.watchtower.enable=true
       - "traefik.enable=true"
-      - "traefik.http.routers.devtrack-backend.rule=Host(`devtrakr-test.matrixai.xin`) && PathPrefix(`/api`)"
-      - "traefik.http.routers.devtrack-backend.entrypoints=web"
-      - "traefik.http.services.devtrack-backend.loadbalancer.server.port=8000"
+      - "traefik.http.routers.devtrakr-backend.rule=Host(`devtrakr-test.matrixai.xin`) && PathPrefix(`/api`)"
+      - "traefik.http.routers.devtrakr-backend.entrypoints=web"
+      - "traefik.http.services.devtrakr-backend.loadbalancer.server.port=8000"
     command: >
       sh -c "uv run python manage.py migrate --noinput &&
              uv run python manage.py sync_page_perms 2>/dev/null || true &&
              uv run python manage.py runserver 0.0.0.0:8000"
 
   frontend:
-    image: registry.aimenu.tech/devtrack/frontend-test
-    container_name: devtrack-frontend-test
+    image: registry.matrixai.xin/devtrakr/frontend-test
+    container_name: devtrakr-frontend
     networks:
       - db-network
       - traefik-network
     depends_on:
       - backend
     labels:
+      - com.centurylinklabs.watchtower.enable=true
       - "traefik.enable=true"
-      - "traefik.http.routers.devtrack-frontend.rule=Host(`devtrakr-test.matrixai.xin`)"
-      - "traefik.http.routers.devtrack-frontend.entrypoints=web"
-      - "traefik.http.services.devtrack-frontend.loadbalancer.server.port=3000"
+      - "traefik.http.routers.devtrakr-frontend.rule=Host(`devtrakr-test.matrixai.xin`)"
+      - "traefik.http.routers.devtrakr-frontend.entrypoints=web"
+      - "traefik.http.services.devtrakr-frontend.loadbalancer.server.port=3000"
 
   celery-worker:
-    image: registry.aimenu.tech/devtrack/backend-test
-    container_name: devtrack-celery-worker-test
+    image: registry.matrixai.xin/devtrakr/backend-test
+    container_name: devtrakr-celery-worker-test
     env_file:
       - .env
     networks:
       - db-network
     command: uv run celery -A config worker -l info
+    labels:
+      - com.centurylinklabs.watchtower.enable=true
 
   celery-beat:
-    image: registry.aimenu.tech/devtrack/backend-test
-    container_name: devtrack-celery-beat-test
+    image: registry.matrixai.xin/devtrakr/backend-test
+    container_name: devtrakr-celery-beat-test
     env_file:
       - .env
     networks:
       - db-network
     command: uv run celery -A config beat -l info --scheduler django_celery_beat.schedulers.DatabaseScheduler
+    labels:
+      - com.centurylinklabs.watchtower.enable=true
 
 networks:
   db-network:
