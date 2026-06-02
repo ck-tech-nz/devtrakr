@@ -22,6 +22,82 @@ CONTROLLED_TOOLS = {
     "finish_failure",
 }
 
+UNSAVED_DIALOG_TEXT_TOKENS = (
+    "未保存",
+    "放弃编辑",
+    "关闭后将丢失",
+    "确认离开",
+    "内容将丢失",
+    "discard",
+    "unsaved",
+    "leave without saving",
+    "changes will be lost",
+)
+UNSAVED_DIALOG_STAY_TOKENS = (
+    "继续编辑",
+    "继续填写",
+    "取消",
+    "留在此页",
+    "留在页面",
+    "stay",
+    "keep editing",
+    "continue editing",
+)
+UNSAVED_DIALOG_DISCARD_TOKENS = (
+    "放弃",
+    "离开",
+    "discard",
+    "leave",
+    "close without",
+)
+
+
+def _normalize_text(value: Any) -> str:
+    return " ".join(str(value or "").split()).strip()
+
+
+def _contains_any(text: str, tokens: tuple[str, ...]) -> bool:
+    if not text:
+        return False
+    folded = text.casefold()
+    return any(token.casefold() in folded for token in tokens)
+
+
+def _pick_dialog_button_target(buttons: list[dict[str, Any]], tokens: tuple[str, ...]) -> str:
+    for button in buttons:
+        if not isinstance(button, dict):
+            continue
+        candidate = _normalize_text(button.get("text") or button.get("ariaLabel") or button.get("name"))
+        if candidate and _contains_any(candidate, tokens):
+            return candidate
+    return ""
+
+
+def _build_unsaved_dialog_signal(*, dialogs: list[dict[str, Any]], visible_text: str) -> dict[str, Any]:
+    for dialog in dialogs:
+        if not isinstance(dialog, dict):
+            continue
+        dialog_text = _normalize_text(dialog.get("text"))
+        buttons = dialog.get("buttons")
+        if not isinstance(buttons, list):
+            buttons = []
+        if _contains_any(dialog_text, UNSAVED_DIALOG_TEXT_TOKENS):
+            recover_target = _pick_dialog_button_target(buttons, UNSAVED_DIALOG_STAY_TOKENS)
+            discard_target = _pick_dialog_button_target(buttons, UNSAVED_DIALOG_DISCARD_TOKENS)
+            return {
+                "detected": True,
+                "dialog_text": dialog_text[:280],
+                "recover_target": recover_target,
+                "discard_target": discard_target,
+            }
+
+    return {
+        "detected": False,
+        "dialog_text": "",
+        "recover_target": "",
+        "discard_target": "",
+    }
+
 
 class BrowserRuntimeUnavailable(RuntimeError):
     """Playwright runtime is not installed or not available."""
@@ -168,18 +244,12 @@ class HeadlessBrowserSession:
         if self.allow_dangerous_actions:
             return False
         lowered = text.lower()
-        patterns = [
-            "delete",
-            "remove",
-            "drop",
-            "truncate",
-            "destroy",
-            "danger",
-            "危险",
-            "删除",
-            "清空",
-        ]
-        return any(token in lowered for token in patterns)
+        if re.search(r"\b(delete|remove|truncate|destroy|danger)\b", lowered):
+            return True
+        # Block SQL-like drop/destroy terms but avoid false positive on words such as "dropdown".
+        if re.search(r"\bdrop\b", lowered) and "dropdown" not in lowered:
+            return True
+        return any(token in text for token in ("危险", "删除", "清空"))
 
     def _is_auth_field_target(self, target: str) -> bool:
         lowered = target.lower()
@@ -236,25 +306,79 @@ class HeadlessBrowserSession:
         if not target:
             raise ValueError("target 不能为空")
 
-        # Explicit selector modes keep original behavior.
-        if target.startswith(("css=", "xpath=", "//", "text=")):
+        # Explicit selector modes keep original behavior except text=,
+        # which should still prefer clickable controls.
+        if target.startswith(("css=", "xpath=", "//")):
+            return self._get_locator(target)
+        if target.startswith("text="):
+            text_target = target[5:].strip()
+            if not text_target:
+                raise ValueError("click text= 需要有效文本")
+            clickable = self._get_clickable_text_locator(text_target)
+            if clickable is not None:
+                return clickable
             return self._get_locator(target)
 
         # Natural-language targets should prefer clickable controls, not generic text nodes.
         looks_like_selector = any(token in target for token in ["#", ".", "[", "]", ">", ":", "=", "//"])
         if not looks_like_selector:
-            role_button = self.page.get_by_role("button", name=target, exact=False).first
-            if role_button.count() > 0:
-                return role_button
+            clickable = self._get_clickable_text_locator(target)
+            if clickable is not None:
+                return clickable
 
-            role_link = self.page.get_by_role("link", name=target, exact=False).first
-            if role_link.count() > 0:
-                return role_link
+        return self._get_locator(target)
 
-            safe_target = target.replace("\\", "\\\\").replace('"', '\\"')
-            aria_button = self.page.locator(f'[role="button"]:has-text("{safe_target}")').first
-            if aria_button.count() > 0:
-                return aria_button
+    def _get_clickable_text_locator(self, text_target: str):
+        role_button = self.page.get_by_role("button", name=text_target, exact=False).first
+        if role_button.count() > 0:
+            return role_button
+
+        role_link = self.page.get_by_role("link", name=text_target, exact=False).first
+        if role_link.count() > 0:
+            return role_link
+
+        safe_target = text_target.replace("\\", "\\\\").replace('"', '\\"')
+        css_candidates = [
+            f'[role="button"]:has-text("{safe_target}")',
+            f'button:has-text("{safe_target}")',
+            f'a:has-text("{safe_target}")',
+        ]
+        for css in css_candidates:
+            locator = self.page.locator(css).first
+            if locator.count() > 0:
+                return locator
+        return None
+
+    def _get_fill_locator(self, target: str):
+        target = (target or "").strip()
+        if not target:
+            raise ValueError("target 不能为空")
+
+        if target.startswith(("css=", "xpath=", "//")):
+            return self._get_locator(target)
+
+        label_text = target[5:].strip() if target.startswith("text=") else target
+        safe_target = label_text.replace("\\", "\\\\").replace("'", "\\'")
+        field_css_candidates = [
+            f"input[aria-label*='{safe_target}']",
+            f"textarea[aria-label*='{safe_target}']",
+            f"[contenteditable='true'][aria-label*='{safe_target}']",
+            f"input[placeholder*='{safe_target}']",
+            f"textarea[placeholder*='{safe_target}']",
+            f"input[name*='{safe_target}']",
+            f"textarea[name*='{safe_target}']",
+            f"select[name*='{safe_target}']",
+            f"label:has-text('{safe_target}') + input",
+            f"label:has-text('{safe_target}') + textarea",
+            f"label:has-text('{safe_target}') + select",
+            f"label:has-text('{safe_target}') ~ input",
+            f"label:has-text('{safe_target}') ~ textarea",
+            f"label:has-text('{safe_target}') ~ select",
+        ]
+        for css in field_css_candidates:
+            locator = self.page.locator(css).first
+            if locator.count() > 0:
+                return locator
 
         return self._get_locator(target)
 
@@ -301,6 +425,60 @@ class HeadlessBrowserSession:
             """,
             {"limit": max_elements},
         )
+        dialogs = self.page.evaluate(
+            """
+            () => {
+              const isVisible = (el) => {
+                if (!el) return false;
+                const style = window.getComputedStyle(el);
+                if (!style) return true;
+                if (style.display === "none" || style.visibility === "hidden" || style.opacity === "0") return false;
+                const rect = el.getBoundingClientRect();
+                return rect.width > 0 && rect.height > 0;
+              };
+
+              const textOf = (el) => (el?.innerText || el?.textContent || "").replace(/\\s+/g, " ").trim();
+              const candidates = Array.from(
+                document.querySelectorAll(
+                  '[role="alertdialog"],[role="dialog"],.ant-modal,.el-dialog,.modal,[class*="dialog"],[class*="Dialog"]'
+                )
+              );
+              const out = [];
+              const seen = new Set();
+
+              for (const node of candidates) {
+                if (!isVisible(node)) continue;
+                const text = textOf(node);
+                if (!text) continue;
+                const key = text.slice(0, 160);
+                if (seen.has(key)) continue;
+                seen.add(key);
+
+                const buttons = Array.from(
+                  node.querySelectorAll('button,[role="button"],a,input[type="button"],input[type="submit"]')
+                )
+                  .filter((el) => isVisible(el))
+                  .map((el) => ({
+                    tag: (el.tagName || "").toLowerCase(),
+                    text: textOf(el).slice(0, 80),
+                    ariaLabel: (el.getAttribute("aria-label") || "").slice(0, 80),
+                    name: (el.getAttribute("name") || "").slice(0, 80),
+                  }))
+                  .filter((item) => item.text || item.ariaLabel || item.name)
+                  .slice(0, 10);
+
+                out.push({
+                  text: text.slice(0, 360),
+                  role: node.getAttribute("role") || "",
+                  buttons,
+                });
+                if (out.length >= 6) break;
+              }
+              return out;
+            }
+            """
+        )
+        unsaved_dialog = _build_unsaved_dialog_signal(dialogs=dialogs if isinstance(dialogs, list) else [], visible_text=text)
         return BrowserToolResult(
             ok=True,
             message="页面观察完成",
@@ -308,6 +486,8 @@ class HeadlessBrowserSession:
                 "title": title,
                 "visible_text": text,
                 "interactive_elements": elements,
+                "dialogs": dialogs if isinstance(dialogs, list) else [],
+                "unsaved_changes_dialog": unsaved_dialog,
             },
             page_url=self.page.url,
         )
@@ -352,7 +532,7 @@ class HeadlessBrowserSession:
             raise ValueError("fill 需要 target")
         if self._dangerous_text_blocked(target):
             raise BrowserPolicyViolation(f"危险操作已拦截: fill({target})")
-        locator = self._get_locator(target)
+        locator = self._get_fill_locator(target)
         locator.fill(value)
         masked = f"{len(value)} chars" if value else ""
         return BrowserToolResult(

@@ -70,6 +70,49 @@ def test_project_member_can_create_run(api_client):
     assert response.data["name"] == "smoke run"
 
 
+def test_create_run_uses_threaded_fallback_when_enqueue_fails(api_client, monkeypatch):
+    user = UserFactory()
+    project = ProjectFactory()
+    ProjectMember.objects.create(project=project, user=user, is_manager=False)
+    env = ProjectEnvironmentFactory(project=project)
+    api_client.force_authenticate(user=user)
+
+    class _DummyThread:
+        started = False
+        last_target = None
+        last_args = None
+
+        def __init__(self, *, target, args, daemon, name):
+            self.target = target
+            self.args = args
+            self.daemon = daemon
+            self.name = name
+
+        def start(self):
+            _DummyThread.started = True
+            _DummyThread.last_target = self.target
+            _DummyThread.last_args = self.args
+
+    def _boom(*args, **kwargs):
+        raise RuntimeError("broker down")
+
+    monkeypatch.setattr("apps.ai_testing.views.run_ai_test.delay", _boom)
+    monkeypatch.setattr("apps.ai_testing.views.threading.Thread", _DummyThread)
+
+    payload = {
+        "project": project.id,
+        "environment": env.id,
+        "name": "enqueue fallback run",
+        "target_url": "https://example.com",
+    }
+    response = api_client.post("/api/ai-testing/runs/", payload, format="json")
+
+    assert response.status_code == 201
+    assert _DummyThread.started is True
+    assert _DummyThread.last_target.__name__ == "_run_ai_test_inline_fallback"
+    assert _DummyThread.last_args == (response.data["id"],)
+
+
 def test_member_cannot_create_run_for_non_active_flow(api_client):
     user = UserFactory()
     project = ProjectFactory()

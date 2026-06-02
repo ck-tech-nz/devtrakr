@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import logging
 import time
 from dataclasses import dataclass
@@ -10,7 +11,9 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.utils import timezone
 
 import apps.tools.storage as tools_storage
+from apps.ai.client import LLMClient
 from apps.ai.models import LLMConfig
+from apps.ai.services import parse_json_response
 from apps.issues.services import create_issue
 from apps.settings.models import SiteSettings
 from apps.tools.models import Attachment
@@ -21,7 +24,13 @@ from .browser import (
     BrowserToolResult,
     HeadlessBrowserSession,
 )
-from .models import AITestingModelSettings, BrowserArtifact, TestRun, TestStepRun
+from .models import AITestingModelSettings, BrowserArtifact, TestFlow, TestRun, TestStepRun
+from .prompts import (
+    ISSUE_WRITER_SYSTEM_PROMPT,
+    REVIEWER_SYSTEM_PROMPT,
+    build_issue_writer_user_prompt,
+    build_reviewer_user_prompt,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +51,25 @@ DEFAULT_PASSWORD_TARGET = (
 )
 DEFAULT_SUBMIT_TARGET = 'css=button[type="submit"], input[type="submit"], button:has-text("登录"), [role="button"]:has-text("登录")'
 DEFAULT_LOGIN_PATH = "/login"
+LOOP_GUARD_THRESHOLD = 3
+LOOP_GUARD_OBSERVE_MAX_TEXT = 1800
+LOOP_GUARD_OBSERVE_MAX_ELEMENTS = 80
+LOOP_GUARD_TOOLS = {"click", "fill", "press", "wait_for_text", "assert_text"}
+CONFIRM_GUARD_OBSERVE_MAX_TEXT = 2200
+CONFIRM_GUARD_OBSERVE_MAX_ELEMENTS = 120
+DISMISS_ACTION_TOKENS = (
+    "close",
+    "cancel",
+    "discard",
+    "leave",
+    "exit",
+    "关闭",
+    "取消",
+    "放弃",
+    "离开",
+    "退出",
+    "返回",
+)
 
 
 @dataclass
@@ -149,6 +177,20 @@ def _pick_llm_config(model_settings: AITestingModelSettings | None) -> LLMConfig
 def _pick_planner_model(model_settings: AITestingModelSettings | None, llm_config: LLMConfig | None) -> str:
     if model_settings and model_settings.planner_model:
         return model_settings.planner_model
+    if llm_config and llm_config.available_models:
+        return llm_config.available_models[0]
+    return ""
+
+
+def _pick_reviewer_model(
+    model_settings: AITestingModelSettings | None,
+    llm_config: LLMConfig | None,
+    planner_model: str,
+) -> str:
+    if model_settings and model_settings.critic_model:
+        return model_settings.critic_model
+    if planner_model:
+        return planner_model
     if llm_config and llm_config.available_models:
         return llm_config.available_models[0]
     return ""
@@ -280,6 +322,13 @@ def _store_text_artifact(*, run: TestRun, artifact_type: str, content: str, meta
     )
 
 
+def _allocate_step_index(run: TestRun, desired_index: int) -> int:
+    candidate = max(1, int(desired_index))
+    while TestStepRun.objects.filter(run=run, step_index=candidate).exists():
+        candidate += 1
+    return candidate
+
+
 def _append_step(
     *,
     run: TestRun,
@@ -287,9 +336,10 @@ def _append_step(
     decision: AgentDecision,
     result: BrowserToolResult,
 ) -> TestStepRun:
+    persisted_index = _allocate_step_index(run, step_index)
     step = TestStepRun.objects.create(
         run=run,
-        step_index=step_index,
+        step_index=persisted_index,
         skill_name="generic_harness",
         thought_summary=decision.thought_summary,
         tool_name=decision.tool_name,
@@ -312,7 +362,7 @@ def _append_step(
 
 def _append_runtime_failure_step(run: TestRun, error_message: str):
     last = TestStepRun.objects.filter(run=run).order_by("-step_index", "-id").first()
-    step_index = (last.step_index + 1) if last else 1
+    step_index = _allocate_step_index(run, (last.step_index + 1) if last else 1)
     TestStepRun.objects.create(
         run=run,
         step_index=step_index,
@@ -345,6 +395,384 @@ def _store_runtime_logs(run: TestRun, browser: HeadlessBrowserSession):
     )
 
 
+def _summarize_steps_for_expert(run: TestRun, limit: int = 20) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    for step in run.steps.order_by("step_index", "id")[:limit]:
+        out.append(
+            {
+                "step": step.step_index,
+                "tool": step.tool_name,
+                "status": step.status,
+                "thought": (step.thought_summary or "")[:240],
+                "error": (step.error_message or "")[:300],
+                "url": step.page_url or "",
+            }
+        )
+    return out
+
+
+def _summarize_artifacts_for_expert(run: TestRun, limit: int = 16) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    for artifact in run.artifacts.select_related("step").order_by("-created_at")[:limit]:
+        out.append(
+            {
+                "type": artifact.artifact_type,
+                "step": artifact.step.step_index if artifact.step_id else None,
+                "content": (artifact.content or "")[:480],
+                "has_attachment": bool(artifact.attachment_id),
+            }
+        )
+    return out
+
+
+def _normalize_priority(value: str | None) -> str:
+    raw = (value or "").strip().upper()
+    if raw in {"P0", "P1", "P2", "P3"}:
+        return raw
+    return "P2"
+
+
+def _run_reviewer_expert(
+    *,
+    run: TestRun,
+    flow: TestFlow | None,
+    llm_config: LLMConfig | None,
+    reviewer_model: str,
+    timeout_secs: int,
+    model_settings: AITestingModelSettings | None,
+) -> dict[str, Any] | None:
+    if not (llm_config and reviewer_model and model_settings and model_settings.enable_critic_review):
+        return None
+
+    try:
+        steps = _summarize_steps_for_expert(run)
+        artifacts = _summarize_artifacts_for_expert(run)
+        user_prompt = build_reviewer_user_prompt(
+            run_name=run.name,
+            flow_description=(flow.description if flow else "") or "",
+            success_criteria=(flow.success_criteria if flow else "") or "",
+            final_status=run.status,
+            final_summary=run.final_summary or "",
+            failure_reason=run.failure_reason or "",
+            steps=steps,
+            artifacts=artifacts,
+        )
+        raw = LLMClient(llm_config).complete(
+            model=reviewer_model,
+            system_prompt=REVIEWER_SYSTEM_PROMPT,
+            user_prompt=user_prompt,
+            temperature=min(0.2, max(0.0, model_settings.temperature)),
+            timeout=min(90, timeout_secs),
+        )
+        payload = parse_json_response(raw)
+        verdict = str(payload.get("verdict") or "").strip().lower()
+        reason = str(payload.get("reason") or "").strip()[:600]
+        confidence_raw = payload.get("confidence")
+        try:
+            confidence = float(confidence_raw)
+        except (TypeError, ValueError):
+            confidence = 0.0
+        should_create_issue = bool(payload.get("should_create_issue"))
+        review = {
+            "verdict": verdict if verdict in {"pass", "fail"} else "fail",
+            "reason": reason or "评审模型未给出有效结论",
+            "confidence": max(0.0, min(confidence, 1.0)),
+            "should_create_issue": should_create_issue,
+            "priority": _normalize_priority(payload.get("priority")),
+            "raw": raw[:2000],
+        }
+        _store_text_artifact(
+            run=run,
+            artifact_type=BrowserArtifact.TYPE_CONSOLE,
+            content=json.dumps(review, ensure_ascii=False),
+            metadata={"kind": "expert_review"},
+        )
+        return review
+    except Exception:
+        logger.exception("ai-testing expert review failed for run=%s", run.id)
+        return None
+
+
+def _run_issue_writer_expert(
+    *,
+    run: TestRun,
+    flow: TestFlow | None,
+    llm_config: LLMConfig | None,
+    reviewer_model: str,
+    timeout_secs: int,
+    reviewer_reason: str,
+) -> dict[str, str]:
+    fallback = {
+        "title": f"[AI测试失败] {run.name}",
+        "description": _build_run_failure_description(run),
+        "priority": "P2",
+    }
+    if not (llm_config and reviewer_model):
+        return fallback
+    try:
+        steps = _summarize_steps_for_expert(run)
+        artifacts = _summarize_artifacts_for_expert(run)
+        user_prompt = build_issue_writer_user_prompt(
+            run_name=run.name,
+            target_url=run.target_url or "",
+            flow_description=(flow.description if flow else "") or "",
+            reviewer_reason=reviewer_reason,
+            steps=steps,
+            artifacts=artifacts,
+        )
+        raw = LLMClient(llm_config).complete(
+            model=reviewer_model,
+            system_prompt=ISSUE_WRITER_SYSTEM_PROMPT,
+            user_prompt=user_prompt,
+            temperature=0.1,
+            timeout=min(90, timeout_secs),
+        )
+        payload = parse_json_response(raw)
+        title = str(payload.get("title") or "").strip()[:200] or fallback["title"]
+        description = str(payload.get("description") or "").strip() or fallback["description"]
+        return {
+            "title": title,
+            "description": description[:12000],
+            "priority": _normalize_priority(payload.get("priority")),
+        }
+    except Exception:
+        logger.exception("ai-testing issue-writer expert failed for run=%s", run.id)
+        return fallback
+
+
+def _auto_create_issue_from_expert(
+    *,
+    run: TestRun,
+    reviewer_reason: str,
+    llm_config: LLMConfig | None,
+    reviewer_model: str,
+    timeout_secs: int,
+) -> int | None:
+    actor = run.created_by
+    if not actor or not actor.has_perm("issues.add_issue"):
+        return None
+    issue_draft = _run_issue_writer_expert(
+        run=run,
+        flow=run.flow,
+        llm_config=llm_config,
+        reviewer_model=reviewer_model,
+        timeout_secs=timeout_secs,
+        reviewer_reason=reviewer_reason,
+    )
+    issue = create_issue(
+        project=run.project,
+        actor=actor,
+        title=issue_draft["title"],
+        description=issue_draft["description"],
+        priority=issue_draft["priority"],
+        source="ai_testing",
+        source_meta={
+            "test_run_id": run.id,
+            "status": run.status,
+            "environment_id": run.environment_id,
+            "flow_id": run.flow_id,
+            "generated_by": "issue_writer_expert",
+        },
+        labels=_pick_default_labels(),
+        reporter="",
+    )
+    return issue.id
+
+
+def _run_expert_pipeline(
+    *,
+    run: TestRun,
+    flow: TestFlow | None,
+    llm_config: LLMConfig | None,
+    reviewer_model: str,
+    timeout_secs: int,
+    model_settings: AITestingModelSettings | None,
+):
+    review = _run_reviewer_expert(
+        run=run,
+        flow=flow,
+        llm_config=llm_config,
+        reviewer_model=reviewer_model,
+        timeout_secs=timeout_secs,
+        model_settings=model_settings,
+    )
+    if not review:
+        return
+
+    if run.status == TestRun.STATUS_SUCCESS and review["verdict"] == "fail":
+        run.status = TestRun.STATUS_FAILED
+        run.failure_reason = f"expert_review_failed: {review['reason']}"
+        run.final_summary = "专家评审判定失败"
+
+    if run.status in {TestRun.STATUS_FAILED, TestRun.STATUS_TIMEOUT, TestRun.STATUS_CANCELLED}:
+        should_create = review["should_create_issue"] and review["verdict"] == "fail"
+        issue_id = None
+        if should_create:
+            issue_id = _auto_create_issue_from_expert(
+                run=run,
+                reviewer_reason=review["reason"],
+                llm_config=llm_config,
+                reviewer_model=reviewer_model,
+                timeout_secs=timeout_secs,
+            )
+        if issue_id:
+            run.final_summary = f"{run.final_summary or '执行失败'}（已自动创建 Issue #{issue_id}）"
+        elif review["reason"]:
+            run.final_summary = f"{run.final_summary or '执行结束'}（专家评审：{review['reason'][:160]}）"
+
+
+def _normalize_inline_text(value: Any, max_len: int = 280) -> str:
+    text = " ".join(str(value or "").split())
+    return text[:max_len]
+
+
+def _build_observation_signature(observation: dict[str, Any], *, page_url: str = "") -> str:
+    if not isinstance(observation, dict):
+        observation = {}
+    elements = []
+    raw_elements = observation.get("interactive_elements")
+    if isinstance(raw_elements, list):
+        for item in raw_elements[:12]:
+            if not isinstance(item, dict):
+                continue
+            elements.append(
+                {
+                    "tag": _normalize_inline_text(item.get("tag"), 40),
+                    "id": _normalize_inline_text(item.get("id"), 80),
+                    "name": _normalize_inline_text(item.get("name"), 80),
+                    "role": _normalize_inline_text(item.get("role"), 80),
+                    "type": _normalize_inline_text(item.get("type"), 80),
+                    "text": _normalize_inline_text(item.get("text"), 120),
+                    "testid": _normalize_inline_text(item.get("testid"), 80),
+                }
+            )
+    normalized = {
+        "url": _normalize_inline_text(page_url or observation.get("url"), 280),
+        "title": _normalize_inline_text(observation.get("title"), 200),
+        "visible_text": _normalize_inline_text(observation.get("visible_text"), 360),
+        "unsaved_dialog": _normalize_inline_text(
+            (observation.get("unsaved_changes_dialog") or {}).get("dialog_text")
+            if isinstance(observation.get("unsaved_changes_dialog"), dict)
+            else "",
+            200,
+        ),
+        "elements": elements,
+    }
+    payload = json.dumps(normalized, ensure_ascii=False, sort_keys=True)
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
+
+
+def _extract_action_target(decision: AgentDecision) -> str:
+    tool_input = decision.tool_input if isinstance(decision.tool_input, dict) else {}
+    for key in ("target", "text", "url", "key"):
+        value = tool_input.get(key)
+        if value is not None and str(value).strip():
+            return _normalize_inline_text(value, 160)
+    return ""
+
+
+def _is_potential_dismiss_action(decision: AgentDecision) -> bool:
+    tool_input = decision.tool_input if isinstance(decision.tool_input, dict) else {}
+    if decision.tool_name == "press":
+        key = _normalize_inline_text(tool_input.get("key"), 80).casefold()
+        return key in {"escape", "esc"}
+    if decision.tool_name != "click":
+        return False
+    target = _extract_action_target(decision).casefold()
+    if not target:
+        return False
+    return any(token.casefold() in target for token in DISMISS_ACTION_TOKENS)
+
+
+def _normalize_click_target(text: str) -> str:
+    raw = _normalize_inline_text(text, 120)
+    if not raw:
+        return ""
+    if raw.startswith(("text=", "css=", "xpath=", "//")):
+        return raw
+    return f"text={raw}"
+
+
+def _handle_unsaved_confirmation_guard(
+    *,
+    run: TestRun,
+    browser: HeadlessBrowserSession,
+    decision: AgentDecision,
+    step_index: int,
+) -> dict[str, Any] | None:
+    if not _is_potential_dismiss_action(decision):
+        return None
+
+    observe_decision = AgentDecision(
+        "observe_page",
+        {
+            "max_text": CONFIRM_GUARD_OBSERVE_MAX_TEXT,
+            "max_elements": CONFIRM_GUARD_OBSERVE_MAX_ELEMENTS,
+        },
+        "弹窗保护：检查二次确认框",
+    )
+    observe_result = browser.execute_tool(observe_decision.tool_name, observe_decision.tool_input)
+    _append_step(run=run, step_index=step_index + 1, decision=observe_decision, result=observe_result)
+    if not observe_result.ok or not isinstance(observe_result.data, dict):
+        return None
+
+    observation = observe_result.data
+    signal = observation.get("unsaved_changes_dialog")
+    if not isinstance(signal, dict) or not signal.get("detected"):
+        return {"observation": observation}
+
+    recover_target_raw = _normalize_inline_text(signal.get("recover_target"), 120) or "继续编辑"
+    recover_target = _normalize_click_target(recover_target_raw)
+    recover_decision = AgentDecision(
+        "click",
+        {"target": recover_target},
+        "弹窗保护：优先继续编辑，避免内容丢失",
+        allow_failure=True,
+    )
+    recover_result = browser.execute_tool(recover_decision.tool_name, recover_decision.tool_input)
+    _append_step(run=run, step_index=step_index + 2, decision=recover_decision, result=recover_result)
+
+    post_observe_decision = AgentDecision(
+        "observe_page",
+        {
+            "max_text": CONFIRM_GUARD_OBSERVE_MAX_TEXT,
+            "max_elements": CONFIRM_GUARD_OBSERVE_MAX_ELEMENTS,
+        },
+        "弹窗保护：处理后复查页面",
+    )
+    post_observe_result = browser.execute_tool(post_observe_decision.tool_name, post_observe_decision.tool_input)
+    _append_step(
+        run=run,
+        step_index=step_index + 3,
+        decision=post_observe_decision,
+        result=post_observe_result,
+    )
+    if post_observe_result.ok and isinstance(post_observe_result.data, dict):
+        return {"observation": post_observe_result.data}
+    return {"observation": observation}
+
+
+def _build_repeat_action_key(
+    *,
+    decision: AgentDecision,
+    observation_signature: str,
+    page_url: str,
+) -> str:
+    if decision.tool_name not in LOOP_GUARD_TOOLS:
+        return ""
+    target = _extract_action_target(decision)
+    if not target:
+        return ""
+    return "|".join(
+        [
+            decision.tool_name,
+            target,
+            _normalize_inline_text(page_url, 280),
+            observation_signature,
+        ]
+    )
+
+
 def execute_ai_test_run(run: TestRun):
     run = TestRun.objects.select_related("flow", "environment", "project").get(pk=run.pk)
     if run.status != TestRun.STATUS_PENDING:
@@ -355,6 +783,7 @@ def execute_ai_test_run(run: TestRun):
     model_settings = _pick_runtime_model_settings(run)
     llm_config = _pick_llm_config(model_settings)
     planner_model = _pick_planner_model(model_settings, llm_config)
+    reviewer_model = _pick_reviewer_model(model_settings, llm_config, planner_model)
 
     max_steps = flow.max_steps if flow else 30
     max_steps = max(1, min(max_steps, model_settings.max_agent_turns if model_settings else max_steps))
@@ -385,6 +814,9 @@ def execute_ai_test_run(run: TestRun):
 
     history: list[dict[str, Any]] = []
     observation: dict[str, Any] = {}
+    observation_signature = _build_observation_signature(observation, page_url=target_url)
+    repeat_action_key = ""
+    repeat_action_count = 0
     last_result: BrowserToolResult | None = None
     started_monotonic = time.monotonic()
 
@@ -407,9 +839,10 @@ def execute_ai_test_run(run: TestRun):
                     return run
 
                 if time.monotonic() - started_monotonic > run_timeout_secs:
+                    timeout_step_index = _allocate_step_index(run, step_index)
                     timeout_step = TestStepRun.objects.create(
                         run=run,
-                        step_index=step_index,
+                        step_index=timeout_step_index,
                         skill_name="system",
                         thought_summary="执行超时保护触发",
                         tool_name="timeout_guard",
@@ -465,8 +898,11 @@ def execute_ai_test_run(run: TestRun):
 
                 if decision.tool_name == "observe_page":
                     observation = result.data if isinstance(result.data, dict) else {}
+                    observation_signature = _build_observation_signature(observation, page_url=result.page_url)
+                    repeat_action_key = ""
+                    repeat_action_count = 0
                 elif decision.tool_name == "take_screenshot":
-                    observation = {"screenshot_taken": True, "url": result.page_url}
+                    observation = {**observation, "screenshot_taken": True, "url": result.page_url}
                 elif decision.tool_name.startswith("finish_"):
                     if decision.tool_name == "finish_success" and result.ok:
                         run.status = TestRun.STATUS_SUCCESS
@@ -478,7 +914,12 @@ def execute_ai_test_run(run: TestRun):
                         run.failure_reason = result.message or "finish_failure"
                     break
                 else:
-                    observation = {"last_tool": decision.tool_name, "last_message": result.message, "url": result.page_url}
+                    observation = {
+                        **observation,
+                        "last_tool": decision.tool_name,
+                        "last_message": result.message,
+                        "url": result.page_url,
+                    }
 
                 if not result.ok:
                     shot = browser.execute_tool(
@@ -496,16 +937,36 @@ def execute_ai_test_run(run: TestRun):
                         )
                     if decision.allow_failure:
                         observation = {
+                            **observation,
+                            "url": result.page_url,
                             "last_tool": decision.tool_name,
                             "last_message": result.message,
-                            "url": result.page_url,
                             "optional_failure": True,
                         }
+                        repeat_action_key = ""
+                        repeat_action_count = 0
                         continue
                     run.status = TestRun.STATUS_FAILED
                     run.failure_reason = result.message or "tool_failed"
                     run.final_summary = f"第 {step_index} 步失败：{decision.tool_name}"
                     break
+
+                guard_outcome = _handle_unsaved_confirmation_guard(
+                    run=run,
+                    browser=browser,
+                    decision=decision,
+                    step_index=step_index,
+                )
+                if guard_outcome is not None:
+                    guarded_observation = guard_outcome.get("observation")
+                    if isinstance(guarded_observation, dict):
+                        observation = guarded_observation
+                        observation_signature = _build_observation_signature(
+                            observation,
+                            page_url=(observation.get("url") or result.page_url or ""),
+                        )
+                    repeat_action_key = ""
+                    repeat_action_count = 0
 
                 # Seed actions often include login and may trigger delayed redirects.
                 # Refresh observation once right after seed phase so the model does not reason on stale login-page state.
@@ -517,6 +978,73 @@ def execute_ai_test_run(run: TestRun):
                     refresh = browser.execute_tool("observe_page", {"max_text": 1200, "max_elements": 40})
                     if refresh.ok and isinstance(refresh.data, dict):
                         observation = refresh.data
+                        observation_signature = _build_observation_signature(observation, page_url=refresh.page_url)
+                        repeat_action_key = ""
+                        repeat_action_count = 0
+
+                repeat_key = _build_repeat_action_key(
+                    decision=decision,
+                    observation_signature=observation_signature,
+                    page_url=result.page_url,
+                )
+                if repeat_key:
+                    if repeat_key == repeat_action_key:
+                        repeat_action_count += 1
+                    else:
+                        repeat_action_key = repeat_key
+                        repeat_action_count = 1
+                else:
+                    repeat_action_key = ""
+                    repeat_action_count = 0
+
+                if repeat_action_count >= LOOP_GUARD_THRESHOLD:
+                    repeat_target = _extract_action_target(decision) or "-"
+                    guard_reason = (
+                        f"检测到重复动作循环：{decision.tool_name}({repeat_target}) "
+                        f"连续 {repeat_action_count} 次且页面观测未变化"
+                    )
+                    screenshot_decision = AgentDecision(
+                        "take_screenshot",
+                        {"reason": "repeat_action_guard", "step_index": step_index + 1},
+                        "循环保护：自动截图",
+                    )
+                    screenshot_result = browser.execute_tool(
+                        screenshot_decision.tool_name,
+                        screenshot_decision.tool_input,
+                    )
+                    _append_step(
+                        run=run,
+                        step_index=step_index + 1,
+                        decision=screenshot_decision,
+                        result=screenshot_result,
+                    )
+
+                    observe_decision = AgentDecision(
+                        "observe_page",
+                        {
+                            "max_text": LOOP_GUARD_OBSERVE_MAX_TEXT,
+                            "max_elements": LOOP_GUARD_OBSERVE_MAX_ELEMENTS,
+                        },
+                        "循环保护：自动观察页面",
+                    )
+                    observe_result = browser.execute_tool(observe_decision.tool_name, observe_decision.tool_input)
+                    _append_step(
+                        run=run,
+                        step_index=step_index + 2,
+                        decision=observe_decision,
+                        result=observe_result,
+                    )
+                    if observe_result.ok and isinstance(observe_result.data, dict):
+                        observation = observe_result.data
+                        observation_signature = _build_observation_signature(
+                            observation,
+                            page_url=observe_result.page_url,
+                        )
+
+                    run.status = TestRun.STATUS_FAILED
+                    run.failure_reason = guard_reason
+                    run.final_summary = "执行失败（重复动作循环保护触发）"
+                    break
 
             if run.status == TestRun.STATUS_RUNNING:
                 if last_result and last_result.ok:
@@ -529,6 +1057,14 @@ def execute_ai_test_run(run: TestRun):
                     run.final_summary = "执行结束但未满足成功条件"
 
             _store_runtime_logs(run=run, browser=browser)
+            _run_expert_pipeline(
+                run=run,
+                flow=flow,
+                llm_config=llm_config,
+                reviewer_model=reviewer_model,
+                timeout_secs=tool_timeout_secs,
+                model_settings=model_settings,
+            )
 
     except BrowserRuntimeUnavailable as exc:
         run.status = TestRun.STATUS_FAILED

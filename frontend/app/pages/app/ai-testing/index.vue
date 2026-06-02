@@ -150,9 +150,9 @@
 
     <p v-if="pageError" class="text-sm text-red-500">{{ pageError }}</p>
 
-    <UModal v-model:open="showStepsModal" title="执行详情" :ui="{ width: 'sm:max-w-5xl' }">
+    <UModal v-model:open="showStepsModal" title="执行详情" :ui="{ content: 'sm:max-w-7xl max-h-[92vh] overflow-hidden' }">
       <template #content>
-        <div class="p-5">
+        <div class="p-5 max-h-[88vh] overflow-y-auto overscroll-contain">
           <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
             <p class="text-sm font-medium text-gray-900 dark:text-gray-100">
               {{ currentRunTitle }}
@@ -161,7 +161,7 @@
           </div>
           <p v-if="currentRunSummary" class="text-xs text-gray-500 dark:text-gray-400 mb-4">{{ currentRunSummary }}</p>
 
-          <div class="grid grid-cols-1 xl:grid-cols-2 gap-4">
+          <div class="grid grid-cols-1 xl:grid-cols-2 gap-4 items-start">
             <section class="rounded-lg border border-gray-100 dark:border-gray-800 p-3">
               <div class="flex items-center justify-between mb-2">
                 <h3 class="text-sm font-medium text-gray-900 dark:text-gray-100">步骤</h3>
@@ -169,7 +169,7 @@
               </div>
               <div v-if="stepsError" class="text-sm text-red-500 py-4">{{ stepsError }}</div>
               <div v-else-if="!runSteps.length" class="text-sm text-gray-400 py-4">暂无步骤记录</div>
-              <div v-else class="space-y-2 max-h-[55vh] overflow-y-auto">
+              <div v-else class="space-y-2 max-h-[62vh] overflow-y-auto pr-1">
                 <div
                   v-for="step in runSteps"
                   :key="step.id"
@@ -197,7 +197,7 @@
               </div>
               <div v-if="artifactsError" class="text-sm text-red-500 py-4">{{ artifactsError }}</div>
               <div v-else-if="!runArtifacts.length" class="text-sm text-gray-400 py-4">暂无产物</div>
-              <div v-else class="space-y-2 max-h-[55vh] overflow-y-auto">
+              <div v-else class="space-y-2 max-h-[62vh] overflow-y-auto pr-1">
                 <div
                   v-for="artifact in runArtifacts"
                   :key="artifact.id"
@@ -215,7 +215,7 @@
                       v-if="artifact.artifact_type === 'screenshot'"
                       :src="artifact.attachment_url"
                       :alt="artifact.attachment_name || 'screenshot'"
-                      class="w-full max-h-56 object-contain rounded border border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-900"
+                      class="w-full max-h-[70vh] object-contain rounded border border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-900"
                       loading="lazy"
                     />
                     <a
@@ -239,21 +239,28 @@
       </template>
     </UModal>
 
-    <UModal v-model:open="showEnvModal" title="新建测试环境" :ui="{ width: 'sm:max-w-lg' }">
+    <UModal v-model:open="showEnvModal" title="新建测试环境" :ui="{ content: 'sm:max-w-5xl' }">
       <template #content>
-        <div class="space-y-3 p-5">
-          <UInput v-model="envForm.name" placeholder="环境名称，例如 staging" />
-          <UInput v-model="envForm.base_url" placeholder="基础 URL，例如 https://example.com" />
-          <UInput v-model="envForm.login_username" placeholder="测试账号（可选）" />
-          <UInput v-model="envForm.login_password" type="password" placeholder="测试密码（可选）" />
-          <UInput v-model="envForm.login_entry_target" placeholder="登录入口选择器（可选，默认尝试 /login 和 登录按钮）" />
-          <UInput v-model="envForm.login_url" placeholder="登录页 URL（可选，默认 /login）" />
-          <UInput v-model="envForm.username_target" placeholder="账号输入框选择器（可选）" />
-          <UInput v-model="envForm.password_target" placeholder="密码输入框选择器（可选）" />
-          <UInput v-model="envForm.submit_target" placeholder="登录提交按钮选择器（可选）" />
-          <UInput v-model="envForm.post_login_wait_text" placeholder="登录后等待文本（可选）" />
-          <UTextarea v-model="envForm.allowed_url_patterns_text" :rows="2" placeholder="URL 白名单（可选，按逗号或换行分隔）" />
-          <div class="grid grid-cols-2 gap-3">
+        <div class="p-6 max-h-[80vh] overflow-y-auto">
+          <div class="grid grid-cols-1 gap-3">
+            <UInput v-model="envForm.name" class="w-full" placeholder="环境名称，例如 staging" />
+            <UInput v-model="envForm.base_url" class="w-full" placeholder="基础 URL，例如 https://example.com" />
+            <UInput v-model="envForm.login_username" class="w-full" placeholder="测试账号（可选）" />
+            <UInput v-model="envForm.login_password" class="w-full" type="password" placeholder="测试密码（可选）" />
+            <UInput v-model="envForm.login_entry_target" class="w-full" placeholder="登录入口选择器（可选，默认尝试 /login 和 登录按钮）" />
+            <UInput v-model="envForm.login_url" class="w-full" placeholder="登录页 URL（可选，默认 /login）" />
+            <UInput v-model="envForm.username_target" class="w-full" placeholder="账号输入框选择器（可选）" />
+            <UInput v-model="envForm.password_target" class="w-full" placeholder="密码输入框选择器（可选）" />
+            <UInput v-model="envForm.submit_target" class="w-full" placeholder="登录提交按钮选择器（可选）" />
+            <UInput v-model="envForm.post_login_wait_text" class="w-full" placeholder="登录后等待文本（可选）" />
+            <UTextarea
+              v-model="envForm.allowed_url_patterns_text"
+              class="w-full"
+              :rows="3"
+              placeholder="URL 白名单（可选，按逗号或换行分隔）"
+            />
+          </div>
+          <div class="grid grid-cols-1 gap-3 mt-3">
             <label class="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300">
               <input v-model="envForm.allow_write_actions" type="checkbox" class="rounded border-gray-300" />
               允许写操作
@@ -263,7 +270,7 @@
               允许危险操作
             </label>
           </div>
-          <div class="flex justify-end gap-2 pt-2">
+          <div class="flex justify-end gap-2 pt-4 mt-4 border-t border-gray-100 dark:border-gray-800">
             <UButton variant="outline" color="neutral" @click="showEnvModal = false">取消</UButton>
             <UButton :loading="creatingEnv" @click="createEnvironment">创建</UButton>
           </div>
@@ -271,30 +278,41 @@
       </template>
     </UModal>
 
-    <UModal v-model:open="showFlowModal" title="新建测试流程" :ui="{ width: 'sm:max-w-xl' }">
+    <UModal v-model:open="showFlowModal" title="新建测试流程" :ui="{ content: 'sm:max-w-5xl' }">
       <template #content>
-        <div class="space-y-3 p-5">
-          <UInput v-model="flowForm.name" placeholder="流程名称" />
-          <UTextarea v-model="flowForm.description" :rows="4" placeholder="流程描述，例如：登录后创建一个 Issue 并验证成功提示" />
+        <div class="p-6 max-h-[80vh] overflow-y-auto space-y-3">
+          <UInput v-model="flowForm.name" class="w-full" placeholder="流程名称" />
+          <UTextarea
+            v-model="flowForm.description"
+            class="w-full"
+            :rows="4"
+            placeholder="测试需求或 bug 现象（可简写），例如：创建 Issue 时点击新建问题无响应"
+          />
           <USelect
             v-model="flowForm.environment"
+            class="w-full"
             :items="environmentOptions"
             value-key="value"
             placeholder="选择默认环境"
           />
-          <UInput v-model="flowForm.target_url" placeholder="目标 URL（可选，不填则使用环境 base_url）" />
-          <UInput v-model="flowForm.success_criteria" placeholder="成功标准（可选）" />
-          <div class="grid grid-cols-2 gap-3">
-            <UInput v-model.number="flowForm.max_steps" type="number" min="1" max="200" placeholder="最大步骤数" />
-            <UInput v-model.number="flowForm.timeout_secs" type="number" min="10" max="7200" placeholder="超时秒数" />
+          <UInput v-model="flowForm.target_url" class="w-full" placeholder="目标 URL（可选，不填则使用环境 base_url）" />
+          <UInput v-model="flowForm.success_criteria" class="w-full" placeholder="成功标准（可选）" />
+          <div class="space-y-1">
+            <label class="text-xs text-gray-500 dark:text-gray-400">最大步骤数</label>
+            <UInput v-model.number="flowForm.max_steps" class="w-full" type="number" min="1" max="200" placeholder="例如 30" />
           </div>
-          <div class="grid grid-cols-2 gap-3 items-center">
+          <div class="space-y-1">
+            <label class="text-xs text-gray-500 dark:text-gray-400">执行超时（秒）</label>
+            <UInput v-model.number="flowForm.timeout_secs" class="w-full" type="number" min="10" max="7200" placeholder="例如 300" />
+          </div>
+          <div class="grid grid-cols-1 gap-3 items-center">
             <label class="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300">
               <input v-model="flowForm.cleanup_enabled" type="checkbox" class="rounded border-gray-300" />
               启用自动 cleanup
             </label>
             <USelect
               v-model="flowForm.cleanup_policy"
+              class="w-full"
               :items="[
                 { label: '不清理', value: 'none' },
                 { label: '删除', value: 'delete' },
@@ -304,7 +322,7 @@
               placeholder="cleanup 策略"
             />
           </div>
-          <div class="flex justify-end gap-2 pt-2">
+          <div class="flex justify-end gap-2 pt-4 mt-4 border-t border-gray-100 dark:border-gray-800">
             <UButton variant="outline" color="neutral" @click="showFlowModal = false">取消</UButton>
             <UButton :loading="creatingFlow" @click="createFlow">创建</UButton>
           </div>
@@ -602,14 +620,16 @@ function openFlowModal() {
 
 async function createFlow() {
   if (!selectedProjectId.value) return
-  if (!flowForm.value.name.trim() || !flowForm.value.description.trim()) {
-    pageError.value = "流程名称和流程描述必填"
+  if (!flowForm.value.name.trim()) {
+    pageError.value = "流程名称必填"
     return
   }
   if (!flowForm.value.environment) {
     pageError.value = "请先选择默认环境"
     return
   }
+  const normalizedDescription = flowForm.value.description.trim()
+    || `测试需求：${flowForm.value.name.trim()}。请由测试专家自动拆解步骤并完成执行。`
   creatingFlow.value = true
   pageError.value = ""
   try {
@@ -619,7 +639,7 @@ async function createFlow() {
         project: selectedProjectId.value,
         environment: flowForm.value.environment,
         name: flowForm.value.name.trim(),
-        description: flowForm.value.description.trim(),
+        description: normalizedDescription,
         target_url: flowForm.value.target_url.trim(),
         success_criteria: flowForm.value.success_criteria.trim(),
         max_steps: Number(flowForm.value.max_steps) || 30,

@@ -1,4 +1,5 @@
 import logging
+import threading
 
 from django.shortcuts import get_object_or_404
 from rest_framework import generics, status
@@ -22,6 +23,20 @@ from .serializers import (
 from .tasks import run_ai_test
 
 logger = logging.getLogger(__name__)
+
+
+def _run_ai_test_inline_fallback(run_id: int):
+    """Fallback runner when Celery enqueue fails.
+
+    Run in a background thread so sync Playwright never executes in request/ASGI loops.
+    """
+    try:
+        from .services import execute_ai_test_run
+
+        run = TestRun.objects.select_related("flow", "environment").get(pk=run_id)
+        execute_ai_test_run(run)
+    except Exception:  # pragma: no cover - runtime safeguard for fallback path
+        logger.exception("Inline fallback ai-testing run failed: run=%s", run_id)
 
 
 def _filter_by_project_membership(queryset, user, project_field: str = "project_id"):
@@ -130,10 +145,13 @@ class TestRunListCreateView(generics.ListCreateAPIView):
         try:
             run_ai_test.delay(run.id)
         except Exception:  # pragma: no cover - broker down fallback
-            logger.exception("Failed to enqueue ai-testing run %s; running inline fallback", run.id)
-            from .services import execute_ai_test_run
-
-            execute_ai_test_run(run)
+            logger.exception("Failed to enqueue ai-testing run %s; using threaded fallback", run.id)
+            threading.Thread(
+                target=_run_ai_test_inline_fallback,
+                args=(run.id,),
+                daemon=True,
+                name=f"ai-testing-fallback-{run.id}",
+            ).start()
 
 
 class TestRunDetailView(generics.RetrieveAPIView):

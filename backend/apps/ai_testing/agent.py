@@ -52,6 +52,10 @@ class AITestAgent:
         if step_index <= len(self.seed_actions):
             return self.seed_actions[step_index - 1]
 
+        forced_observe = self._build_forced_observe_decision(history=history)
+        if forced_observe is not None:
+            return forced_observe
+
         if self._client is None:
             return self._fallback_decision(
                 step_index=step_index,
@@ -127,3 +131,17 @@ class AITestAgent:
             tool_input = {}
         thought = str(payload.get("thought") or "").strip()[:280]
         return AgentDecision(tool_name=tool, tool_input=tool_input, thought_summary=thought)
+
+    def _build_forced_observe_decision(self, *, history: list[dict[str, Any]]) -> AgentDecision | None:
+        if not history:
+            return None
+        last_tool = str(history[-1].get("tool") or "").strip()
+        if last_tool in {"observe_page", "take_screenshot", "finish_success", "finish_failure"}:
+            return None
+        if last_tool in {"click", "fill", "press", "open_url", "wait_for_text", "assert_text"}:
+            return AgentDecision(
+                "observe_page",
+                {"max_text": 1800, "max_elements": 80},
+                "动作后先观察页面，确认状态变化",
+            )
+        return None
