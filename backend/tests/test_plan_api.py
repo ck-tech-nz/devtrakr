@@ -524,6 +524,20 @@ class TestPlanEvaluationVisibility:
         assert "ai_summary_model" not in cur
         assert cur["employee_evaluation"] == "给你的评价"
 
+    def test_employee_past_month_also_hides_summary(self, employee_client):
+        # ?period= 过往月份分支同样无 manager context，应一并剔除 ai_summary
+        client, user = employee_client
+        ImprovementPlanFactory(
+            user=user, period="2026-05", status="archived",
+            ai_summary="内部机密", employee_evaluation="上月评价")
+        resp = client.get("/api/kpi/plans/me/?period=2026-05")
+        assert resp.status_code == 200
+        plan = resp.data["plan"]
+        assert "ai_summary" not in plan
+        assert "ai_summary_at" not in plan
+        assert "ai_summary_model" not in plan
+        assert plan["employee_evaluation"] == "上月评价"
+
 
 class TestPlanAISummary:
     """LLM 月度小结生成（仅管理者，LLMClient 已 mock）。"""

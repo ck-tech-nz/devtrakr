@@ -11,9 +11,10 @@ def forwards(apps, schema_editor):
     """Seed the monthly-plan-summary Prompt.
 
     llm_config 是必填 FK（0012 起），因此种子行必须挂一个配置：优先默认配置，
-    其次任一启用配置，再退而沿用现有 prompt 的配置（fresh install 上 0012 至少
-    留了一个占位配置）。模型名同样不在此硬编码——取所选配置的 available_models
-    首项，缺失则沿用现有启用 prompt 的模型。两者均可由管理员在 LLM 后台调整。
+    其次任一启用配置，再退而沿用现有 prompt 的配置；若库里一个配置都没有，则
+    自建一个停用占位配置（见下），确保 prompt 始终落库、不会被静默跳过。模型名
+    同样不在此硬编码——取所选配置的 available_models 首项，缺失则沿用现有启用
+    prompt 的模型。两者均可由管理员在 LLM 后台调整。
     """
     Prompt = apps.get_model("ai", "Prompt")
     LLMConfig = apps.get_model("ai", "LLMConfig")
@@ -30,8 +31,14 @@ def forwards(apps, schema_editor):
         or LLMConfig.objects.order_by("id").first()
     )
     if config is None:
-        # 没有任何 LLMConfig（理论上不会发生，0012 会留占位）：无法满足必填 FK，跳过。
-        return
+        # 全新库且无任何 LLMConfig（0012 仅在存在 orphan prompt 时才留占位，
+        # 故不能依赖它）：照 0012 的先例建一个停用占位配置，保证必填 FK 可满足、
+        # prompt 始终落库；管理员在 LLM 后台配置真实 config 前它不会被运行时选中。
+        config = LLMConfig.objects.create(
+            name="[未配置 - 请在管理后台设置]",
+            api_key="", base_url="", available_models=[],
+            supports_json_mode=True, is_default=False, is_active=False,
+        )
 
     llm_model = (config.available_models or [None])[0] or (
         template.llm_model if template else ""
