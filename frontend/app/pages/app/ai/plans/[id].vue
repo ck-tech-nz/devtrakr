@@ -36,31 +36,15 @@
           </div>
 
           <div class="flex items-center gap-2">
-            <template v-if="editing">
-              <UButton size="sm" variant="ghost" color="neutral" :disabled="saving" @click="cancelEdit">取消</UButton>
-              <UButton size="sm" color="primary" icon="i-heroicons-check" :loading="saving" @click="savePlan">保存</UButton>
-            </template>
-            <template v-else>
-              <UButton
-                v-if="plan.status !== 'archived'"
-                size="sm"
-                variant="outline"
-                color="neutral"
-                icon="i-heroicons-pencil-square"
-                @click="startEdit"
-              >
-                编辑任务
-              </UButton>
-              <UButton
-                v-if="plan.status === 'draft'"
-                size="sm"
-                icon="i-heroicons-paper-airplane"
-                :loading="publishing"
-                @click="handlePublish"
-              >
-                发布
-              </UButton>
-            </template>
+            <UButton
+              v-if="plan.status === 'draft'"
+              size="sm"
+              icon="i-heroicons-paper-airplane"
+              :loading="publishing"
+              @click="handlePublish"
+            >
+              发布
+            </UButton>
           </div>
         </div>
 
@@ -97,79 +81,50 @@
 
       <!-- 任务列表 -->
       <div class="space-y-3">
+        <div class="flex items-center justify-between">
+          <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100">任务列表</h2>
+          <UButton
+            v-if="plan.status !== 'archived'"
+            icon="i-heroicons-plus"
+            size="sm"
+            @click="openAddTask"
+          >
+            添加任务
+          </UButton>
+        </div>
+
         <div
-          v-for="(item, index) in editItems"
-          :key="item.id || `new-${index}`"
-          class="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 p-5"
+          v-for="(item, index) in items"
+          :key="item.id"
+          class="group bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 p-5 transition-shadow hover:shadow-sm"
         >
           <!-- 头部 -->
           <div class="flex items-start justify-between gap-3 mb-3">
-            <div class="flex items-center gap-2 min-w-0">
+            <div class="flex items-center gap-2 min-w-0 flex-wrap">
               <span class="text-xs font-medium text-gray-400 dark:text-gray-500 bg-gray-100 dark:bg-gray-800 rounded-md px-2 py-0.5 tabular-nums">#{{ index + 1 }}</span>
               <span class="w-1.5 h-1.5 rounded-full flex-shrink-0" :class="priorityDot(item.priority)" />
-              <UBadge v-if="item.status && item.status !== 'pending'" :color="itemStatusColor(item.status)" variant="subtle" size="xs">
-                {{ itemStatusLabel(item.status) }}
-              </UBadge>
-              <UBadge v-else color="neutral" variant="subtle" size="xs">待开始</UBadge>
+              <UBadge :color="itemStatusColor(item.status)" variant="subtle" size="xs">{{ itemStatusLabel(item.status) }}</UBadge>
               <span
-                v-if="!editing && item.due_date"
+                v-if="item.due_date"
                 class="text-xs tabular-nums ml-1"
                 :class="isOverdue(item) ? 'text-red-600 dark:text-red-400 font-medium' : 'text-gray-400 dark:text-gray-500'"
               >截止 {{ item.due_date }}</span>
             </div>
-            <UButton
-              v-if="editing"
-              size="xs"
-              variant="ghost"
-              color="error"
-              icon="i-heroicons-trash"
-              @click="removeItem(index)"
-            />
+            <div v-if="plan.status !== 'archived'" class="flex items-center gap-0.5 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+              <UButton size="xs" variant="ghost" color="neutral" icon="i-heroicons-pencil-square" @click="openEditTask(item)" />
+              <UButton size="xs" variant="ghost" color="error" icon="i-heroicons-trash" :loading="removingId === item.id" @click="removeTask(item)" />
+            </div>
           </div>
 
           <!-- 只读展示 -->
-          <template v-if="!editing">
-            <p class="text-sm font-medium text-gray-900 dark:text-gray-100">{{ item.title || '（未命名任务）' }}</p>
-            <p v-if="item.measurable_target" class="text-sm text-gray-600 dark:text-gray-400 mt-1.5">
-              <span class="text-xs text-gray-400 dark:text-gray-500">目标：</span>{{ item.measurable_target }}
-            </p>
-            <p v-if="item.description" class="text-sm text-gray-600 dark:text-gray-400 mt-1.5 whitespace-pre-wrap">{{ item.description }}</p>
-          </template>
+          <p class="text-sm font-medium text-gray-900 dark:text-gray-100">{{ item.title || '（未命名任务）' }}</p>
+          <p v-if="item.measurable_target" class="text-sm text-gray-600 dark:text-gray-400 mt-1.5">
+            <span class="text-xs text-gray-400 dark:text-gray-500">目标：</span>{{ item.measurable_target }}
+          </p>
+          <p v-if="item.description" class="text-sm text-gray-600 dark:text-gray-400 mt-1.5 whitespace-pre-wrap">{{ item.description }}</p>
 
-          <!-- 编辑表单 -->
-          <div v-else class="space-y-3">
-            <div class="grid grid-cols-1 lg:grid-cols-2 gap-3">
-              <div class="space-y-1">
-                <label class="text-xs font-medium text-gray-500 dark:text-gray-400">标题</label>
-                <UInput v-model="item.title" size="sm" variant="outline" placeholder="任务标题" />
-              </div>
-              <div class="space-y-1">
-                <label class="text-xs font-medium text-gray-500 dark:text-gray-400">可量化目标</label>
-                <UInput v-model="item.measurable_target" size="sm" variant="outline" placeholder="例如：完成 5 个 PR" />
-              </div>
-            </div>
-            <div class="space-y-1">
-              <label class="text-xs font-medium text-gray-500 dark:text-gray-400">描述</label>
-              <UTextarea v-model="item.description" size="sm" variant="outline" placeholder="任务内容与背景" :rows="2" />
-            </div>
-            <div class="grid grid-cols-3 gap-3">
-              <div class="space-y-1">
-                <label class="text-xs font-medium text-gray-500 dark:text-gray-400">优先级</label>
-                <USelect v-model="item.priority" size="sm" variant="outline" :items="priorityOptions" />
-              </div>
-              <div class="space-y-1">
-                <label class="text-xs font-medium text-gray-500 dark:text-gray-400">维度</label>
-                <USelect v-model="item.dimension" size="sm" variant="outline" :items="dimensionOptions" />
-              </div>
-              <div class="space-y-1">
-                <label class="text-xs font-medium text-gray-500 dark:text-gray-400">截止日期</label>
-                <UInput v-model="item.due_date" type="date" size="sm" variant="outline" />
-              </div>
-            </div>
-          </div>
-
-          <!-- 验收/评分（仅 submitted，非编辑态） -->
-          <div v-if="!editing && item.status === 'submitted'" class="mt-4 pt-4 border-t border-gray-100 dark:border-gray-800 space-y-3">
+          <!-- 验收/评分（仅 submitted） -->
+          <div v-if="item.status === 'submitted'" class="mt-4 pt-4 border-t border-gray-100 dark:border-gray-800 space-y-3">
             <div class="flex items-center gap-2 text-xs font-medium text-amber-600 dark:text-amber-400">
               <UIcon name="i-heroicons-clipboard-document-check" class="w-4 h-4" />
               验收与点评
@@ -188,7 +143,6 @@
                   variant="ghost"
                   :color="(scoreDraft[item.id]?.[d.key] || 0) >= star ? 'warning' : 'neutral'"
                   icon="i-heroicons-star-solid"
-                  :padded="false"
                   @click="setStar(item.id, d.key, star)"
                 />
               </div>
@@ -204,11 +158,8 @@
             </div>
           </div>
 
-          <!-- 已记录点评（verified / not_achieved，非编辑态） -->
-          <div
-            v-if="!editing && hasReview(item)"
-            class="mt-4 pt-4 border-t border-gray-100 dark:border-gray-800 rounded-b-lg"
-          >
+          <!-- 已记录点评 -->
+          <div v-if="hasReview(item)" class="mt-4 pt-4 border-t border-gray-100 dark:border-gray-800">
             <div class="flex items-center gap-2 text-xs font-medium text-gray-500 dark:text-gray-400 mb-2.5">
               <UIcon name="i-heroicons-star" class="w-3.5 h-3.5 text-amber-500" />
               点评
@@ -225,8 +176,8 @@
             </p>
           </div>
 
-          <!-- 评论区（非编辑态、已保存项） -->
-          <div v-if="!editing && item.id" class="mt-4 pt-4 border-t border-gray-100 dark:border-gray-800 space-y-3">
+          <!-- 评论区 -->
+          <div class="mt-4 pt-4 border-t border-gray-100 dark:border-gray-800 space-y-3">
             <div v-if="(item.comments || []).length" class="space-y-2">
               <div
                 v-for="comment in item.comments"
@@ -282,25 +233,61 @@
           </div>
         </div>
 
-        <!-- 添加任务（编辑态） -->
-        <UButton
-          v-if="editing"
-          variant="outline"
-          color="neutral"
-          icon="i-heroicons-plus"
-          block
-          @click="addItem"
-        >
-          添加任务
-        </UButton>
-
         <!-- 无任务空态 -->
-        <div v-if="!editItems.length && !editing" class="bg-white dark:bg-gray-900 rounded-xl border border-dashed border-gray-200 dark:border-gray-700 p-10 text-center">
+        <div v-if="!items.length" class="bg-white dark:bg-gray-900 rounded-xl border border-dashed border-gray-200 dark:border-gray-700 p-10 text-center">
           <UIcon name="i-heroicons-inbox" class="w-10 h-10 text-gray-300 dark:text-gray-600 mx-auto mb-2" />
           <p class="text-sm text-gray-500 dark:text-gray-400">本月暂无任务</p>
-          <UButton v-if="plan.status !== 'archived'" class="mt-3" size="sm" variant="outline" color="neutral" icon="i-heroicons-pencil-square" @click="startEdit">编辑添加</UButton>
         </div>
       </div>
+
+      <!-- 编辑 / 添加 任务弹窗 -->
+      <UModal :open="taskModalOpen" :dismissible="false" :ui="{ content: 'sm:max-w-lg' }" @update:open="onModalToggle">
+        <template #content>
+          <div class="p-5 space-y-4">
+            <div class="flex items-center justify-between">
+              <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">
+                {{ editingId ? '编辑任务' : '添加任务' }}
+              </h3>
+              <UButton size="xs" variant="ghost" color="neutral" icon="i-heroicons-x-mark-20-solid" @click="attemptClose" />
+            </div>
+
+            <div class="space-y-1">
+              <label class="text-xs font-medium text-gray-500 dark:text-gray-400">标题</label>
+              <UInput v-model="taskForm.title" size="sm" variant="outline" placeholder="任务标题" class="w-full" autofocus />
+            </div>
+            <div class="space-y-1">
+              <label class="text-xs font-medium text-gray-500 dark:text-gray-400">可量化目标</label>
+              <UInput v-model="taskForm.measurable_target" size="sm" variant="outline" placeholder="例如：完成 5 个 PR" class="w-full" />
+            </div>
+            <div class="space-y-1">
+              <label class="text-xs font-medium text-gray-500 dark:text-gray-400">描述</label>
+              <UTextarea v-model="taskForm.description" size="sm" variant="outline" placeholder="任务内容与背景" :rows="3" class="w-full" />
+            </div>
+            <div class="grid grid-cols-2 gap-3">
+              <div class="space-y-1">
+                <label class="text-xs font-medium text-gray-500 dark:text-gray-400">优先级</label>
+                <USelect v-model="taskForm.priority" size="sm" variant="outline" :items="priorityOptions" class="w-full" />
+              </div>
+              <div class="space-y-1">
+                <label class="text-xs font-medium text-gray-500 dark:text-gray-400">截止日期</label>
+                <UInput v-model="taskForm.due_date" type="date" size="sm" variant="outline" class="w-full" />
+              </div>
+            </div>
+
+            <div class="space-y-1">
+              <label class="text-xs font-medium text-gray-500 dark:text-gray-400">点评维度（验收打分用，默认取自维度库，可改）</label>
+              <ReviewDimensionEditor v-model="taskForm.review_dimensions" :pool="pool" />
+            </div>
+
+            <div class="flex justify-end gap-2 pt-1">
+              <UButton variant="ghost" color="neutral" :disabled="savingTask" @click="attemptClose">取消</UButton>
+              <UButton color="primary" icon="i-heroicons-check" :loading="savingTask" :disabled="!taskForm.title.trim()" @click="saveTask">
+                {{ editingId ? '保存' : '添加' }}
+              </UButton>
+            </div>
+          </div>
+        </template>
+      </UModal>
     </template>
 
     <!-- 未找到 -->
@@ -328,45 +315,50 @@ const toast = useToast()
 const planId = route.params.id as string
 const plan = ref<any>(null)
 const loading = ref(true)
-const editing = ref(false)
-const saving = ref(false)
 const publishing = ref(false)
 const verifyingIds = ref(new Set<string>())
 const commentingIds = ref(new Set<string>())
+const removingId = ref<string | null>(null)
 
-const editItems = ref<any[]>([])
 const pool = ref<any[]>([])
 const scoreDraft = ref<Record<string, Record<string, number>>>({})
 const commentDraft = ref<Record<string, string>>({})
 const newComments = ref<Record<string, string>>({})
+
+// 任务编辑/添加弹窗
+const taskModalOpen = ref(false)
+const savingTask = ref(false)
+const editingId = ref<string | null>(null)
+const taskForm = ref<any>(blankTask())
+const formSnapshot = ref('')
 
 const priorityOptions = [
   { label: '高', value: 'high' },
   { label: '中', value: 'medium' },
   { label: '低', value: 'low' },
 ]
-const dimensionOptions = [
-  { label: '通用', value: 'general' },
-  { label: '技术', value: 'technical' },
-  { label: '协作', value: 'collaboration' },
-  { label: '成长', value: 'growth' },
-  { label: '质量', value: 'quality' },
-]
+const items = computed<any[]>(() => plan.value?.action_items || [])
 
-function cloneItems(items: any[]) {
-  return (items || []).map((item: any) => ({
-    ...item,
-    review_dimensions: Array.isArray(item.review_dimensions)
-      ? item.review_dimensions.map((d: any) => ({ ...d }))
-      : [],
-  }))
+function blankTask() {
+  return { title: '', measurable_target: '', description: '', priority: 'medium', due_date: '', review_dimensions: [] as any[] }
+}
+
+function cloneDims(dims: any[]) {
+  return JSON.parse(JSON.stringify(dims || []))
+}
+
+function snapshot() {
+  formSnapshot.value = JSON.stringify(taskForm.value)
+}
+
+function isDirty() {
+  return JSON.stringify(taskForm.value) !== formSnapshot.value
 }
 
 async function fetchPlan() {
   loading.value = true
   try {
     plan.value = await api<any>(`/api/kpi/plans/${planId}/`)
-    editItems.value = cloneItems(plan.value.action_items)
     if (!pool.value.length) {
       try { pool.value = (await api<any>('/api/kpi/review-dimensions/')).review_dimensions || [] } catch { /* pool optional */ }
     }
@@ -377,46 +369,101 @@ async function fetchPlan() {
   }
 }
 
-function startEdit() {
-  editItems.value = cloneItems(plan.value.action_items)
-  editing.value = true
+// 把现有任务映射为编辑接口所需的载荷（保留 id / 奖赏字段 / 维度）
+function toPayload(item: any) {
+  return {
+    id: item.id,
+    title: item.title || '',
+    description: item.description || '',
+    measurable_target: item.measurable_target || '',
+    points: item.points,
+    priority: item.priority || 'medium',
+    dimension: item.dimension || 'general',
+    due_date: item.due_date || null,
+    review_dimensions: item.review_dimensions || [],
+  }
 }
 
-function cancelEdit() {
-  editItems.value = cloneItems(plan.value.action_items)
-  editing.value = false
+function openAddTask() {
+  editingId.value = null
+  taskForm.value = blankTask()
+  // 点评维度默认从维度库带出（与派发弹窗一致）
+  taskForm.value.review_dimensions = cloneDims(pool.value)
+  snapshot()
+  taskModalOpen.value = true
 }
 
-function addItem() {
-  editItems.value.push({
-    title: '',
-    description: '',
-    measurable_target: '',
-    priority: 'medium',
-    dimension: 'general',
-    due_date: '',
-    review_dimensions: JSON.parse(JSON.stringify(pool.value)),
-  })
+function openEditTask(item: any) {
+  editingId.value = item.id
+  taskForm.value = {
+    title: item.title || '',
+    measurable_target: item.measurable_target || '',
+    description: item.description || '',
+    priority: item.priority || 'medium',
+    due_date: item.due_date || '',
+    review_dimensions: cloneDims(item.review_dimensions),
+  }
+  snapshot()
+  taskModalOpen.value = true
 }
 
-function removeItem(index: number) {
-  editItems.value.splice(index, 1)
+function onModalToggle(val: boolean) {
+  // 仅拦截"关闭"动作（点遮罩 / Esc / 关闭按钮均会触发 update:open=false）
+  if (!val) attemptClose()
 }
 
-async function savePlan() {
-  saving.value = true
+function attemptClose() {
+  if (savingTask.value) return
+  if (isDirty() && !window.confirm('当前任务有未保存的修改，确定放弃吗？')) return
+  taskModalOpen.value = false
+}
+
+async function saveTask() {
+  if (!taskForm.value.title.trim()) return
+  savingTask.value = true
+  const fields = {
+    title: taskForm.value.title.trim(),
+    measurable_target: taskForm.value.measurable_target || '',
+    description: taskForm.value.description || '',
+    priority: taskForm.value.priority || 'medium',
+    due_date: taskForm.value.due_date || null,
+    review_dimensions: Array.isArray(taskForm.value.review_dimensions) ? taskForm.value.review_dimensions : [],
+  }
+  const payload: any[] = items.value.map(toPayload)
+  if (editingId.value) {
+    const idx = payload.findIndex((i: any) => i.id === editingId.value)
+    if (idx >= 0) payload[idx] = { ...payload[idx], ...fields }
+  } else {
+    payload.push({ ...fields, dimension: 'general' })
+  }
   try {
     plan.value = await api(`/api/kpi/plans/${planId}/edit/`, {
       method: 'PUT',
-      body: { action_items: editItems.value },
+      body: { action_items: payload },
     })
-    editItems.value = cloneItems(plan.value.action_items)
-    editing.value = false
-    toast.add({ title: '已保存', color: 'success' })
-  } catch {
-    toast.add({ title: '保存失败', color: 'error' })
+    taskModalOpen.value = false
+    toast.add({ title: editingId.value ? '已保存' : '已添加', color: 'success' })
+  } catch (e: any) {
+    toast.add({ title: '保存失败', description: e?.data?.detail || '', color: 'error' })
   } finally {
-    saving.value = false
+    savingTask.value = false
+  }
+}
+
+async function removeTask(item: any) {
+  if (!window.confirm(`确定删除任务「${item.title || '未命名'}」吗？`)) return
+  removingId.value = item.id
+  const payload = items.value.map(toPayload).filter((i: any) => i.id !== item.id)
+  try {
+    plan.value = await api(`/api/kpi/plans/${planId}/edit/`, {
+      method: 'PUT',
+      body: { action_items: payload },
+    })
+    toast.add({ title: '已删除', color: 'success' })
+  } catch (e: any) {
+    toast.add({ title: '删除失败', description: e?.data?.detail || '', color: 'error' })
+  } finally {
+    removingId.value = null
   }
 }
 
@@ -439,7 +486,7 @@ function setStar(itemId: string, key: string, star: number) {
 }
 
 async function verifyItem(itemId: string, status: string) {
-  const item = editItems.value.find((i: any) => i.id === itemId)
+  const item = items.value.find((i: any) => i.id === itemId)
   if (status === 'verified' && !commentDraft.value[itemId]?.trim()) {
     toast.add({ title: '请填写总评', color: 'warning' })
     return
@@ -520,15 +567,15 @@ function hasReview(item: any): boolean {
 }
 
 const overview = computed(() => {
-  const items = editItems.value
-  const total = items.length
-  const done = items.filter((i: any) => i.status === 'verified').length
+  const list = items.value
+  const total = list.length
+  const done = list.filter((i: any) => i.status === 'verified').length
   return {
     total,
-    inProgress: items.filter((i: any) => i.status === 'in_progress').length,
-    submitted: items.filter((i: any) => i.status === 'submitted').length,
+    inProgress: list.filter((i: any) => i.status === 'in_progress').length,
+    submitted: list.filter((i: any) => i.status === 'submitted').length,
     done,
-    overdue: items.filter((i: any) => isOverdue(i)).length,
+    overdue: list.filter((i: any) => isOverdue(i)).length,
     pct: total > 0 ? Math.round((done / total) * 100) : 0,
   }
 })
