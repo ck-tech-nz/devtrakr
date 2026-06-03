@@ -110,7 +110,7 @@
     },
     {
       "path": "/app/ai/my-plan",
-      "label": "我的提升计划",
+      "label": "我的任务",
       "icon": "i-heroicons-clipboard-document-check",
       "permission": null,
       "parent": null,
@@ -123,7 +123,7 @@
     },
     {
       "path": "/app/ai/plans",
-      "label": "团队计划管理",
+      "label": "团队任务",
       "icon": "i-heroicons-clipboard-document-list",
       "permission": "kpi.change_improvementplan",
       "parent": "#group:team-perf",
