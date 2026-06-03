@@ -11,7 +11,7 @@ from .plan_views import (
     PlanListView, MyPlanView, PlanDetailView, PlanEditView,
     PlanPublishView, PlanArchiveView, PlanGenerateView,
     ActionItemStatusView, ActionItemVerifyView, ActionItemCommentListView,
-    TaskDispatchView,
+    TaskDispatchView, ReviewDimensionsView,
 )
 
 urlpatterns = [
@@ -43,6 +43,7 @@ urlpatterns = [
     path("plans/<uuid:pk>/archive/", PlanArchiveView.as_view(), name="plan-archive"),
     # 任务派发
     path("tasks/dispatch/", TaskDispatchView.as_view(), name="task-dispatch"),
+    path("review-dimensions/", ReviewDimensionsView.as_view(), name="review-dimensions"),
     # 行动项
     path("action-items/<uuid:pk>/status/", ActionItemStatusView.as_view(), name="action-item-status"),
     path("action-items/<uuid:pk>/verify/", ActionItemVerifyView.as_view(), name="action-item-verify"),

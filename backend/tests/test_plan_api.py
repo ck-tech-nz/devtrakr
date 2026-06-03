@@ -270,6 +270,26 @@ class TestTaskDispatchAPI:
         resp = client.post("/api/kpi/tasks/dispatch/", {"user_id": emp.id, "title": "x", "due_date": "2026-06-30"}, format="json")
         assert resp.status_code == 403
 
+    def test_dispatch_empty_dims_falls_back_to_pool(self, manager_client):
+        client, _ = manager_client
+        emp = UserFactory()
+        resp = client.post("/api/kpi/tasks/dispatch/", {
+            "user_id": emp.id, "title": "x", "due_date": "2026-06-30",
+            "review_dimensions": [],
+        }, format="json")
+        assert resp.status_code == 201
+        from apps.kpi.models import ActionItem, KPIScoringConfig
+        item = ActionItem.objects.get(id=resp.data["id"])
+        assert item.review_dimensions == KPIScoringConfig.get_solo().review_dimensions
+
+
+class TestReviewDimensionsEndpoint:
+    def test_any_authenticated_user_can_read_pool(self, employee_client):
+        client, _ = employee_client
+        resp = client.get("/api/kpi/review-dimensions/")
+        assert resp.status_code == 200
+        assert len(resp.data["review_dimensions"]) == 4
+
 
 class TestActionItemSubmitNote:
     def test_submit_with_note_creates_comment(self, employee_client):

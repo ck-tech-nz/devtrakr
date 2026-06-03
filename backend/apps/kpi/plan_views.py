@@ -356,7 +356,7 @@ class TaskDispatchView(APIView):
             plan.save(update_fields=["status", "published_at", "updated_at"])
 
         dims = request.data.get("review_dimensions")
-        if dims is None:
+        if not dims:
             dims = KPIScoringConfig.get_solo().review_dimensions
         if not isinstance(dims, list) or not all(isinstance(d, dict) and "key" in d for d in dims):
             return Response({"detail": "review_dimensions 格式不正确"}, status=status.HTTP_400_BAD_REQUEST)
@@ -377,6 +377,14 @@ class TaskDispatchView(APIView):
             sort_order=next_order,
         )
         return Response(ActionItemSerializer(item).data, status=status.HTTP_201_CREATED)
+
+
+class ReviewDimensionsView(APIView):
+    """GET /api/kpi/review-dimensions/ — 点评维度库（任何已登录用户可读，仅维度，不含奖赏公式）。"""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        return Response({"review_dimensions": KPIScoringConfig.get_solo().review_dimensions})
 
 
 class ActionItemCommentListView(APIView):
