@@ -115,7 +115,7 @@
                   class="flex items-center gap-2 text-sm"
                 >
                   <span class="text-gray-500 dark:text-gray-400 w-20">{{ d.label }}</span>
-                  <span class="text-amber-500">{{ '★'.repeat(item.scores?.[d.key] || 0) }}<span class="text-gray-300 dark:text-gray-600">{{ '★'.repeat(5 - (item.scores?.[d.key] || 0)) }}</span></span>
+                  <span class="text-amber-500">{{ starStr(item.scores?.[d.key], true) }}<span class="text-gray-300 dark:text-gray-600">{{ starStr(item.scores?.[d.key], false) }}</span></span>
                 </div>
                 <div v-if="item.review_comment" class="text-sm text-gray-700 dark:text-gray-300 bg-gray-50 dark:bg-gray-800 rounded p-2">
                   <span class="text-xs text-gray-400 dark:text-gray-500">总评：</span>{{ item.review_comment }}
@@ -357,7 +357,14 @@ function statusLabel(status: string) {
 
 function isOverdue(item: any): boolean {
   if (!item.due_date || ['verified', 'not_achieved'].includes(item.status)) return false
-  return new Date(item.due_date) < new Date(new Date().toDateString())
+  const t = new Date()
+  const today = `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`
+  return item.due_date < today
+}
+
+function starStr(n: any, filled: boolean): string {
+  const v = Math.max(0, Math.min(5, Number(n) || 0))
+  return '★'.repeat(filled ? v : 5 - v)
 }
 
 const actionItems = computed(() => current.value?.action_items || [])
