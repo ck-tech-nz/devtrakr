@@ -240,9 +240,8 @@
                 />
                 <span
                   v-if="item.self_scores?.[d.key]"
-                  class="text-xs ml-1 flex-shrink-0"
-                  :class="gapClass(item, d.key)"
-                >自评 {{ item.self_scores[d.key] }}<template v-if="scoreDraft[item.id]?.[d.key] && gap(item, d.key) >= 2"> · 落差 {{ gap(item, d.key) }}</template></span>
+                  class="text-xs ml-1 flex-shrink-0 text-gray-400 dark:text-gray-500"
+                >自评 {{ item.self_scores[d.key] }}<span v-if="gapInfo(item, d.key)" :class="gapInfo(item, d.key)!.cls"> · {{ gapInfo(item, d.key)!.text }}</span></span>
               </div>
             </div>
             <UTextarea v-model="commentDraft[item.id]" :rows="2" placeholder="总评（必填）" class="w-full" />
@@ -638,17 +637,16 @@ function setStar(itemId: string, key: string, star: number) {
   scoreDraft.value[itemId][key] = star
 }
 
-// 自评与经理评分的落差（绝对值）
-function gap(item: any, key: string): number {
+// 自评与经理评分的差异（有方向）：自评偏高=员工高估自己（需警觉）；自评偏低=低估
+function gapInfo(item: any, key: string): { text: string, cls: string } | null {
   const self = item.self_scores?.[key] || 0
   const mine = scoreDraft.value[item.id]?.[key] || 0
-  if (!self || !mine) return 0
-  return Math.abs(self - mine)
-}
-function gapClass(item: any, key: string): string {
-  return gap(item, key) >= 2
-    ? 'text-amber-600 dark:text-amber-400 font-medium'
-    : 'text-gray-400 dark:text-gray-500'
+  if (!self || !mine) return null
+  const diff = self - mine
+  if (Math.abs(diff) < 2) return null
+  return diff > 0
+    ? { text: `自评偏高 ${diff}`, cls: 'text-amber-600 dark:text-amber-400 font-medium' }
+    : { text: `自评偏低 ${-diff}`, cls: 'text-emerald-600 dark:text-emerald-400' }
 }
 
 async function verifyItem(itemId: string, status: string) {
