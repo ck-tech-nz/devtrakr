@@ -56,11 +56,17 @@ def test_scoring_config_has_default_review_dimensions():
 def test_overall_score_weighted():
     from tests.factories import ActionItemFactory
     item = ActionItemFactory(
-        review_dimensions=[{"key": "a", "label": "A", "weight": 0.5},
-                           {"key": "b", "label": "B", "weight": 0.5}],
-        scores={"a": 4, "b": 2},
+        review_dimensions=[{"key": "a", "label": "A", "weight": 0.75},
+                           {"key": "b", "label": "B", "weight": 0.25}],
+        scores={"a": 5, "b": 1},
     )
-    assert item.overall_score == 3.0
+    assert item.overall_score == 4.0
+
+
+def test_overall_score_equal_weight_fallback_when_no_dims():
+    from tests.factories import ActionItemFactory
+    item = ActionItemFactory(review_dimensions=[], scores={"x": 3, "y": 5})
+    assert item.overall_score == 4.0
 
 
 def test_overall_score_partial_normalizes():

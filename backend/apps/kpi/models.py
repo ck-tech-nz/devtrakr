@@ -309,9 +309,9 @@ class ActionItem(models.Model):
         dims = {d["key"]: float(d.get("weight", 0)) for d in (self.review_dimensions or [])}
         den = sum(dims.get(k, 0) for k in self.scores)
         if dims and den:
-            num = sum(v * dims.get(k, 0) for k, v in self.scores.items())
+            num = sum(float(v) * dims.get(k, 0) for k, v in self.scores.items())
             return round(num / den, 1)
-        vals = list(self.scores.values())  # 无权重信息 → 等权平均
+        vals = [float(v) for v in self.scores.values()]  # 无权重信息 → 等权平均
         return round(sum(vals) / len(vals), 1)
 
 
