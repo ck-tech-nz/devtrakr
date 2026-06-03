@@ -139,6 +139,15 @@ class TestIssueUpdate:
         auth_client.patch(f"/api/issues/{issue.id}/", {"assignee": str(user.id)})
         assert Activity.objects.filter(action="assigned").exists()
 
+    def test_patch_assignee_advances_unassigned_status(self, auth_client, site_settings):
+        # 有负责人后不应停留在「待分配」
+        user = UserFactory()
+        issue = IssueFactory(status="待分配", assignee=None)
+        auth_client.patch(f"/api/issues/{issue.id}/", {"assignee": str(user.id)})
+        issue.refresh_from_db()
+        assert issue.assignee_id == user.id
+        assert issue.status == "待确认"
+
     def test_admin_can_update_estimated_hours(self, auth_client, site_settings):
         issue = IssueFactory(estimated_hours=4.0)
         response = auth_client.patch(
@@ -238,6 +247,24 @@ class TestBatchUpdate:
         }, format="json")
         assert response.status_code == 200
         assert response.data["updated"] == 3
+        # 批量分配后「待分配」应推进到「待确认」(IssueFactory 默认 status=待分配)
+        from apps.issues.models import Issue
+        assigned = Issue.objects.filter(id__in=[i.id for i in issues])
+        assert all(i.assignee_id == user.id for i in assigned)
+        assert not assigned.filter(status="待分配").exists()
+
+    def test_batch_assign_keeps_active_status(self, auth_client, site_settings):
+        # 已在进行中的 issue 批量改派,不应被强制改回「待确认」
+        user = UserFactory()
+        issue = IssueFactory(status="进行中")
+        auth_client.post("/api/issues/batch-update/", {
+            "ids": [str(issue.id)],
+            "action": "assign",
+            "value": str(user.id),
+        }, format="json")
+        issue.refresh_from_db()
+        assert issue.assignee_id == user.id
+        assert issue.status == "进行中"
 
     def test_batch_set_priority(self, auth_client, site_settings):
         issues = IssueFactory.create_batch(2)
