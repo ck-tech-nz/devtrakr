@@ -331,14 +331,14 @@ function itemStatusLabel(status: string) {
     pending: '待处理',
     submitted: '已提交',
     verified: '已验收',
-    failed: '未达成',
+    not_achieved: '未达成',
   }
   return map[status] ?? status
 }
 
 function itemStatusColor(status: string): any {
   if (status === 'verified') return 'success'
-  if (status === 'failed') return 'error'
+  if (status === 'not_achieved') return 'error'
   if (status === 'submitted') return 'warning'
   return 'neutral'
 }
@@ -354,7 +354,7 @@ async function fetchPlan() {
         : [],
     }))
     if (!pool.value.length) {
-      try { pool.value = (await api<any>('/api/kpi/scoring-config/')).review_dimensions || [] } catch { /* ignore: pool optional */ }
+      try { pool.value = (await api<any>('/api/kpi/review-dimensions/')).review_dimensions || [] } catch { /* ignore: pool optional */ }
     }
   } catch {
     // 保持 plan 为 null，显示空状态

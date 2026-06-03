@@ -327,7 +327,7 @@ async function archivePlan(planId: string) {
 async function openDispatch() {
   form.value = { user_id: null, title: '', due_date: '', priority: 'medium', description: '', review_dimensions: [] }
   try {
-    const cfg = await api<any>('/api/kpi/scoring-config/')
+    const cfg = await api<any>('/api/kpi/review-dimensions/')
     pool.value = cfg.review_dimensions || []
     form.value.review_dimensions = JSON.parse(JSON.stringify(pool.value))
   } catch { pool.value = [] }
