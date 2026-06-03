@@ -77,3 +77,28 @@ def test_impersonation_refresh_token_is_short_lived(superuser_client):
     resp = superuser_client.post("/api/auth/impersonate/", {"user_id": target.id})
     refresh = RefreshToken(resp.json()["refresh"])
     assert refresh["exp"] - refresh["iat"] <= 3600
+
+
+def test_me_reflects_impersonation(superuser_client, api_client, site_settings):
+    target = UserFactory(is_superuser=False, is_active=True)
+    resp = superuser_client.post("/api/auth/impersonate/", {"user_id": target.id})
+    access = resp.json()["access"]
+    # superuser_client 与 api_client 是同一个被 force_authenticate 的实例，
+    # _force_user 会盖过 Bearer 头导致请求仍以超管身份解析；
+    # 故用全新客户端，仅凭模拟态 access token 走真实 JWT 鉴权。
+    from rest_framework.test import APIClient
+    impersonated = APIClient()
+    impersonated.credentials(HTTP_AUTHORIZATION=f"Bearer {access}")
+    me = impersonated.get("/api/auth/me/")
+    assert me.status_code == 200
+    body = me.json()
+    assert int(body["id"]) == target.id
+    assert body["impersonated_by"] is not None
+    assert body["impersonated_by_username"]
+
+
+def test_me_without_impersonation_is_null(superuser_client):
+    me = superuser_client.get("/api/auth/me/")
+    assert me.status_code == 200
+    assert me.json()["impersonated_by"] is None
+    assert me.json()["impersonated_by_username"] is None
