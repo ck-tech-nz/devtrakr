@@ -21,12 +21,19 @@ const emit = defineEmits<{
   (e: 'changed'): void
   (e: 'request-transfer'): void
   (e: 'request-assign'): void
+  (e: 'filter-assignee'): void
 }>()
 
 const { claim, confirm } = useIssueActions()
 const busy = ref(false)
 
 const isAssignedToSelf = computed(() => props.issue.assignee === props.selfUserId)
+
+// 状态徽章上若有处理人，点击可按该处理人筛选
+const canFilterAssignee = computed(() => !!props.issue.assignee)
+function onFilterAssignee() {
+  if (canFilterAssignee.value) emit('filter-assignee')
+}
 
 const assigneeLabel = computed(() => {
   if (!props.issue.assignee_name) return ''
@@ -105,7 +112,12 @@ async function onConfirm() {
 
     <!-- 待确认/进行中: 别人的 (经理可转单) -->
     <template v-else-if="(issue.status === ISSUE_STATUS.PENDING_CONFIRMATION || issue.status === ISSUE_STATUS.IN_PROGRESS) && !isAssignedToSelf">
-      <UBadge :color="statusColor(issue.status)" variant="subtle" size="sm">
+      <UBadge
+        :color="statusColor(issue.status)" variant="subtle" size="sm"
+        :class="canFilterAssignee ? 'cursor-pointer hover:opacity-80' : ''"
+        :title="canFilterAssignee ? `筛选处理人：${issue.assignee_name}` : undefined"
+        @click.stop="onFilterAssignee"
+      >
         {{ badgeLabel }}
       </UBadge>
       <UButton
@@ -118,7 +130,12 @@ async function onConfirm() {
 
     <!-- 进行中: 自己的 -->
     <template v-else-if="issue.status === ISSUE_STATUS.IN_PROGRESS && isAssignedToSelf">
-      <UBadge :color="statusColor(issue.status)" variant="subtle" size="sm">
+      <UBadge
+        :color="statusColor(issue.status)" variant="subtle" size="sm"
+        class="cursor-pointer hover:opacity-80"
+        title="筛选处理人：我"
+        @click.stop="onFilterAssignee"
+      >
         我 处理中
       </UBadge>
       <UButton
@@ -130,7 +147,12 @@ async function onConfirm() {
 
     <!-- 已解决/已发布/已关闭/未计划 -->
     <template v-else>
-      <UBadge :color="statusColor(issue.status)" variant="subtle" size="sm">
+      <UBadge
+        :color="statusColor(issue.status)" variant="subtle" size="sm"
+        :class="canFilterAssignee ? 'cursor-pointer hover:opacity-80' : ''"
+        :title="canFilterAssignee ? `筛选处理人：${issue.assignee_name}` : undefined"
+        @click.stop="onFilterAssignee"
+      >
         {{ badgeLabel }}
       </UBadge>
     </template>

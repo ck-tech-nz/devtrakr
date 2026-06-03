@@ -429,6 +429,15 @@ class IssueCreateUpdateSerializer(serializers.ModelSerializer):
                 detail=f"分配给 {new_assignee.name}" if new_assignee else "取消分配",
             )
 
+        # 有负责人后不应停留在「待分配」;若本次未显式改状态,则置为「待确认」
+        if (
+            issue.assignee_id
+            and issue.status == IssueStatus.UNASSIGNED.value
+            and not validated_data.get("status")
+        ):
+            issue.status = IssueStatus.PENDING_CONFIRMATION.value
+            issue.save(update_fields=["status", "updated_at"])
+
         _sync_attachments(issue, user)
         if "description" in validated_data:
             create_mention_notifications(

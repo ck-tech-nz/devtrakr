@@ -27,6 +27,24 @@
             <UIcon name="i-heroicons-x-mark" class="w-3 h-3" />
           </button>
         </div>
+        <UBadge v-if="filterHandler" variant="subtle" size="md" class="filter-chip shrink-0">
+          <span>处理人：{{ filterHandler.label }}</span>
+          <button class="ml-1 flex items-center" aria-label="清除处理人筛选" @click="filterHandler = null">
+            <UIcon name="i-heroicons-x-mark" class="w-3 h-3" />
+          </button>
+        </UBadge>
+        <UBadge v-if="filterPriorityTag" :color="priorityColor(filterPriorityTag.value)" variant="subtle" size="md" class="shrink-0">
+          <span>优先级：{{ filterPriorityTag.label }}</span>
+          <button class="ml-1 flex items-center" aria-label="清除优先级筛选" @click="filterPriorityTag = null">
+            <UIcon name="i-heroicons-x-mark" class="w-3 h-3" />
+          </button>
+        </UBadge>
+        <UBadge v-if="filterReporter" variant="subtle" size="md" class="filter-chip shrink-0">
+          <span>提出人：{{ filterReporter.label }}</span>
+          <button class="ml-1 flex items-center" aria-label="清除提出人筛选" @click="filterReporter = null">
+            <UIcon name="i-heroicons-x-mark" class="w-3 h-3" />
+          </button>
+        </UBadge>
         <div class="flex items-center bg-gray-100 dark:bg-gray-800 rounded-lg p-0.5">
           <button
             class="px-3 py-1 text-sm font-medium rounded-md transition-colors"
@@ -43,6 +61,15 @@
             列表
           </button>
         </div>
+        <UButton
+          icon="i-heroicons-arrow-path"
+          size="sm"
+          variant="ghost"
+          color="neutral"
+          :loading="loading"
+          aria-label="刷新"
+          @click="fetchIssues"
+        />
         <UButton icon="i-heroicons-plus" size="sm" @click="openCreateModal">
           <span class="hidden md:inline">新建问题</span>
         </UButton>
@@ -261,7 +288,12 @@
           </div>
         </template>
         <template #priority-cell="{ row }">
-          <UBadge :color="priorityColor(row.original.priority)" variant="subtle" size="sm">{{ priorityLabel(row.original.priority) }}</UBadge>
+          <UBadge
+            :color="priorityColor(row.original.priority)" variant="subtle" size="sm"
+            class="cursor-pointer hover:opacity-80"
+            :title="`筛选优先级：${priorityLabel(row.original.priority)}`"
+            @click.stop="filterByPriority(row.original)"
+          >{{ priorityLabel(row.original.priority) }}</UBadge>
         </template>
         <template #status-cell="{ row }">
           <StatusCell
@@ -270,10 +302,17 @@
             @changed="fetchIssues"
             @request-transfer="openTransfer(row.original)"
             @request-assign="openAssign(row.original)"
+            @filter-assignee="filterByAssignee(row.original)"
           />
         </template>
         <template #reporter-cell="{ row }">
-          <span class="block truncate" :title="row.original.reporter || row.original.created_by_name">{{ row.original.reporter || row.original.created_by_name || '-' }}</span>
+          <button
+            v-if="row.original.reporter || row.original.created_by_name"
+            class="block truncate text-left hover:text-crystal-600 dark:hover:text-crystal-400 hover:underline"
+            :title="`筛选提出人：${row.original.reporter || row.original.created_by_name}`"
+            @click.stop="filterByReporter(row.original)"
+          >{{ row.original.reporter || row.original.created_by_name }}</button>
+          <span v-else class="block truncate text-gray-300 dark:text-gray-600">-</span>
         </template>
         <template #remark-cell="{ row }">
           <EditableCell :value="row.original.remark" @dblclick="cancelRowClick" @save="(v: string) => inlineUpdate(row.original.id, 'remark', v)" />
@@ -371,6 +410,29 @@ function openTransfer(issue: any) {
 function openAssign(issue: any) {
   assignDialog.value = { open: true, issueId: issue.id, projectId: issue.project }
 }
+
+// 点击提出人：有 reporter 文本则按文本筛选，否则回退到创建人(created_by)
+function filterByReporter(issue: any) {
+  if (issue.reporter) {
+    filterReporter.value = { type: 'reporter', value: issue.reporter, label: issue.reporter }
+  } else if (issue.created_by) {
+    filterReporter.value = { type: 'created_by', value: String(issue.created_by), label: issue.created_by_name || '创建人' }
+  }
+}
+
+// 点击有处理人的状态：以独立标签按该处理人(assignee)筛选；同时清空负责人下拉，避免双重筛选
+function filterByAssignee(issue: any) {
+  if (!issue.assignee) return
+  filterAssignee.value = ''
+  filterHandler.value = { id: String(issue.assignee), label: issue.assignee_name || '处理人' }
+}
+
+// 点击优先级徽章：以独立标签筛选；同时清空优先级下拉，避免双重筛选
+function filterByPriority(issue: any) {
+  if (!issue.priority) return
+  filterPriority.value = ''
+  filterPriorityTag.value = { value: issue.priority, label: priorityLabel(issue.priority) }
+}
 const { settings, update: updateSettings } = useUserSettings()
 const route = useRoute()
 const toast = useToast()
@@ -388,6 +450,12 @@ const filterAssignee = ref<string>(typeof route.query.assignee === 'string' ? ro
 const filterPriority = ref<string>(typeof route.query.priority === 'string' ? route.query.priority : '')
 const filterStatus = ref<string>(typeof route.query.status === 'string' ? route.query.status : '')
 const searchQuery = ref<string>(typeof route.query.search === 'string' ? route.query.search : '')
+// 提出人筛选：reporter 为自由文本时按文本精确匹配；为空时回退到创建人(created_by)
+const filterReporter = ref<{ type: 'reporter' | 'created_by'; value: string; label: string } | null>(null)
+// 处理人筛选：点击状态徽章触发，按 assignee 筛选，以独立标签展示
+const filterHandler = ref<{ id: string; label: string } | null>(null)
+// 优先级筛选：点击优先级徽章触发，以独立标签展示
+const filterPriorityTag = ref<{ value: string; label: string } | null>(null)
 const rowSelection = ref<Record<string, boolean>>({})
 const showBatchDeleteConfirm = ref(false)
 const batchDeleting = ref(false)
@@ -751,9 +819,12 @@ async function fetchIssues() {
     if (!showCompleted.value && !filterStatus.value) {
       params.set('exclude_statuses', '已关闭,未计划')
     }
-    if (filterAssignee.value) params.set('assignee', filterAssignee.value)
-    if (filterPriority.value) params.set('priority', filterPriority.value)
+    const assigneeId = filterHandler.value?.id || filterAssignee.value
+    if (assigneeId) params.set('assignee', assigneeId)
+    const priorityVal = filterPriorityTag.value?.value || filterPriority.value
+    if (priorityVal) params.set('priority', priorityVal)
     if (filterStatus.value) params.set('status', filterStatus.value)
+    if (filterReporter.value) params.set(filterReporter.value.type, filterReporter.value.value)
     if (searchQuery.value.trim()) params.set('search', searchQuery.value.trim())
 
     const data = await api<any>(`/api/issues/?${params.toString()}`)
@@ -826,7 +897,16 @@ watch(showCompleted, () => {
   fetchIssues()
 })
 
-watch([filterAssignee, filterPriority, filterStatus], () => {
+// 从负责人下拉框选值时清除处理人标签（两者都按 assignee 筛选，互斥）
+watch(filterAssignee, (v) => {
+  if (v) filterHandler.value = null
+})
+// 从优先级下拉框选值时清除优先级标签（互斥）
+watch(filterPriority, (v) => {
+  if (v) filterPriorityTag.value = null
+})
+
+watch([filterAssignee, filterPriority, filterStatus, filterReporter, filterHandler, filterPriorityTag], () => {
   page.value = 1
   rowSelection.value = {}
   fetchIssues()
@@ -939,6 +1019,17 @@ async function checkAnalyzingIssues() {
 }
 :root.dark .modal-footer {
   border-top-color: #374151;
+}
+/* 筛选标签(提出人/处理人/优先级):统一使用品牌色 crystal,避免 primary(绿) 与 CTA 撞色 */
+.filter-chip {
+  background-color: var(--color-crystal-50);
+  color: var(--color-crystal-700);
+  box-shadow: inset 0 0 0 1px var(--color-crystal-200);
+}
+:root.dark .filter-chip {
+  background-color: color-mix(in oklab, var(--color-crystal-950) 60%, transparent);
+  color: var(--color-crystal-300);
+  box-shadow: inset 0 0 0 1px var(--color-crystal-800);
 }
 .filter-clear {
   position: absolute;

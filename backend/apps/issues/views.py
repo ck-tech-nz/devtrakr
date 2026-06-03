@@ -17,7 +17,7 @@ from apps.ai.models import Analysis
 from apps.ai.services import IssueAnalysisService
 from apps.repos.services import GitHubSyncService
 from apps.repos.serializers import GitHubIssueBriefSerializer
-from .models import Issue, Activity
+from .models import Issue, IssueStatus, Activity
 from .serializers import (
     IssueListSerializer, IssueDetailSerializer,
     IssueCreateUpdateSerializer, BatchUpdateSerializer,
@@ -93,6 +93,14 @@ class IssueListCreateView(generics.ListCreateAPIView):
         labels = self.request.query_params.get("labels")
         if labels:
             qs = qs.filter(labels__contains=[labels])
+        # 提出人筛选：reporter 为自由文本，按精确文本匹配；无 reporter 文本的问题
+        # 由前端回退到 created_by（创建人）筛选。
+        reporter = self.request.query_params.get("reporter")
+        if reporter:
+            qs = qs.filter(reporter=reporter)
+        created_by = self.request.query_params.get("created_by")
+        if created_by:
+            qs = qs.filter(created_by_id=created_by)
         exclude_statuses = self.request.query_params.get("exclude_statuses")
         if exclude_statuses:
             qs = qs.exclude(status__in=exclude_statuses.split(","))
@@ -131,6 +139,10 @@ class BatchUpdateView(APIView):
         if data["action"] == "assign":
             user = User.objects.get(id=data["value"])
             issues.update(assignee=user)
+            # 有负责人后不应停留在「待分配」,统一置为「待确认」
+            issues.filter(status=IssueStatus.UNASSIGNED.value).update(
+                status=IssueStatus.PENDING_CONFIRMATION.value
+            )
         elif data["action"] == "set_priority":
             issues.update(priority=data["value"])
         elif data["action"] == "set_status":
