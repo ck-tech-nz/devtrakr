@@ -56,7 +56,7 @@ export function useAuth() {
     }
     setTokens(res.access, res.refresh)
     await fetchMe()
-    navigateTo('/app')
+    navigateTo('/app/home')
   }
 
   // 返回管理员：恢复暂存的原 token
