@@ -105,11 +105,27 @@ class TestActionItemStatusAPI:
         item = ActionItemFactory(plan=plan, status="pending")
         resp = client.post(
             f"/api/kpi/action-items/{item.id}/status/",
-            {"status": "in_progress"}, format="json"
+            {"status": "in_progress", "start_plan": "先排查日志再改", "self_eta": "2026-06-20"},
+            format="json",
         )
         assert resp.status_code == 200
         item.refresh_from_db()
         assert item.status == "in_progress"
+        assert item.start_plan == "先排查日志再改"
+        assert str(item.self_eta) == "2026-06-20"
+
+    def test_start_requires_plan_and_eta(self, employee_client):
+        client, user = employee_client
+        plan = ImprovementPlanFactory(user=user, status="published")
+        item = ActionItemFactory(plan=plan, status="pending")
+        # 缺执行计划
+        r1 = client.post(f"/api/kpi/action-items/{item.id}/status/",
+                         {"status": "in_progress", "self_eta": "2026-06-20"}, format="json")
+        assert r1.status_code == 400
+        # 缺预计完成日期
+        r2 = client.post(f"/api/kpi/action-items/{item.id}/status/",
+                         {"status": "in_progress", "start_plan": "我的计划"}, format="json")
+        assert r2.status_code == 400
 
     def test_employee_cannot_verify(self, employee_client):
         client, user = employee_client
@@ -297,11 +313,65 @@ class TestActionItemSubmitNote:
         plan = ImprovementPlanFactory(user=user, status="published")
         item = ActionItemFactory(plan=plan, status="in_progress")
         resp = client.post(f"/api/kpi/action-items/{item.id}/status/",
-                           {"status": "submitted", "note": "线下已完成，说明见此"}, format="json")
+                           {"status": "submitted", "note": "线下已完成，说明见此",
+                            "self_assessment": "我验证了 AI 给的方案并改了边界条件"}, format="json")
         assert resp.status_code == 200
         item.refresh_from_db()
         assert item.status == "submitted"
         assert item.comments.filter(content="线下已完成，说明见此").exists()
+
+
+class TestActionItemSelfAssessment:
+    def test_submit_requires_reflection(self, employee_client):
+        client, user = employee_client
+        plan = ImprovementPlanFactory(user=user, status="published")
+        item = ActionItemFactory(plan=plan, status="in_progress")
+        resp = client.post(f"/api/kpi/action-items/{item.id}/status/",
+                           {"status": "submitted"}, format="json")
+        assert resp.status_code == 400
+
+    def test_submit_saves_self_scores_and_reflection(self, employee_client):
+        client, user = employee_client
+        plan = ImprovementPlanFactory(user=user, status="published")
+        dims = [{"key": "quality", "label": "完成质量", "weight": 0.5},
+                {"key": "delivery", "label": "交付与沟通", "weight": 0.5}]
+        item = ActionItemFactory(plan=plan, status="in_progress", review_dimensions=dims)
+        resp = client.post(f"/api/kpi/action-items/{item.id}/status/", {
+            "status": "submitted",
+            "self_assessment": "自己的判断与复盘",
+            "self_scores": {"quality": 4, "delivery": 3},
+        }, format="json")
+        assert resp.status_code == 200
+        item.refresh_from_db()
+        assert item.self_assessment == "自己的判断与复盘"
+        assert item.self_scores == {"quality": 4, "delivery": 3}
+        assert item.self_assessed_at is not None
+        assert item.self_overall_score == 3.5
+
+    def test_submit_requires_all_dims_self_scored(self, employee_client):
+        client, user = employee_client
+        plan = ImprovementPlanFactory(user=user, status="published")
+        dims = [{"key": "quality", "label": "完成质量", "weight": 0.5},
+                {"key": "delivery", "label": "交付与沟通", "weight": 0.5}]
+        item = ActionItemFactory(plan=plan, status="in_progress", review_dimensions=dims)
+        resp = client.post(f"/api/kpi/action-items/{item.id}/status/", {
+            "status": "submitted",
+            "self_assessment": "只评了一个维度",
+            "self_scores": {"quality": 4},
+        }, format="json")
+        assert resp.status_code == 400
+
+    def test_submit_rejects_self_score_out_of_range(self, employee_client):
+        client, user = employee_client
+        plan = ImprovementPlanFactory(user=user, status="published")
+        dims = [{"key": "quality", "label": "完成质量", "weight": 1.0}]
+        item = ActionItemFactory(plan=plan, status="in_progress", review_dimensions=dims)
+        resp = client.post(f"/api/kpi/action-items/{item.id}/status/", {
+            "status": "submitted",
+            "self_assessment": "超范围",
+            "self_scores": {"quality": 9},
+        }, format="json")
+        assert resp.status_code == 400
 
 
 class TestScoringConfigDimensions:

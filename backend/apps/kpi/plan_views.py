@@ -100,7 +100,7 @@ class PlanDetailView(APIView):
             )
         except ImprovementPlan.DoesNotExist:
             return Response({"detail": "计划不存在"}, status=status.HTTP_404_NOT_FOUND)
-        return Response(PlanDetailSerializer(plan).data)
+        return Response(PlanDetailSerializer(plan, context={"manager": True}).data)
 
 
 class PlanPublishView(APIView):
@@ -119,7 +119,7 @@ class PlanPublishView(APIView):
         plan.reviewed_by = request.user
         plan.published_at = timezone.now()
         plan.save(update_fields=["status", "reviewed_by", "published_at", "updated_at"])
-        return Response(PlanDetailSerializer(plan).data)
+        return Response(PlanDetailSerializer(plan, context={"manager": True}).data)
 
 
 class PlanArchiveView(APIView):
@@ -137,7 +137,7 @@ class PlanArchiveView(APIView):
         plan.status = ImprovementPlan.Status.ARCHIVED
         plan.archived_at = timezone.now()
         plan.save(update_fields=["status", "archived_at", "updated_at"])
-        return Response(PlanDetailSerializer(plan).data)
+        return Response(PlanDetailSerializer(plan, context={"manager": True}).data)
 
 
 class PlanGenerateView(APIView):
@@ -200,7 +200,7 @@ class PlanGenerateView(APIView):
 
         if user_id and created == 1:
             plan = ImprovementPlan.objects.filter(user_id=user_id, period=period).first()
-            return Response(PlanDetailSerializer(plan).data, status=status.HTTP_201_CREATED)
+            return Response(PlanDetailSerializer(plan, context={"manager": True}).data, status=status.HTTP_201_CREATED)
 
         return Response({"created": created, "period": period}, status=status.HTTP_201_CREATED)
 
@@ -248,7 +248,7 @@ class PlanEditView(APIView):
                 ActionItem.objects.create(plan=plan, source=ActionItem.Source.MANAGER, **defaults)
 
         plan.refresh_from_db()
-        return Response(PlanDetailSerializer(plan).data)
+        return Response(PlanDetailSerializer(plan, context={"manager": True}).data)
 
 
 class ActionItemStatusView(APIView):
@@ -274,8 +274,52 @@ class ActionItemStatusView(APIView):
                 {"detail": f"不允许从 {item.status} 变更为 {new_status}"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+
+        update_fields = ["status", "updated_at"]
+
+        # 开始执行时强制"立计划"——把"被派的任务"变成"我承诺的任务"
+        if new_status == ActionItem.Status.IN_PROGRESS:
+            start_plan = (request.data.get("start_plan") or "").strip()
+            if not start_plan:
+                return Response({"detail": "开始执行前请填写「我打算怎么做」"},
+                                status=status.HTTP_400_BAD_REQUEST)
+            self_eta = request.data.get("self_eta")
+            if not self_eta:
+                return Response({"detail": "请填写预计完成日期"}, status=status.HTTP_400_BAD_REQUEST)
+            from django.core.exceptions import ValidationError as DjangoValidationError
+            try:
+                ActionItem._meta.get_field("self_eta").to_python(self_eta)
+            except (DjangoValidationError, ValueError, TypeError):
+                return Response({"detail": "预计完成日期格式须为 YYYY-MM-DD"},
+                                status=status.HTTP_400_BAD_REQUEST)
+            item.start_plan = start_plan
+            item.self_eta = self_eta
+            update_fields += ["start_plan", "self_eta"]
+
+        # 提交完成时强制"结构化复盘 + 自评"——制造认知摩擦，驱动自我觉察
+        if new_status == ActionItem.Status.SUBMITTED:
+            self_assessment = (request.data.get("self_assessment") or "").strip()
+            if not self_assessment:
+                return Response({"detail": "提交需填写复盘（你的思考与判断）"},
+                                status=status.HTTP_400_BAD_REQUEST)
+            self_scores = request.data.get("self_scores") or {}
+            if not isinstance(self_scores, dict):
+                return Response({"detail": "self_scores 须为对象"}, status=status.HTTP_400_BAD_REQUEST)
+            valid_keys = {d["key"] for d in (item.review_dimensions or []) if isinstance(d, dict) and "key" in d}
+            for k, v in self_scores.items():
+                if k not in valid_keys:
+                    return Response({"detail": f"自评维度 {k} 不属于本任务"}, status=status.HTTP_400_BAD_REQUEST)
+                if not isinstance(v, (int, float)) or isinstance(v, bool) or not (1 <= v <= 5):
+                    return Response({"detail": f"自评维度 {k} 须为 1-5"}, status=status.HTTP_400_BAD_REQUEST)
+            if valid_keys and set(self_scores.keys()) != valid_keys:
+                return Response({"detail": "请对每个维度完成自评"}, status=status.HTTP_400_BAD_REQUEST)
+            item.self_scores = self_scores
+            item.self_assessment = self_assessment
+            item.self_assessed_at = timezone.now()
+            update_fields += ["self_scores", "self_assessment", "self_assessed_at"]
+
         item.status = new_status
-        item.save(update_fields=["status", "updated_at"])
+        item.save(update_fields=update_fields)
 
         # 可选的"成果说明" → 落成一条评论（支持线上/线下反馈）
         note = (request.data.get("note") or "").strip()
@@ -400,6 +444,120 @@ class TaskDispatchView(APIView):
             sort_order=next_order,
         )
         return Response(ActionItemSerializer(item).data, status=status.HTTP_201_CREATED)
+
+
+def _fmt_scores(scores, dims):
+    if not scores:
+        return "—"
+    labels = {d["key"]: d.get("label", d["key"]) for d in (dims or []) if isinstance(d, dict)}
+    return "、".join(f"{labels.get(k, k)} {v}" for k, v in scores.items())
+
+
+class PlanAISummaryView(APIView):
+    """POST /api/kpi/plans/{id}/ai-summary/ — 调用 LLM 生成月度小结（仅管理者）。"""
+    permission_classes = [FullDjangoModelPermissions]
+    queryset = ImprovementPlan.objects.none()
+
+    def post(self, request, pk):
+        import json
+        from apps.ai.client import LLMClient
+        from apps.ai.models import Prompt
+
+        try:
+            plan = (
+                ImprovementPlan.objects.select_related("user")
+                .prefetch_related("action_items")
+                .get(pk=pk)
+            )
+        except ImprovementPlan.DoesNotExist:
+            return Response({"detail": "计划不存在"}, status=status.HTTP_404_NOT_FOUND)
+
+        prompt = Prompt.objects.filter(slug="plan_monthly_summary", is_active=True).first()
+        if prompt is None:
+            return Response({"detail": "未配置月度小结 Prompt（plan_monthly_summary）"},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        items = list(plan.action_items.all())
+        today = timezone.now().date()
+
+        def _overdue(it):
+            return bool(it.due_date and it.due_date < today
+                        and it.status not in ("verified", "not_achieved"))
+
+        lines = []
+        for it in items:
+            lines.append(
+                f"- [{it.get_status_display()}] {it.title}"
+                f" | 截止 {it.due_date or '—'}"
+                f" | 目标: {it.measurable_target or '—'}"
+                f" | 自评: {_fmt_scores(it.self_scores, it.review_dimensions)}"
+                f" | 自评说明: {(it.self_assessment or '—')[:300]}"
+                f" | 经理评分: {_fmt_scores(it.scores, it.review_dimensions)}"
+                f" | 总评: {it.review_comment or '—'}"
+            )
+        ctx = {
+            "user_name": plan.user.name or plan.user.username,
+            "period": plan.period,
+            "total": len(items),
+            "in_progress": sum(1 for i in items if i.status == "in_progress"),
+            "submitted": sum(1 for i in items if i.status == "submitted"),
+            "done": sum(1 for i in items if i.status == "verified"),
+            "overdue": sum(1 for i in items if _overdue(i)),
+            "tasks": "\n".join(lines) or "（本月暂无任务）",
+        }
+
+        try:
+            user_prompt = prompt.user_prompt_template.format(**ctx)
+            raw = LLMClient(prompt.llm_config).complete(
+                model=prompt.llm_model,
+                system_prompt=prompt.system_prompt,
+                user_prompt=user_prompt,
+                temperature=prompt.temperature,
+                timeout=60,
+            )
+        except KeyError as e:
+            return Response({"detail": f"Prompt 模板缺少变量 {e}"}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception:
+            return Response({"detail": "AI 调用失败，请稍后重试或检查 LLM 配置"},
+                            status=status.HTTP_502_BAD_GATEWAY)
+
+        summary = ""
+        try:
+            data = json.loads(raw)
+            if isinstance(data, dict):
+                summary = (data.get("summary") or "").strip()
+        except (json.JSONDecodeError, TypeError):
+            summary = ""
+        if not summary:
+            summary = (raw or "").strip()
+
+        plan.ai_summary = summary
+        plan.ai_summary_at = timezone.now()
+        plan.ai_summary_model = prompt.llm_model
+        plan.save(update_fields=["ai_summary", "ai_summary_at", "ai_summary_model", "updated_at"])
+        return Response(PlanDetailSerializer(plan, context={"manager": True}).data)
+
+
+class PlanEvaluationView(APIView):
+    """PUT /api/kpi/plans/{id}/evaluation/ — 保存 AI 小结(可编辑) 与 员工评价（仅管理者）。"""
+    permission_classes = [FullDjangoModelPermissions]
+    queryset = ImprovementPlan.objects.none()
+
+    def put(self, request, pk):
+        try:
+            plan = ImprovementPlan.objects.get(pk=pk)
+        except ImprovementPlan.DoesNotExist:
+            return Response({"detail": "计划不存在"}, status=status.HTTP_404_NOT_FOUND)
+
+        update_fields = ["updated_at"]
+        if "ai_summary" in request.data:
+            plan.ai_summary = (request.data.get("ai_summary") or "").strip()
+            update_fields.append("ai_summary")
+        if "employee_evaluation" in request.data:
+            plan.employee_evaluation = (request.data.get("employee_evaluation") or "").strip()
+            update_fields.append("employee_evaluation")
+        plan.save(update_fields=update_fields)
+        return Response(PlanDetailSerializer(plan, context={"manager": True}).data)
 
 
 class ReviewDimensionsView(APIView):

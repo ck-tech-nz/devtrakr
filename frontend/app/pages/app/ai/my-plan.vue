@@ -49,6 +49,18 @@
           </div>
         </div>
 
+        <!-- 本月评价（经理公开给你的评价） -->
+        <div
+          v-if="current.employee_evaluation"
+          class="bg-white dark:bg-gray-900 rounded-xl border border-crystal-100 dark:border-crystal-900/50 p-5"
+        >
+          <div class="flex items-center gap-2 mb-2">
+            <UIcon name="i-heroicons-chat-bubble-bottom-center-text" class="w-4 h-4 text-crystal-500" />
+            <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100">本月评价</h3>
+          </div>
+          <p class="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap leading-relaxed">{{ current.employee_evaluation }}</p>
+        </div>
+
         <!-- 行动项列表 -->
         <div class="space-y-3">
           <div
@@ -96,6 +108,15 @@
                 <p class="text-sm text-gray-700 dark:text-gray-300">{{ item.measurable_target }}</p>
               </div>
 
+              <!-- 我的执行计划（开始执行时的承诺） -->
+              <div v-if="item.start_plan" class="rounded-lg border border-gray-100 dark:border-gray-800 bg-gray-50/60 dark:bg-gray-800/40 p-3">
+                <div class="flex items-center justify-between gap-2 mb-1">
+                  <p class="text-xs font-medium text-gray-400 dark:text-gray-500">我的执行计划</p>
+                  <span v-if="item.self_eta" class="text-xs text-gray-500 dark:text-gray-400 tabular-nums">我预计 {{ item.self_eta }} 完成</span>
+                </div>
+                <p class="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap">{{ item.start_plan }}</p>
+              </div>
+
               <!-- 状态操作 -->
               <div>
                 <UButton
@@ -104,7 +125,7 @@
                   color="primary"
                   icon="i-heroicons-play"
                   :loading="updatingStatus[item.id]"
-                  @click.stop="updateStatus(item.id, 'in_progress')"
+                  @click.stop="openStart(item)"
                 >
                   开始执行
                 </UButton>
@@ -114,7 +135,7 @@
                   color="success"
                   icon="i-heroicons-check"
                   :loading="updatingStatus[item.id]"
-                  @click.stop="openSubmit(item.id)"
+                  @click.stop="openSubmit(item)"
                 >
                   提交完成
                 </UButton>
@@ -128,24 +149,53 @@
                 </div>
               </div>
 
-              <!-- 点评展示（verified / not_achieved 有打分时） -->
+              <!-- 我的复盘与自评（提交后可见） -->
               <div
-                v-if="hasReview(item)"
+                v-if="item.self_assessment"
                 class="rounded-lg border border-gray-100 dark:border-gray-800 bg-gray-50/60 dark:bg-gray-800/40 p-3.5 space-y-2.5"
               >
                 <div class="flex items-center gap-2 text-xs font-medium text-gray-500 dark:text-gray-400">
-                  <UIcon name="i-heroicons-star" class="w-3.5 h-3.5 text-amber-500" />
-                  点评
+                  <UIcon name="i-heroicons-pencil-square" class="w-3.5 h-3.5" />
+                  我的复盘
                 </div>
+                <p class="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap">{{ item.self_assessment }}</p>
                 <div
-                  v-for="d in (item.review_dimensions || [])"
-                  :key="d.key"
-                  class="flex items-center justify-between gap-2 text-sm"
+                  v-if="item.self_scores && Object.keys(item.self_scores).length"
+                  class="pt-2.5 border-t border-gray-100 dark:border-gray-700/50 space-y-1.5"
                 >
-                  <span class="text-gray-500 dark:text-gray-400">{{ d.label }}</span>
-                  <StarRow :value="item.scores?.[d.key] || 0" />
+                  <p class="text-xs text-gray-400 dark:text-gray-500">我的自评</p>
+                  <div
+                    v-for="d in (item.review_dimensions || [])"
+                    :key="d.key"
+                    class="flex items-center justify-between gap-2 text-sm"
+                  >
+                    <span class="text-gray-500 dark:text-gray-400">{{ d.label }}</span>
+                    <StarRow :value="item.self_scores?.[d.key] || 0" />
+                  </div>
                 </div>
-                <div v-if="item.review_comment" class="text-sm text-gray-700 dark:text-gray-300 border-t border-gray-100 dark:border-gray-700/50 pt-2.5">
+              </div>
+
+              <!-- 经理点评（含自评/他评对比） -->
+              <div
+                v-if="hasReview(item)"
+                class="rounded-lg border border-crystal-100 dark:border-crystal-900/50 bg-crystal-50/40 dark:bg-crystal-950/20 p-3.5 space-y-2.5"
+              >
+                <div class="flex items-center gap-2 text-xs font-medium text-gray-500 dark:text-gray-400">
+                  <UIcon name="i-heroicons-star" class="w-3.5 h-3.5 text-amber-500" />
+                  经理点评
+                  <span v-if="item.reviewed_by_name" class="font-normal text-gray-400 dark:text-gray-500">· {{ item.reviewed_by_name }}</span>
+                </div>
+                <div class="grid grid-cols-[1fr_auto_auto] gap-x-4 gap-y-1.5 text-sm items-center">
+                  <span class="text-xs text-gray-400 dark:text-gray-500" />
+                  <span class="text-xs text-gray-400 dark:text-gray-500 text-center">自评</span>
+                  <span class="text-xs text-gray-400 dark:text-gray-500 text-center">经理</span>
+                  <template v-for="d in (item.review_dimensions || [])" :key="d.key">
+                    <span class="text-gray-500 dark:text-gray-400 truncate">{{ d.label }}</span>
+                    <StarRow :value="item.self_scores?.[d.key] || 0" size="xs" />
+                    <StarRow :value="item.scores?.[d.key] || 0" />
+                  </template>
+                </div>
+                <div v-if="item.review_comment" class="text-sm text-gray-700 dark:text-gray-300 border-t border-crystal-100 dark:border-crystal-900/50 pt-2.5">
                   <span class="text-xs text-gray-400 dark:text-gray-500">总评：</span>{{ item.review_comment }}
                 </div>
               </div>
@@ -203,15 +253,86 @@
         <p class="text-gray-500 dark:text-gray-400">本月暂无派发给你的任务</p>
       </div>
 
-      <!-- 提交完成对话框 -->
-      <UModal v-model:open="submitModalOpen">
+      <!-- 立计划对话框（开始执行时的承诺） -->
+      <UModal v-model:open="startModalOpen" :ui="{ content: 'sm:max-w-md' }">
         <template #content>
-          <div class="p-5 space-y-3">
-            <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">提交完成</h3>
-            <UTextarea v-model="submitNote" :rows="3" placeholder="成果说明（线上/线下完成情况，可留空）" class="w-full" />
-            <div class="flex justify-end gap-2">
+          <div class="p-5 space-y-4">
+            <div>
+              <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">开始执行</h3>
+              <p class="text-xs text-gray-400 dark:text-gray-500 mt-0.5">{{ startItem?.title }}</p>
+            </div>
+
+            <div class="space-y-1">
+              <label class="text-xs font-medium text-gray-500 dark:text-gray-400">
+                我打算怎么做 <span class="text-red-500">*</span>
+              </label>
+              <p class="text-[11px] text-gray-400 dark:text-gray-500 -mt-0.5">一两句你自己的思路即可，不要照抄任务描述</p>
+              <UTextarea v-model="startPlan" :rows="3" placeholder="例如：先排查日志定位根因，再改 X，最后补一个回归用例…" class="w-full" />
+            </div>
+
+            <div class="space-y-1">
+              <label class="text-xs font-medium text-gray-500 dark:text-gray-400">
+                我预计完成日期 <span class="text-red-500">*</span>
+              </label>
+              <UInput v-model="startEta" type="date" class="w-full" />
+            </div>
+
+            <div class="flex justify-end gap-2 pt-1">
+              <UButton variant="ghost" color="neutral" @click="startModalOpen = false">取消</UButton>
+              <UButton color="primary" icon="i-heroicons-play" :loading="startItem && updatingStatus[startItem.id]" @click="confirmStart">开始执行</UButton>
+            </div>
+          </div>
+        </template>
+      </UModal>
+
+      <!-- 提交完成对话框（结构化复盘 + 自评） -->
+      <UModal v-model:open="submitModalOpen" :ui="{ content: 'sm:max-w-lg' }">
+        <template #content>
+          <div class="p-5 space-y-4 max-h-[80vh] overflow-y-auto">
+            <div>
+              <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">提交完成</h3>
+              <p class="text-xs text-gray-400 dark:text-gray-500 mt-0.5">{{ submitItem?.title }}</p>
+            </div>
+
+            <div class="space-y-1">
+              <label class="text-xs font-medium text-gray-500 dark:text-gray-400">成果说明（做了什么，可附链接/截图，可留空）</label>
+              <UTextarea v-model="submitOutcome" :rows="2" placeholder="例如：完成了 X，PR 链接…" class="w-full" />
+            </div>
+
+            <div class="space-y-1">
+              <label class="text-xs font-medium text-gray-500 dark:text-gray-400">
+                我的思考与判断 <span class="text-red-500">*</span>
+              </label>
+              <p class="text-[11px] text-gray-400 dark:text-gray-500 -mt-0.5">尤其：你对 AI 输出做了哪些验证/发现了什么问题/哪些是你自己的判断</p>
+              <UTextarea v-model="submitReflection" :rows="4" placeholder="写出你自己的分析、踩过的坑、为什么这么做…" class="w-full" />
+            </div>
+
+            <div v-if="(submitItem?.review_dimensions || []).length" class="space-y-2">
+              <label class="text-xs font-medium text-gray-500 dark:text-gray-400">
+                自评 <span class="text-red-500">*</span>
+                <span class="font-normal text-gray-400 dark:text-gray-500">（先给自己打分，再由经理点评）</span>
+              </label>
+              <div
+                v-for="d in submitItem.review_dimensions"
+                :key="d.key"
+                class="flex items-center gap-2"
+              >
+                <span class="text-sm text-gray-600 dark:text-gray-400 w-24 flex-shrink-0 truncate">{{ d.label }}</span>
+                <UButton
+                  v-for="star in 5"
+                  :key="star"
+                  size="xs"
+                  variant="ghost"
+                  :color="(submitSelfScores[d.key] || 0) >= star ? 'warning' : 'neutral'"
+                  icon="i-heroicons-star-solid"
+                  @click="submitSelfScores[d.key] = star"
+                />
+              </div>
+            </div>
+
+            <div class="flex justify-end gap-2 pt-1">
               <UButton variant="ghost" color="neutral" @click="submitModalOpen = false">取消</UButton>
-              <UButton color="success" :loading="updatingStatus[submitItemId]" @click="confirmSubmit">确认提交</UButton>
+              <UButton color="success" :loading="submitItem && updatingStatus[submitItem.id]" @click="confirmSubmit">确认提交</UButton>
             </div>
           </div>
         </template>
@@ -316,9 +437,16 @@ const historyOpen = ref<Set<string>>(new Set())
 const historyLoading = ref<Set<string>>(new Set())
 const historyDetails = ref<Record<string, any>>({})
 
+const startModalOpen = ref(false)
+const startItem = ref<any>(null)
+const startPlan = ref('')
+const startEta = ref('')
+
 const submitModalOpen = ref(false)
-const submitNote = ref('')
-const submitItemId = ref('')
+const submitItem = ref<any>(null)
+const submitOutcome = ref('')
+const submitReflection = ref('')
+const submitSelfScores = ref<Record<string, number>>({})
 
 const currentPeriod = new Date().toISOString().slice(0, 7)
 
@@ -328,6 +456,8 @@ async function fetchPlan() {
     const res = await api<any>('/api/kpi/plans/me/')
     current.value = res.current
     history.value = res.history || []
+    // 任务列表默认全部展开
+    expandedItems.value = new Set((res.current?.action_items || []).map((i: any) => i.id))
   } catch {
     // silent
   } finally {
@@ -374,19 +504,70 @@ async function updateStatus(itemId: string, newStatus: string) {
   }
 }
 
-function openSubmit(itemId: string) {
-  submitItemId.value = itemId
-  submitNote.value = ''
+function openStart(item: any) {
+  startItem.value = item
+  startPlan.value = ''
+  startEta.value = item.due_date || ''
+  startModalOpen.value = true
+}
+
+async function confirmStart() {
+  const item = startItem.value
+  if (!item) return
+  if (!startPlan.value.trim()) {
+    toast.add({ title: '请填写「我打算怎么做」', color: 'warning' })
+    return
+  }
+  if (!startEta.value) {
+    toast.add({ title: '请填写预计完成日期', color: 'warning' })
+    return
+  }
+  updatingStatus.value[item.id] = true
+  try {
+    await api(`/api/kpi/action-items/${item.id}/status/`, {
+      method: 'POST',
+      body: { status: 'in_progress', start_plan: startPlan.value.trim(), self_eta: startEta.value },
+    })
+    startModalOpen.value = false
+    toast.add({ title: '已开始执行', color: 'success' })
+    await fetchPlan()
+  } catch (e: any) {
+    toast.add({ title: '操作失败', description: e?.data?.detail || '', color: 'error' })
+  } finally {
+    updatingStatus.value[item.id] = false
+  }
+}
+
+function openSubmit(item: any) {
+  submitItem.value = item
+  submitOutcome.value = ''
+  submitReflection.value = ''
+  submitSelfScores.value = {}
   submitModalOpen.value = true
 }
 
 async function confirmSubmit() {
-  const id = submitItemId.value
-  updatingStatus.value[id] = true
+  const item = submitItem.value
+  if (!item) return
+  if (!submitReflection.value.trim()) {
+    toast.add({ title: '请填写「我的思考与判断」', color: 'warning' })
+    return
+  }
+  const dims = item.review_dimensions || []
+  if (dims.length && dims.some((d: any) => !submitSelfScores.value[d.key])) {
+    toast.add({ title: '请对每个维度完成自评', color: 'warning' })
+    return
+  }
+  updatingStatus.value[item.id] = true
   try {
-    await api(`/api/kpi/action-items/${id}/status/`, {
+    await api(`/api/kpi/action-items/${item.id}/status/`, {
       method: 'POST',
-      body: { status: 'submitted', note: submitNote.value.trim() },
+      body: {
+        status: 'submitted',
+        self_assessment: submitReflection.value.trim(),
+        self_scores: submitSelfScores.value,
+        note: submitOutcome.value.trim(),
+      },
     })
     submitModalOpen.value = false
     toast.add({ title: '已提交', color: 'success' })
@@ -394,7 +575,7 @@ async function confirmSubmit() {
   } catch (e: any) {
     toast.add({ title: '提交失败', description: e?.data?.detail || '', color: 'error' })
   } finally {
-    updatingStatus.value[id] = false
+    updatingStatus.value[item.id] = false
   }
 }
 

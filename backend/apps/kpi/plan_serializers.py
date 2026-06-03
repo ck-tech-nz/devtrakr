@@ -18,6 +18,7 @@ class ActionItemCommentSerializer(serializers.ModelSerializer):
 class ActionItemSerializer(serializers.ModelSerializer):
     earned_points = serializers.IntegerField(read_only=True)
     overall_score = serializers.FloatField(read_only=True)
+    self_overall_score = serializers.FloatField(read_only=True)
     reviewed_by_name = serializers.CharField(source="reviewed_by.name", default="", read_only=True)
     comments = ActionItemCommentSerializer(many=True, read_only=True)
 
@@ -29,11 +30,15 @@ class ActionItemSerializer(serializers.ModelSerializer):
             "quality_factor", "earned_points", "sort_order",
             "due_date", "scores", "review_comment", "review_dimensions",
             "overall_score", "reviewed_by", "reviewed_by_name", "reviewed_at",
+            "self_scores", "self_assessment", "self_assessed_at", "self_overall_score",
+            "start_plan", "self_eta",
             "comments", "created_at", "updated_at",
         ]
         read_only_fields = [
             "id", "source", "earned_points", "overall_score",
             "reviewed_by", "reviewed_by_name", "reviewed_at",
+            "self_scores", "self_assessment", "self_assessed_at", "self_overall_score",
+            "start_plan", "self_eta",
             "created_at", "updated_at",
         ]
 
@@ -62,8 +67,17 @@ class PlanDetailSerializer(serializers.ModelSerializer):
             "source_kpi_scores", "reviewed_by", "reviewed_by_name",
             "published_at", "archived_at", "action_items",
             "total_points", "earned_points", "created_at", "updated_at",
+            "ai_summary", "ai_summary_at", "ai_summary_model", "employee_evaluation",
         ]
         read_only_fields = fields
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        # AI 小结仅管理者可见；员工视角（无 manager context）一律剔除
+        if not self.context.get("manager"):
+            for f in ("ai_summary", "ai_summary_at", "ai_summary_model"):
+                data.pop(f, None)
+        return data
 
     def get_total_points(self, obj):
         return sum(item.points for item in obj.action_items.all())

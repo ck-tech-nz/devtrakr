@@ -79,6 +79,71 @@
         </div>
       </div>
 
+      <!-- 月度小结与员工评价 -->
+      <div class="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 p-5 space-y-4">
+        <div class="flex items-start justify-between gap-3">
+          <div>
+            <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100">月度小结与员工评价</h2>
+            <p class="text-xs text-gray-400 dark:text-gray-500 mt-0.5">AI 小结仅你可见；员工评价对该员工公开</p>
+          </div>
+          <UButton
+            size="xs"
+            variant="outline"
+            color="primary"
+            icon="i-heroicons-sparkles"
+            :loading="generatingSummary"
+            @click="generateSummary"
+          >
+            {{ evalForm.ai_summary ? '重新生成' : '生成 AI 小结' }}
+          </UButton>
+        </div>
+
+        <!-- AI 小结（仅管理者，可编辑） -->
+        <div class="space-y-1">
+          <div class="flex items-center justify-between gap-2">
+            <label class="text-xs font-medium text-gray-500 dark:text-gray-400">
+              AI 小结 · 仅你可见
+              <span v-if="plan.ai_summary_at" class="font-normal text-gray-400 dark:text-gray-500">· {{ plan.ai_summary_at.slice(0, 10) }}{{ plan.ai_summary_model ? ' · ' + plan.ai_summary_model : '' }}</span>
+            </label>
+            <UButton
+              size="xs"
+              variant="ghost"
+              color="neutral"
+              icon="i-heroicons-arrow-down-on-square"
+              :disabled="!evalForm.ai_summary.trim()"
+              @click="copyToEvaluation"
+            >
+              复制到员工评价
+            </UButton>
+          </div>
+          <UTextarea
+            v-model="evalForm.ai_summary"
+            :rows="5"
+            autoresize
+            placeholder="点「生成 AI 小结」让 AI 分析本月目标与各任务（含自评/点评）情况；生成后可自由编辑"
+            class="w-full"
+          />
+        </div>
+
+        <!-- 员工评价（对员工可见） -->
+        <div class="space-y-1">
+          <label class="text-xs font-medium text-gray-500 dark:text-gray-400">员工评价 · 对员工可见</label>
+          <UTextarea
+            v-model="evalForm.employee_evaluation"
+            :rows="4"
+            autoresize
+            placeholder="可一键复制上方 AI 小结，或独立撰写对该员工的月度评价"
+            class="w-full"
+          />
+        </div>
+
+        <div class="flex justify-end">
+          <UButton size="sm" icon="i-heroicons-check" :loading="savingEval" :disabled="!evalDirty" @click="saveEvaluation">
+            保存评价
+          </UButton>
+        </div>
+      </div>
+
       <!-- 任务列表 -->
       <div class="space-y-3">
         <div class="flex items-center justify-between">
@@ -123,12 +188,34 @@
           </p>
           <p v-if="item.description" class="text-sm text-gray-600 dark:text-gray-400 mt-1.5 whitespace-pre-wrap">{{ item.description }}</p>
 
+          <!-- 员工执行计划（开始执行时的承诺） -->
+          <div v-if="item.start_plan" class="mt-2.5 rounded-lg border border-gray-100 dark:border-gray-800 bg-gray-50/60 dark:bg-gray-800/40 p-3">
+            <div class="flex items-center justify-between gap-2 mb-1">
+              <p class="text-xs font-medium text-gray-400 dark:text-gray-500">员工执行计划</p>
+              <span v-if="item.self_eta" class="text-xs text-gray-500 dark:text-gray-400 tabular-nums">预计 {{ item.self_eta }} 完成</span>
+            </div>
+            <p class="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap">{{ item.start_plan }}</p>
+          </div>
+
           <!-- 验收/评分（仅 submitted） -->
           <div v-if="item.status === 'submitted'" class="mt-4 pt-4 border-t border-gray-100 dark:border-gray-800 space-y-3">
             <div class="flex items-center gap-2 text-xs font-medium text-amber-600 dark:text-amber-400">
               <UIcon name="i-heroicons-clipboard-document-check" class="w-4 h-4" />
               验收与点评
             </div>
+
+            <!-- 员工自评（评分前先读，对照落差） -->
+            <div v-if="item.self_assessment" class="rounded-lg border border-gray-100 dark:border-gray-800 bg-gray-50/60 dark:bg-gray-800/40 p-3 space-y-2">
+              <p class="text-xs font-medium text-gray-500 dark:text-gray-400">员工自评 · 思考与判断</p>
+              <p class="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap">{{ item.self_assessment }}</p>
+              <div v-if="item.self_scores && Object.keys(item.self_scores).length" class="pt-2 border-t border-gray-100 dark:border-gray-700/50 space-y-1">
+                <div v-for="d in (item.review_dimensions || [])" :key="d.key" class="flex items-center justify-between gap-2 text-xs">
+                  <span class="text-gray-500 dark:text-gray-400">{{ d.label }}</span>
+                  <StarRow :value="item.self_scores?.[d.key] || 0" size="xs" />
+                </div>
+              </div>
+            </div>
+
             <ReviewDimensionEditor v-model="item.review_dimensions" :pool="pool" />
             <p v-if="!(item.review_dimensions || []).length" class="text-xs text-amber-600 dark:text-amber-400">
               请先添加至少一个评分维度
@@ -145,6 +232,11 @@
                   icon="i-heroicons-star-solid"
                   @click="setStar(item.id, d.key, star)"
                 />
+                <span
+                  v-if="item.self_scores?.[d.key]"
+                  class="text-xs ml-1 flex-shrink-0"
+                  :class="gapClass(item, d.key)"
+                >自评 {{ item.self_scores[d.key] }}<template v-if="scoreDraft[item.id]?.[d.key] && gap(item, d.key) >= 2"> · 落差 {{ gap(item, d.key) }}</template></span>
               </div>
             </div>
             <UTextarea v-model="commentDraft[item.id]" :rows="2" placeholder="总评（必填）" class="w-full" />
@@ -325,6 +417,15 @@ const scoreDraft = ref<Record<string, Record<string, number>>>({})
 const commentDraft = ref<Record<string, string>>({})
 const newComments = ref<Record<string, string>>({})
 
+// 月度小结 / 员工评价
+const generatingSummary = ref(false)
+const savingEval = ref(false)
+const evalForm = ref({ ai_summary: '', employee_evaluation: '' })
+const evalDirty = computed(() =>
+  evalForm.value.ai_summary !== (plan.value?.ai_summary || '')
+  || evalForm.value.employee_evaluation !== (plan.value?.employee_evaluation || ''),
+)
+
 // 任务编辑/添加弹窗
 const taskModalOpen = ref(false)
 const savingTask = ref(false)
@@ -359,6 +460,7 @@ async function fetchPlan() {
   loading.value = true
   try {
     plan.value = await api<any>(`/api/kpi/plans/${planId}/`)
+    syncEvalForm()
     if (!pool.value.length) {
       try { pool.value = (await api<any>('/api/kpi/review-dimensions/')).review_dimensions || [] } catch { /* pool optional */ }
     }
@@ -366,6 +468,49 @@ async function fetchPlan() {
     plan.value = null
   } finally {
     loading.value = false
+  }
+}
+
+function syncEvalForm() {
+  evalForm.value = {
+    ai_summary: plan.value?.ai_summary || '',
+    employee_evaluation: plan.value?.employee_evaluation || '',
+  }
+}
+
+async function generateSummary() {
+  generatingSummary.value = true
+  try {
+    plan.value = await api(`/api/kpi/plans/${planId}/ai-summary/`, { method: 'POST' })
+    evalForm.value.ai_summary = plan.value?.ai_summary || ''
+    toast.add({ title: 'AI 小结已生成', color: 'success' })
+  } catch (e: any) {
+    toast.add({ title: '生成失败', description: e?.data?.detail || '', color: 'error' })
+  } finally {
+    generatingSummary.value = false
+  }
+}
+
+function copyToEvaluation() {
+  evalForm.value.employee_evaluation = evalForm.value.ai_summary
+}
+
+async function saveEvaluation() {
+  savingEval.value = true
+  try {
+    plan.value = await api(`/api/kpi/plans/${planId}/evaluation/`, {
+      method: 'PUT',
+      body: {
+        ai_summary: evalForm.value.ai_summary,
+        employee_evaluation: evalForm.value.employee_evaluation,
+      },
+    })
+    syncEvalForm()
+    toast.add({ title: '已保存', color: 'success' })
+  } catch (e: any) {
+    toast.add({ title: '保存失败', description: e?.data?.detail || '', color: 'error' })
+  } finally {
+    savingEval.value = false
   }
 }
 
@@ -483,6 +628,19 @@ async function handlePublish() {
 function setStar(itemId: string, key: string, star: number) {
   if (!scoreDraft.value[itemId]) scoreDraft.value[itemId] = {}
   scoreDraft.value[itemId][key] = star
+}
+
+// 自评与经理评分的落差（绝对值）
+function gap(item: any, key: string): number {
+  const self = item.self_scores?.[key] || 0
+  const mine = scoreDraft.value[item.id]?.[key] || 0
+  if (!self || !mine) return 0
+  return Math.abs(self - mine)
+}
+function gapClass(item: any, key: string): string {
+  return gap(item, key) >= 2
+    ? 'text-amber-600 dark:text-amber-400 font-medium'
+    : 'text-gray-400 dark:text-gray-500'
 }
 
 async function verifyItem(itemId: string, status: string) {

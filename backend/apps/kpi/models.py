@@ -227,6 +227,12 @@ class ImprovementPlan(models.Model):
     archived_at = models.DateTimeField(null=True, blank=True, verbose_name="归档时间")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    # —— LLM 月度小结：分析本月目标 + 各任务执行/自评/点评情况，整理汇总 ——
+    # ai_summary 仅管理者可见、可编辑；employee_evaluation 为对员工公开的月度评价（可一键由小结复制而来）
+    ai_summary = models.TextField(blank=True, default="", verbose_name="AI 月度小结")
+    ai_summary_at = models.DateTimeField(null=True, blank=True, verbose_name="AI 小结生成时间")
+    ai_summary_model = models.CharField(max_length=100, blank=True, default="", verbose_name="AI 小结所用模型")
+    employee_evaluation = models.TextField(blank=True, default="", verbose_name="员工评价（对员工可见）")
 
     class Meta:
         verbose_name = "提升计划"
@@ -286,6 +292,13 @@ class ActionItem(models.Model):
         related_name="+", verbose_name="评分人",
     )
     reviewed_at = models.DateTimeField(null=True, blank=True, verbose_name="评分时间")
+    # —— 立计划（开始执行时填写，制造承诺）——
+    start_plan = models.TextField(blank=True, default="", verbose_name="执行计划")  # 我打算怎么做
+    self_eta = models.DateField(null=True, blank=True, verbose_name="自评预计完成日期")
+    # —— 员工自评（提交时填写，用于"自评 vs 他评"落差，驱动自我觉察）——
+    self_scores = models.JSONField(default=dict, blank=True, verbose_name="自评评分")  # {dim_key: 1..5}
+    self_assessment = models.TextField(blank=True, default="", verbose_name="自评复盘")  # 思考与判断/对 AI 输出的分析
+    self_assessed_at = models.DateTimeField(null=True, blank=True, verbose_name="自评时间")
 
     class Meta:
         verbose_name = "行动项"
@@ -312,6 +325,19 @@ class ActionItem(models.Model):
             num = sum(float(v) * dims.get(k, 0) for k, v in self.scores.items())
             return round(num / den, 1)
         vals = [float(v) for v in self.scores.values()]  # 无权重信息 → 等权平均
+        return round(sum(vals) / len(vals), 1)
+
+    @property
+    def self_overall_score(self):
+        """员工自评的加权综合分（1-5）；未自评返回 None。逻辑同 overall_score。"""
+        if not self.self_scores:
+            return None
+        dims = {d["key"]: float(d.get("weight", 0)) for d in (self.review_dimensions or [])}
+        den = sum(dims.get(k, 0) for k in self.self_scores)
+        if dims and den:
+            num = sum(float(v) * dims.get(k, 0) for k, v in self.self_scores.items())
+            return round(num / den, 1)
+        vals = [float(v) for v in self.self_scores.values()]
         return round(sum(vals) / len(vals), 1)
 
 
