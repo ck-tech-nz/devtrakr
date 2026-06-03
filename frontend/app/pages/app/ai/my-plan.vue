@@ -16,23 +16,24 @@
     <!-- 暂无任务（仍展示历史） -->
     <template v-else>
       <template v-if="current">
-        <!-- 汇总卡片 -->
-        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <div class="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 p-5">
-            <p class="text-xs font-medium text-gray-400 dark:text-gray-500 mb-1">行动项数量</p>
-            <p class="text-3xl font-bold tabular-nums text-gray-900 dark:text-gray-100">{{ actionItems.length }}</p>
-          </div>
-          <div
-            class="bg-white dark:bg-gray-900 rounded-xl border p-5"
-            :class="overdueCount > 0 ? 'border-red-200 dark:border-red-900/50' : 'border-gray-100 dark:border-gray-800'"
+        <!-- 汇总卡片（点击可筛选） -->
+        <div class="grid grid-cols-2 lg:grid-cols-6 gap-3">
+          <button
+            v-for="f in filters"
+            :key="f.value ?? 'all'"
+            type="button"
+            class="text-left rounded-xl border p-4 transition-colors"
+            :class="filterStatus === f.value
+              ? 'border-crystal-400 dark:border-crystal-600 ring-1 ring-crystal-300 dark:ring-crystal-700 bg-crystal-50/50 dark:bg-crystal-950/20'
+              : 'border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 hover:border-gray-200 dark:hover:border-gray-700'"
+            @click="toggleFilter(f.value)"
           >
-            <p class="text-xs font-medium text-gray-400 dark:text-gray-500 mb-1">进行中 / 待验收</p>
-            <p class="text-3xl font-bold tabular-nums text-gray-900 dark:text-gray-100">{{ activeCount }}</p>
-            <p v-if="overdueCount > 0" class="text-xs font-medium text-red-600 dark:text-red-400 mt-1">
-              {{ overdueCount }} 项已逾期
-            </p>
-          </div>
-          <div class="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 p-5 flex flex-col">
+            <p class="text-xs font-medium text-gray-400 dark:text-gray-500 mb-1 truncate">{{ f.label }}</p>
+            <p class="text-2xl font-bold tabular-nums" :class="f.color">{{ f.count }}</p>
+          </button>
+
+          <!-- 完成进度 -->
+          <div class="col-span-2 lg:col-span-1 bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 p-4 flex flex-col">
             <div class="flex items-baseline justify-between mb-2">
               <p class="text-xs font-medium text-gray-400 dark:text-gray-500">完成进度</p>
               <p class="text-sm font-semibold tabular-nums text-gray-900 dark:text-gray-100">{{ doneCount }} / {{ actionItems.length }}</p>
@@ -44,7 +45,9 @@
                   :style="{ width: progressPct + '%' }"
                 />
               </div>
-              <p class="text-[11px] text-gray-400 dark:text-gray-500 mt-1.5 tabular-nums">{{ Math.round(progressPct) }}%</p>
+              <p class="text-[11px] mt-1.5 tabular-nums" :class="overdueCount > 0 ? 'text-red-600 dark:text-red-400 font-medium' : 'text-gray-400 dark:text-gray-500'">
+                {{ Math.round(progressPct) }}%<span v-if="overdueCount > 0"> · {{ overdueCount }} 项逾期</span>
+              </p>
             </div>
           </div>
         </div>
@@ -63,8 +66,11 @@
 
         <!-- 行动项列表 -->
         <div class="space-y-3">
+          <div v-if="!filteredItems.length" class="bg-white dark:bg-gray-900 rounded-xl border border-dashed border-gray-200 dark:border-gray-700 p-8 text-center text-sm text-gray-400 dark:text-gray-500">
+            该筛选下暂无任务
+          </div>
           <div
-            v-for="item in actionItems"
+            v-for="item in filteredItems"
             :key="item.id"
             class="rounded-xl border overflow-hidden transition-shadow hover:shadow-sm"
             :class="item.status === 'not_achieved'
@@ -685,8 +691,27 @@ function hasReview(item: any): boolean {
 
 const actionItems = computed(() => current.value?.action_items || [])
 const doneCount = computed(() => actionItems.value.filter((i: any) => i.status === 'verified').length)
-const activeCount = computed(() => actionItems.value.filter((i: any) => ['in_progress', 'submitted'].includes(i.status)).length)
 const overdueCount = computed(() => actionItems.value.filter((i: any) => isOverdue(i)).length)
+
+function statusCount(s: string) {
+  return actionItems.value.filter((i: any) => i.status === s).length
+}
+
+// 状态筛选
+const filterStatus = ref<string | null>(null)
+const filters = computed(() => [
+  { value: null, label: '全部', count: actionItems.value.length, color: 'text-gray-900 dark:text-gray-100' },
+  { value: 'in_progress', label: '进行中', count: statusCount('in_progress'), color: 'text-blue-600 dark:text-blue-400' },
+  { value: 'submitted', label: '待验收', count: statusCount('submitted'), color: 'text-amber-600 dark:text-amber-400' },
+  { value: 'verified', label: '已达成', count: doneCount.value, color: 'text-emerald-600 dark:text-emerald-400' },
+  { value: 'not_achieved', label: '未达成', count: statusCount('not_achieved'), color: 'text-red-600 dark:text-red-400' },
+])
+const filteredItems = computed(() =>
+  filterStatus.value ? actionItems.value.filter((i: any) => i.status === filterStatus.value) : actionItems.value,
+)
+function toggleFilter(value: string | null) {
+  filterStatus.value = filterStatus.value === value ? null : value
+}
 const progressPct = computed(() =>
   actionItems.value.length > 0 ? (doneCount.value / actionItems.value.length) * 100 : 0,
 )
