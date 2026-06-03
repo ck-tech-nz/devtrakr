@@ -129,23 +129,30 @@
         class="grid grid-cols-1 gap-4"
         :class="{ 'lg:grid-cols-2': hasPlan && hasActivity }"
       >
-        <!-- 我的提升计划 -->
+        <!-- 我的任务 -->
         <div v-if="hasPlan" class="section-card">
           <div class="section-header">
-            <h3 class="section-title">我的提升计划</h3>
+            <h3 class="section-title">
+              我的任务
+              <span class="section-badge">{{ myTasks.length }}</span>
+            </h3>
             <NuxtLink to="/app/ai/my-plan" class="section-link">查看全部</NuxtLink>
           </div>
-          <div class="plan-summary">
-            <span class="plan-summary-item">{{ planData.done }}/{{ planData.total }} 已完成</span>
-            <span class="plan-summary-dot">·</span>
-            <span class="plan-summary-item">{{ planData.earned }} / {{ planData.total_points }} 分</span>
-          </div>
-          <UProgress :value="planData.total > 0 ? planData.done / planData.total * 100 : 0" size="xs" class="plan-progress" />
-          <div class="plan-items">
-            <div v-for="item in planData.pending_items" :key="item.id" class="plan-item">
-              <span class="plan-item-title">{{ item.title }}</span>
-              <span class="plan-item-points">{{ item.points }}分</span>
-            </div>
+          <div class="todo-list">
+            <NuxtLink
+              v-for="t in myTasks"
+              :key="t.id"
+              to="/app/ai/my-plan"
+              class="todo-row"
+            >
+              <span class="dot" :class="taskDotClass(t.priority)" />
+              <span class="todo-title">{{ t.title }}</span>
+              <span
+                v-if="t.due_date"
+                class="todo-priority"
+                :class="taskOverdue(t) ? 'todo-priority--urgent' : 'todo-priority--low'"
+              >截止 {{ t.due_date }}</span>
+            </NuxtLink>
           </div>
         </div>
 
@@ -207,13 +214,13 @@ const stats = ref({
 const recentActivity = ref<any[]>([])
 const showActivity = ref(false)
 const showTodos = ref(false)
-const planData = ref<any>(null)
+const myTasks = ref<any[]>([])
 const isTester = computed(() => hasGroup('测试'))
 
 // 空内容折叠：单卡内容为空时让相邻卡占满整行，两张都为空则整行隐藏
 const hasTodos = computed(() => myIssues.value.length > 0)
 const hasMentions = computed(() => mentions.value.length > 0)
-const hasPlan = computed(() => Boolean(planData.value))
+const hasPlan = computed(() => myTasks.value.length > 0)
 const hasActivity = computed(() => recentActivity.value.length > 0)
 
 // 已解决环比：(本周 - 上周) / 上周 * 100
@@ -315,17 +322,23 @@ function avatarInitial(name?: string): string {
 async function fetchPlanSummary() {
   try {
     const res = await api<any>('/api/kpi/plans/me/')
-    if (res.current) {
-      const items = res.current.action_items || []
-      const done = items.filter((i: any) => i.status === 'verified').length
-      const earned = items.reduce((s: number, i: any) => s + (i.earned_points || 0), 0)
-      const total_points = items.reduce((s: number, i: any) => s + i.points, 0)
-      const pending_items = items
-        .filter((i: any) => !['verified', 'not_achieved'].includes(i.status))
-        .slice(0, 3)
-      planData.value = { done, total: items.length, earned, total_points, pending_items }
-    }
-  } catch { /* 没有提升计划时跳过 */ }
+    const items = res.current?.action_items || []
+    myTasks.value = items
+      .filter((i: any) => !['verified', 'not_achieved'].includes(i.status))
+      .slice(0, 8)
+  } catch { /* 无计划时跳过 */ }
+}
+
+function taskDotClass(priority: string): string {
+  if (priority === 'high') return 'dot--high'
+  if (priority === 'medium') return 'dot--mid'
+  return 'dot--low'
+}
+function taskOverdue(t: any): boolean {
+  if (!t.due_date) return false
+  const d = new Date()
+  const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  return t.due_date < today
 }
 
 async function fetchTesterTodos(): Promise<any[]> {
