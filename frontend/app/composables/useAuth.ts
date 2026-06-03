@@ -43,12 +43,17 @@ export function useAuth() {
 
   // 模拟登录：暂存管理员原 token，换入目标用户 token
   async function impersonate(userId: number | string) {
+    // 已处于模拟态则拒绝（防止覆盖暂存的管理员 token）
+    if (localStorage.getItem('admin_access_token')) return
     const res = await api<{ access: string; refresh: string }>('/api/auth/impersonate/', {
       method: 'POST',
       body: { user_id: userId },
     })
-    localStorage.setItem('admin_access_token', localStorage.getItem('access_token') || '')
-    localStorage.setItem('admin_refresh_token', localStorage.getItem('refresh_token') || '')
+    // 二次校验：并发/双击下若已被其它调用暂存，则不再覆盖
+    if (!localStorage.getItem('admin_access_token')) {
+      localStorage.setItem('admin_access_token', localStorage.getItem('access_token') || '')
+      localStorage.setItem('admin_refresh_token', localStorage.getItem('refresh_token') || '')
+    }
     setTokens(res.access, res.refresh)
     await fetchMe()
     navigateTo('/app')

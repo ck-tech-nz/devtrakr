@@ -38,6 +38,8 @@
             size="xs"
             color="neutral"
             variant="soft"
+            :loading="impersonatingId === row.original.id"
+            :disabled="impersonatingId !== null"
             @click="onImpersonate(row.original)"
           >
             模拟登录
@@ -108,6 +110,7 @@ const { api } = useApi()
 const { resolveAvatarUrl } = useAvatars()
 const auth = useAuth()
 const toast = useToast()
+const impersonatingId = ref<number | string | null>(null)
 
 const loading = ref(true)
 const users = ref<any[]>([])
@@ -174,10 +177,13 @@ async function handleCreate() {
 async function onImpersonate(row: { id: number | string; name?: string; username: string }) {
   const label = row.name || row.username
   if (!window.confirm(`确定以「${label}」的身份登录？你可以随时点击顶部横幅返回管理员。`)) return
+  impersonatingId.value = row.id
   try {
     await auth.impersonate(row.id)
   } catch (e: any) {
     toast.add({ title: e?.data?.detail || '模拟登录失败', color: 'error' })
+  } finally {
+    impersonatingId.value = null
   }
 }
 

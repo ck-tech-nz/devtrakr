@@ -10,6 +10,8 @@ export function useApi() {
   const clearTokens = () => {
     localStorage.removeItem('access_token')
     localStorage.removeItem('refresh_token')
+    localStorage.removeItem('admin_access_token')
+    localStorage.removeItem('admin_refresh_token')
   }
 
   async function refreshAccessToken(): Promise<string | null> {
@@ -23,6 +25,17 @@ export function useApi() {
       localStorage.setItem('access_token', data.access)
       return data.access
     } catch {
+      // 模拟态下刷新失败（模拟会话短期过期）：恢复管理员会话，而非直接登出
+      const adminAccess = localStorage.getItem('admin_access_token')
+      const adminRefresh = localStorage.getItem('admin_refresh_token')
+      if (adminAccess && adminRefresh) {
+        localStorage.setItem('access_token', adminAccess)
+        localStorage.setItem('refresh_token', adminRefresh)
+        localStorage.removeItem('admin_access_token')
+        localStorage.removeItem('admin_refresh_token')
+        navigateTo('/app/users')
+        return null
+      }
       clearTokens()
       navigateTo('/login')
       return null
