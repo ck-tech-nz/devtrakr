@@ -1,3 +1,5 @@
+from unittest.mock import patch
+
 import pytest
 from django.utils import timezone
 from tests.factories import (
@@ -470,3 +472,108 @@ class TestAdminRegistration:
         from django.contrib import admin as dj_admin
         from apps.kpi.models import KPIScoringConfig
         assert KPIScoringConfig in dj_admin.site._registry
+
+
+class TestPlanEvaluation:
+    """AI 小结 / 员工评价的保存（仅管理者）。"""
+
+    def test_manager_saves_summary_and_evaluation(self, manager_client):
+        client, _ = manager_client
+        plan = ImprovementPlanFactory(period="2026-06", status="published")
+        resp = client.put(f"/api/kpi/plans/{plan.id}/evaluation/", {
+            "ai_summary": "内部小结",
+            "employee_evaluation": "给员工看的评价",
+        }, format="json")
+        assert resp.status_code == 200
+        plan.refresh_from_db()
+        assert plan.ai_summary == "内部小结"
+        assert plan.employee_evaluation == "给员工看的评价"
+
+    def test_employee_cannot_save_evaluation(self, employee_client):
+        client, user = employee_client
+        plan = ImprovementPlanFactory(user=user, period="2026-06", status="published")
+        resp = client.put(f"/api/kpi/plans/{plan.id}/evaluation/",
+                          {"employee_evaluation": "x"}, format="json")
+        assert resp.status_code == 403
+
+
+class TestPlanEvaluationVisibility:
+    """可见性边界：ai_summary 仅管理者可见，员工只能看到 employee_evaluation。"""
+
+    def test_manager_detail_includes_ai_summary(self, manager_client):
+        client, _ = manager_client
+        plan = ImprovementPlanFactory(
+            period="2026-06", status="published",
+            ai_summary="内部机密", employee_evaluation="公开评价")
+        resp = client.get(f"/api/kpi/plans/{plan.id}/")
+        assert resp.status_code == 200
+        assert resp.data["ai_summary"] == "内部机密"
+        assert resp.data["employee_evaluation"] == "公开评价"
+
+    def test_employee_my_plan_hides_summary_shows_evaluation(self, employee_client):
+        client, user = employee_client
+        ImprovementPlanFactory(
+            user=user, period=timezone.now().strftime("%Y-%m"),
+            status="published", ai_summary="内部机密",
+            employee_evaluation="给你的评价")
+        resp = client.get("/api/kpi/plans/me/")
+        assert resp.status_code == 200
+        cur = resp.data["current"]
+        assert "ai_summary" not in cur
+        assert "ai_summary_at" not in cur
+        assert "ai_summary_model" not in cur
+        assert cur["employee_evaluation"] == "给你的评价"
+
+
+class TestPlanAISummary:
+    """LLM 月度小结生成（仅管理者，LLMClient 已 mock）。"""
+
+    def _seed_prompt(self):
+        # 迁移 0017 已在测试库种入该 prompt；这里改写模板/模型即可，避免 slug 撞唯一约束。
+        from apps.ai.models import Prompt
+        Prompt.objects.filter(slug="plan_monthly_summary").update(
+            user_prompt_template="员工：{user_name} 周期：{period} 共 {total}\n{tasks}",
+            llm_model="gpt-4o", is_active=True,
+        )
+
+    def test_manager_generates_summary(self, manager_client):
+        client, _ = manager_client
+        plan = ImprovementPlanFactory(period="2026-06", status="published")
+        ActionItemFactory(plan=plan, status="verified")
+        self._seed_prompt()
+        with patch("apps.ai.client.LLMClient") as MockClient:
+            MockClient.return_value.complete.return_value = \
+                '{"summary": "本月表现稳定，建议加强复盘"}'
+            resp = client.post(f"/api/kpi/plans/{plan.id}/ai-summary/")
+        assert resp.status_code == 200
+        assert resp.data["ai_summary"] == "本月表现稳定，建议加强复盘"
+        plan.refresh_from_db()
+        assert plan.ai_summary == "本月表现稳定，建议加强复盘"
+        assert plan.ai_summary_at is not None
+        assert plan.ai_summary_model  # 取自 prompt.llm_model
+
+    def test_falls_back_to_raw_when_not_json(self, manager_client):
+        client, _ = manager_client
+        plan = ImprovementPlanFactory(period="2026-06", status="published")
+        self._seed_prompt()
+        with patch("apps.ai.client.LLMClient") as MockClient:
+            MockClient.return_value.complete.return_value = "纯文本小结，不是 JSON"
+            resp = client.post(f"/api/kpi/plans/{plan.id}/ai-summary/")
+        assert resp.status_code == 200
+        assert resp.data["ai_summary"] == "纯文本小结，不是 JSON"
+
+    def test_missing_prompt_returns_400(self, manager_client):
+        client, _ = manager_client
+        # 停用种子 prompt，模拟"未配置"场景
+        from apps.ai.models import Prompt
+        Prompt.objects.filter(slug="plan_monthly_summary").update(is_active=False)
+        plan = ImprovementPlanFactory(period="2026-06", status="published")
+        resp = client.post(f"/api/kpi/plans/{plan.id}/ai-summary/")
+        assert resp.status_code == 400
+
+    def test_employee_cannot_generate_summary(self, employee_client):
+        client, user = employee_client
+        plan = ImprovementPlanFactory(user=user, period="2026-06", status="published")
+        self._seed_prompt()
+        resp = client.post(f"/api/kpi/plans/{plan.id}/ai-summary/")
+        assert resp.status_code == 403
