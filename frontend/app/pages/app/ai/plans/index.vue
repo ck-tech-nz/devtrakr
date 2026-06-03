@@ -81,12 +81,14 @@
 
         <!-- 待验收 -->
         <template #reviewing-cell="{ row }">
-          <span class="text-amber-600 dark:text-amber-400">{{ r(row).reviewing ?? 0 }}</span>
+          <span v-if="r(row).plan_id" class="text-amber-600 dark:text-amber-400">{{ r(row).reviewing ?? 0 }}</span>
+          <span v-else class="text-gray-300 dark:text-gray-600">-</span>
         </template>
 
         <!-- 已完成 -->
         <template #done-cell="{ row }">
-          <span class="text-emerald-600 dark:text-emerald-400">{{ r(row).done ?? 0 }}</span>
+          <span v-if="r(row).plan_id" class="text-emerald-600 dark:text-emerald-400">{{ r(row).done ?? 0 }}</span>
+          <span v-else class="text-gray-300 dark:text-gray-600">-</span>
         </template>
 
         <!-- 操作列 -->
@@ -235,7 +237,7 @@ const tableRows = computed<PlanRow[]>(() => {
     avatar: p.user?.avatar || p.avatar || '',
     plan_id: p.id ?? null,
     status: p.status ?? null,
-    items_count: p.action_items_count ?? p.items_count ?? null,
+    items_count: p.item_count ?? p.action_items_count ?? p.items_count ?? null,
     reviewing: p.reviewing_count ?? 0,
     done: p.done_count ?? 0,
   }))
@@ -330,9 +332,13 @@ async function openDispatch() {
     form.value.review_dimensions = JSON.parse(JSON.stringify(pool.value))
   } catch { pool.value = [] }
   if (!memberOptions.value.length) {
-    const data = await api<any>('/api/users/?page_size=200')
-    const users = (data.results || data || []) as any[]
-    memberOptions.value = users.map((u: any) => ({ label: u.name || u.username, value: u.id }))
+    try {
+      const data = await api<any>('/api/users/?page_size=200')
+      const users = (data.results || data || []) as any[]
+      memberOptions.value = users.map((u: any) => ({ label: u.name || u.username, value: u.id }))
+    } catch {
+      toast.add({ title: '加载成员失败', color: 'error' })
+    }
   }
   dispatchOpen.value = true
 }
