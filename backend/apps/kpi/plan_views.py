@@ -266,16 +266,36 @@ class ActionItemVerifyView(APIView):
             item = ActionItem.objects.get(pk=pk)
         except ActionItem.DoesNotExist:
             return Response({"detail": "行动项不存在"}, status=status.HTTP_404_NOT_FOUND)
+
         new_status = request.data.get("status")
         if new_status not in ("verified", "not_achieved"):
-            return Response({"detail": "状态必须为 verified 或 not_achieved"}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"detail": "状态必须为 verified 或 not_achieved"},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        dims = request.data.get("review_dimensions")
+        if dims is None:
+            dims = item.review_dimensions or []
+
         if new_status == "verified":
-            qf = request.data.get("quality_factor")
-            if qf is None:
-                return Response({"detail": "验收需要提供 quality_factor"}, status=status.HTTP_400_BAD_REQUEST)
-            item.quality_factor = qf
+            review_comment = (request.data.get("review_comment") or "").strip()
+            if not review_comment:
+                return Response({"detail": "验收需填写总评"}, status=status.HTTP_400_BAD_REQUEST)
+            scores = request.data.get("scores") or {}
+            valid_keys = {d["key"] for d in dims}
+            for k, v in scores.items():
+                if k not in valid_keys:
+                    return Response({"detail": f"维度 {k} 不属于本任务"}, status=status.HTTP_400_BAD_REQUEST)
+                if not isinstance(v, (int, float)) or isinstance(v, bool) or not (1 <= v <= 5):
+                    return Response({"detail": f"维度 {k} 评分须为 1-5"}, status=status.HTTP_400_BAD_REQUEST)
+            item.scores = scores
+            item.review_comment = review_comment
+            item.review_dimensions = dims
+
         item.status = new_status
-        item.save(update_fields=["status", "quality_factor", "updated_at"])
+        item.reviewed_by = request.user
+        item.reviewed_at = timezone.now()
+        item.save(update_fields=["status", "scores", "review_comment", "review_dimensions",
+                                 "reviewed_by", "reviewed_at", "updated_at"])
         return Response(ActionItemSerializer(item).data)
 
 

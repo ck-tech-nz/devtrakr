@@ -123,17 +123,46 @@ class TestActionItemStatusAPI:
 
 
 class TestActionItemVerifyAPI:
-    def test_manager_verifies_item(self, manager_client):
-        client, _ = manager_client
-        item = ActionItemFactory(status="submitted", points=100)
-        resp = client.post(
-            f"/api/kpi/action-items/{item.id}/verify/",
-            {"status": "verified", "quality_factor": "1.20"}, format="json"
-        )
+    def _submitted_item(self):
+        dims = [{"key": "quality", "label": "完成质量", "weight": 1.0}]
+        return ActionItemFactory(status="submitted", review_dimensions=dims)
+
+    def test_manager_verifies_with_scores(self, manager_client):
+        client, manager = manager_client
+        item = self._submitted_item()
+        resp = client.post(f"/api/kpi/action-items/{item.id}/verify/", {
+            "status": "verified", "scores": {"quality": 4},
+            "review_comment": "完成质量不错，但主动性欠缺",
+        }, format="json")
         assert resp.status_code == 200
         item.refresh_from_db()
         assert item.status == "verified"
-        assert float(item.quality_factor) == 1.2
+        assert item.scores == {"quality": 4}
+        assert item.reviewed_by == manager
+        assert item.review_comment
+
+    def test_verify_requires_comment(self, manager_client):
+        client, _ = manager_client
+        item = self._submitted_item()
+        resp = client.post(f"/api/kpi/action-items/{item.id}/verify/",
+                           {"status": "verified", "scores": {"quality": 4}}, format="json")
+        assert resp.status_code == 400
+
+    def test_verify_rejects_unknown_dimension(self, manager_client):
+        client, _ = manager_client
+        item = self._submitted_item()
+        resp = client.post(f"/api/kpi/action-items/{item.id}/verify/",
+                           {"status": "verified", "scores": {"speed": 4}, "review_comment": "x"}, format="json")
+        assert resp.status_code == 400
+
+    def test_not_achieved(self, manager_client):
+        client, _ = manager_client
+        item = ActionItemFactory(status="submitted")
+        resp = client.post(f"/api/kpi/action-items/{item.id}/verify/",
+                           {"status": "not_achieved"}, format="json")
+        assert resp.status_code == 200
+        item.refresh_from_db()
+        assert item.status == "not_achieved"
 
 
 class TestCommentAPI:
