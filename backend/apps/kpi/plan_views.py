@@ -43,6 +43,21 @@ class MyPlanView(APIView):
         now = timezone.now()
         current_period = now.strftime("%Y-%m")
 
+        # 指定月份：返回该月计划详情（用于"过往月份"展开查看自己的任务）
+        period = request.query_params.get("period")
+        if period and period != current_period:
+            plan = (
+                ImprovementPlan.objects.filter(
+                    user=request.user,
+                    period=period,
+                    status__in=["published", "archived"],
+                )
+                .prefetch_related("action_items__comments")
+                .select_related("reviewed_by")
+                .first()
+            )
+            return Response({"plan": PlanDetailSerializer(plan).data if plan else None})
+
         current = (
             ImprovementPlan.objects.filter(
                 user=request.user,
@@ -54,10 +69,11 @@ class MyPlanView(APIView):
             .first()
         )
 
+        # 历史：除当月外，所有已发布/已归档的月份（含计数，详情按需用 ?period= 拉取）
         history = (
             ImprovementPlan.objects.filter(
                 user=request.user,
-                status="archived",
+                status__in=["published", "archived"],
             )
             .exclude(period=current_period)
             .prefetch_related("action_items")
@@ -219,6 +235,13 @@ class PlanEditView(APIView):
                 "dimension": item_data.get("dimension", "general"),
                 "sort_order": i,
             }
+            # 截止日期：仅当传入时更新（避免覆盖已有值为 None）
+            if "due_date" in item_data:
+                defaults["due_date"] = item_data.get("due_date") or None
+            # 本任务点评维度：仅当传入合法列表时更新
+            dims = item_data.get("review_dimensions")
+            if isinstance(dims, list) and all(isinstance(d, dict) and "key" in d for d in dims):
+                defaults["review_dimensions"] = dims
             if item_id and str(item_id) in existing_ids:
                 ActionItem.objects.filter(id=item_id, plan=plan).update(**defaults)
             else:
