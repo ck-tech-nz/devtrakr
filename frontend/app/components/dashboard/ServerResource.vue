@@ -20,8 +20,17 @@
 
 <script setup lang="ts">
 // 基础设施资源监控:嵌入地址来自运行时环境变量,留空则整卡不渲染。
-const url = computed(() => useRuntimeConfig().public.serverMonitorUrl as string)
+const colorMode = useColorMode()
 const expanded = ref(true)
+
+// 追加 &theme= 跟随应用主题:切换深浅色时 src 变化 → iframe 自动重载并渲染对应主题。
+const url = computed(() => {
+  const base = (useRuntimeConfig().public.serverMonitorUrl as string) || ''
+  if (!base) return ''
+  const theme = colorMode.value === 'dark' ? 'dark' : 'light'
+  const sep = base.includes('?') ? '&' : '?'
+  return `${base}${sep}theme=${theme}`
+})
 </script>
 
 <style scoped>
