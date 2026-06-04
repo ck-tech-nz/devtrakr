@@ -43,6 +43,7 @@ export default defineNuxtConfig({
       buildDate: buildInfo.buildDate || '',
       nuxtVersion,
       vueVersion,
+      serverMonitorUrl: '',
     },
   },
   app: {

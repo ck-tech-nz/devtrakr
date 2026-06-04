@@ -22,6 +22,8 @@ services:
       context: ./frontend
       args:
         NUXT_API_BASE: http://backend:8000
+    environment:
+      - NUXT_PUBLIC_SERVER_MONITOR_URL=${NUXT_PUBLIC_SERVER_MONITOR_URL:-}
     ports:
       - "3000:3000"
     depends_on:
