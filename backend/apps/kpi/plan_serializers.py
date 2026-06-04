@@ -115,7 +115,7 @@ class PlanListSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
     def get_item_count(self, obj):
-        return obj.action_items.count()
+        return len(obj.action_items.all())  # 复用 prefetch 缓存，避免额外 COUNT 查询
 
     def get_total_points(self, obj):
         return sum(item.points for item in obj.action_items.all())

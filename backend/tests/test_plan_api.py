@@ -216,6 +216,33 @@ class TestActionItemVerifyAPI:
         assert clone.status == "pending"
         assert str(clone.carried_from_id) == str(item.id)
 
+    def test_cannot_verify_unsubmitted_item(self, manager_client):
+        # 状态机守卫：员工尚未提交（pending / in_progress）的任务不可直接验收
+        client, _ = manager_client
+        for st in ("pending", "in_progress"):
+            item = ActionItemFactory(status=st,
+                                     review_dimensions=[{"key": "quality", "label": "质量", "weight": 1.0}])
+            resp = client.post(f"/api/kpi/action-items/{item.id}/verify/",
+                               {"status": "verified", "scores": {"quality": 4},
+                                "review_comment": "x"}, format="json")
+            assert resp.status_code == 400, st
+            item.refresh_from_db()
+            assert item.status == st  # 状态未被改动
+
+    def test_carry_over_is_idempotent(self, manager_client):
+        # 重复「未达成 + 顺延」只克隆一次，避免双击/重试产生重复任务
+        from apps.kpi.models import ActionItem, ImprovementPlan
+        client, _ = manager_client
+        plan = ImprovementPlanFactory(period="2026-06", status="published")
+        item = ActionItemFactory(plan=plan, status="submitted", title="只顺延一次")
+        body = {"status": "not_achieved", "review_comment": "下月再做",
+                "not_achieved_reason": "blocked", "next_action": "carry_over"}
+        r1 = client.post(f"/api/kpi/action-items/{item.id}/verify/", body, format="json")
+        r2 = client.post(f"/api/kpi/action-items/{item.id}/verify/", body, format="json")
+        assert r1.status_code == 200 and r2.status_code == 200
+        assert r1.data["carried_to_period"] == r2.data["carried_to_period"] == "2026-07"
+        assert ActionItem.objects.filter(carried_from=item).count() == 1
+
     def test_verify_rejects_non_dict_scores(self, manager_client):
         client, _ = manager_client
         item = self._submitted_item()

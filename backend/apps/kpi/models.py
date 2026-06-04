@@ -335,7 +335,7 @@ class ActionItem(models.Model):
         """按本任务自己的 review_dimensions 权重对已打分维度加权平均（1-5）；未打分返回 None。"""
         if not self.scores:
             return None
-        dims = {d["key"]: float(d.get("weight", 0)) for d in (self.review_dimensions or [])}
+        dims = {d["key"]: float(d.get("weight", 0)) for d in (self.review_dimensions or []) if isinstance(d, dict) and "key" in d}
         den = sum(dims.get(k, 0) for k in self.scores)
         if dims and den:
             num = sum(float(v) * dims.get(k, 0) for k, v in self.scores.items())
@@ -348,7 +348,7 @@ class ActionItem(models.Model):
         """员工自评的加权综合分（1-5）；未自评返回 None。逻辑同 overall_score。"""
         if not self.self_scores:
             return None
-        dims = {d["key"]: float(d.get("weight", 0)) for d in (self.review_dimensions or [])}
+        dims = {d["key"]: float(d.get("weight", 0)) for d in (self.review_dimensions or []) if isinstance(d, dict) and "key" in d}
         den = sum(dims.get(k, 0) for k in self.self_scores)
         if dims and den:
             num = sum(float(v) * dims.get(k, 0) for k, v in self.self_scores.items())

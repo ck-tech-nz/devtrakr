@@ -1,3 +1,4 @@
+import logging
 from datetime import timedelta
 from rest_framework import status
 from rest_framework.response import Response
@@ -14,6 +15,8 @@ from .serializers import (
 )
 
 User = get_user_model()
+
+logger = logging.getLogger("apps.users.impersonation")
 
 IMPERSONATION_REFRESH_LIFETIME = timedelta(minutes=30)
 
@@ -144,4 +147,9 @@ class ImpersonateView(APIView):
         refresh["impersonated_by"] = actor.id
         refresh["impersonated_by_username"] = actor.username
         access = refresh.access_token
+        # 审计：模拟登录是超管行为，留一条持久日志（token 内 claim 过期即丢失）
+        logger.warning(
+            "impersonation: actor=%s(id=%s) -> target=%s(id=%s)",
+            actor.username, actor.id, target.username, target.id,
+        )
         return Response({"access": str(access), "refresh": str(refresh)})

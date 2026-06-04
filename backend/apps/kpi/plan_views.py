@@ -3,6 +3,8 @@
 """
 from datetime import date
 
+from django.core.exceptions import ValidationError as DjangoValidationError
+from django.db.models import Prefetch
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
@@ -16,6 +18,21 @@ from .plan_serializers import (
     PlanListSerializer, PlanDetailSerializer,
     ActionItemSerializer, ActionItemCommentSerializer,
 )
+
+
+def _plan_detail_qs():
+    """带预取的计划查询集，供所有返回 PlanDetailSerializer 的视图复用，
+    避免 action_items 的 reviewed_by / comments.author / carried_to 触发 N+1。"""
+    return (
+        ImprovementPlan.objects.select_related("user", "reviewed_by")
+        .prefetch_related(
+            Prefetch(
+                "action_items",
+                queryset=ActionItem.objects.select_related("reviewed_by")
+                .prefetch_related("comments__author", "carried_to"),
+            )
+        )
+    )
 
 
 class PlanListView(APIView):
@@ -47,25 +64,23 @@ class MyPlanView(APIView):
         period = request.query_params.get("period")
         if period and period != current_period:
             plan = (
-                ImprovementPlan.objects.filter(
+                _plan_detail_qs()
+                .filter(
                     user=request.user,
                     period=period,
                     status__in=["published", "archived"],
                 )
-                .prefetch_related("action_items__comments")
-                .select_related("reviewed_by")
                 .first()
             )
             return Response({"plan": PlanDetailSerializer(plan).data if plan else None})
 
         current = (
-            ImprovementPlan.objects.filter(
+            _plan_detail_qs()
+            .filter(
                 user=request.user,
                 period=current_period,
                 status__in=["published", "archived"],
             )
-            .prefetch_related("action_items__comments")
-            .select_related("reviewed_by")
             .first()
         )
 
@@ -93,11 +108,7 @@ class PlanDetailView(APIView):
 
     def get(self, request, pk):
         try:
-            plan = (
-                ImprovementPlan.objects.select_related("user", "reviewed_by")
-                .prefetch_related("action_items__comments__author")
-                .get(pk=pk)
-            )
+            plan = _plan_detail_qs().get(pk=pk)
         except ImprovementPlan.DoesNotExist:
             return Response({"detail": "计划不存在"}, status=status.HTTP_404_NOT_FOUND)
         return Response(PlanDetailSerializer(plan, context={"manager": True}).data)
@@ -110,7 +121,7 @@ class PlanPublishView(APIView):
 
     def post(self, request, pk):
         try:
-            plan = ImprovementPlan.objects.get(pk=pk)
+            plan = _plan_detail_qs().get(pk=pk)
         except ImprovementPlan.DoesNotExist:
             return Response({"detail": "计划不存在"}, status=status.HTTP_404_NOT_FOUND)
         if plan.status != ImprovementPlan.Status.DRAFT:
@@ -129,7 +140,7 @@ class PlanArchiveView(APIView):
 
     def post(self, request, pk):
         try:
-            plan = ImprovementPlan.objects.get(pk=pk)
+            plan = _plan_detail_qs().get(pk=pk)
         except ImprovementPlan.DoesNotExist:
             return Response({"detail": "计划不存在"}, status=status.HTTP_404_NOT_FOUND)
         if plan.status != ImprovementPlan.Status.PUBLISHED:
@@ -199,7 +210,7 @@ class PlanGenerateView(APIView):
             created += 1
 
         if user_id and created == 1:
-            plan = ImprovementPlan.objects.filter(user_id=user_id, period=period).first()
+            plan = _plan_detail_qs().filter(user_id=user_id, period=period).first()
             return Response(PlanDetailSerializer(plan, context={"manager": True}).data, status=status.HTTP_201_CREATED)
 
         return Response({"created": created, "period": period}, status=status.HTTP_201_CREATED)
@@ -212,7 +223,7 @@ class PlanEditView(APIView):
 
     def put(self, request, pk):
         try:
-            plan = ImprovementPlan.objects.get(pk=pk)
+            plan = _plan_detail_qs().get(pk=pk)
         except ImprovementPlan.DoesNotExist:
             return Response({"detail": "计划不存在"}, status=status.HTTP_404_NOT_FOUND)
 
@@ -247,7 +258,7 @@ class PlanEditView(APIView):
             else:
                 ActionItem.objects.create(plan=plan, source=ActionItem.Source.MANAGER, **defaults)
 
-        plan.refresh_from_db()
+        plan = _plan_detail_qs().get(pk=pk)  # 重取并预取，避免响应渲染时 N+1
         return Response(PlanDetailSerializer(plan, context={"manager": True}).data)
 
 
@@ -286,7 +297,6 @@ class ActionItemStatusView(APIView):
             self_eta = request.data.get("self_eta")
             if not self_eta:
                 return Response({"detail": "请填写预计完成日期"}, status=status.HTTP_400_BAD_REQUEST)
-            from django.core.exceptions import ValidationError as DjangoValidationError
             try:
                 ActionItem._meta.get_field("self_eta").to_python(self_eta)
             except (DjangoValidationError, ValueError, TypeError):
@@ -351,6 +361,12 @@ class ActionItemVerifyView(APIView):
             return Response({"detail": "状态必须为 verified 或 not_achieved"},
                             status=status.HTTP_400_BAD_REQUEST)
 
+        # 状态机：仅可验收员工已提交（或此前已判过、用于重开/改判）的任务，
+        # 禁止对 pending / in_progress（员工尚未提交）的任务直接打分验收
+        if item.status in (ActionItem.Status.PENDING, ActionItem.Status.IN_PROGRESS):
+            return Response({"detail": "该任务尚未提交，无法验收"},
+                            status=status.HTTP_400_BAD_REQUEST)
+
         dims = request.data.get("review_dimensions")
         if dims is None:
             dims = item.review_dimensions or []
@@ -400,9 +416,10 @@ class ActionItemVerifyView(APIView):
         item.save(update_fields=update_fields)
 
         # 未达成的下一步：顺延重做 → 在下月计划克隆一条新任务（保留溯源）
+        # 幂等：已顺延过则复用既有克隆，避免重复点击/重试产生重复任务
         carried = None
         if new_status == "not_achieved" and request.data.get("next_action") == "carry_over":
-            carried = self._carry_over(item, request.user)
+            carried = item.carried_to.first() or self._carry_over(item, request.user)
 
         data = ActionItemSerializer(item).data
         if carried is not None:
@@ -481,7 +498,6 @@ class TaskDispatchView(APIView):
                             status=status.HTTP_400_BAD_REQUEST)
 
         # 校验 due_date 格式（避免畸形输入直达 ORM 触发 500）
-        from django.core.exceptions import ValidationError as DjangoValidationError
         try:
             ActionItem._meta.get_field("due_date").to_python(due_date)
         except (DjangoValidationError, ValueError, TypeError):
@@ -546,11 +562,7 @@ class PlanAISummaryView(APIView):
         from apps.ai.models import Prompt
 
         try:
-            plan = (
-                ImprovementPlan.objects.select_related("user")
-                .prefetch_related("action_items")
-                .get(pk=pk)
-            )
+            plan = _plan_detail_qs().get(pk=pk)
         except ImprovementPlan.DoesNotExist:
             return Response({"detail": "计划不存在"}, status=status.HTTP_404_NOT_FOUND)
 
@@ -612,6 +624,7 @@ class PlanAISummaryView(APIView):
             summary = ""
         if not summary:
             summary = (raw or "").strip()
+        summary = summary[:8000]  # 兜底上限：防止异常 LLM 返回超长文本无界落库
 
         plan.ai_summary = summary
         plan.ai_summary_at = timezone.now()
@@ -627,7 +640,7 @@ class PlanEvaluationView(APIView):
 
     def put(self, request, pk):
         try:
-            plan = ImprovementPlan.objects.get(pk=pk)
+            plan = _plan_detail_qs().get(pk=pk)
         except ImprovementPlan.DoesNotExist:
             return Response({"detail": "计划不存在"}, status=status.HTTP_404_NOT_FOUND)
 

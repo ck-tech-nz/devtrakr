@@ -302,9 +302,9 @@ async function openDispatch() {
   } catch { pool.value = [] }
   if (!memberOptions.value.length) {
     try {
-      const data = await api<any>('/api/users/?page_size=200')
-      const users = (data.results || data || []) as any[]
-      memberOptions.value = users.map((u: any) => ({ label: u.name || u.username, value: u.id }))
+      // 用轻量 choices 接口（无分页，已排除机器人）——避免 /users/ 默认分页只回前 20 人
+      const users = await api<any[]>('/api/users/choices/')
+      memberOptions.value = (users || []).map((u: any) => ({ label: u.name, value: u.id }))
     } catch {
       toast.add({ title: '加载成员失败', color: 'error' })
     }
