@@ -98,6 +98,7 @@ git push -f origin main:env/prod     # Deploy to production
 - User groups are defined in `sync_page_perms` management command — run after migrations
 - Frontend language is Chinese (zh-hans)
 - create skills in ENGLISH, but code comments and UI text in CHINESE
+- For runtime/deprecation warnings, only resolve via dependency upgrades or upstream fixes; do not silence warnings (for example via `NODE_OPTIONS --disable-warning`) and do not downgrade only to hide warnings. If it cannot be solved safely, report it explicitly.
 
 ## gstack
 
