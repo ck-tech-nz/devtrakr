@@ -289,6 +289,19 @@
       "is_active": true,
       "meta": {},
       "source": "seed"
+    },
+    {
+      "path": "/app/settings/bulletins",
+      "label": "走马灯管理",
+      "icon": "i-heroicons-megaphone",
+      "permission": "notifications.view_bulletin",
+      "parent": "#group:system",
+      "is_group": false,
+      "sort_order": 22,
+      "show_in_nav": true,
+      "is_active": true,
+      "meta": {},
+      "source": "seed"
     }
   ],
   "seed_groups": {
@@ -471,6 +484,10 @@
         "kpi.view_kpisnapshot",
         "kpi.view_own_kpi",
         "kpi.view_own_plan",
+        "notifications.add_bulletin",
+        "notifications.change_bulletin",
+        "notifications.delete_bulletin",
+        "notifications.view_bulletin",
         "notifications.add_notification",
         "notifications.add_notificationrecipient",
         "notifications.change_notification",
