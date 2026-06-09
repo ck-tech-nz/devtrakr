@@ -20,6 +20,7 @@ export const DASHBOARD_BLOCKS: readonly DashboardBlockMeta[] = Object.freeze([
   { id: 'tasks', title: '我的任务', defaultVisible: true },
   { id: 'activity', title: '最近动态', defaultVisible: true },
   { id: 'server', title: '服务器资源', defaultVisible: true },
+  { id: 'gateway', title: '电话线路状态', defaultVisible: true },
 ])
 
 export function defaultLayout(): LayoutEntry[] {

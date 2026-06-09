@@ -5,6 +5,7 @@ from .views import (
     DashboardPriorityDistributionView,
     DashboardLeaderboardView,
     DashboardRecentActivityView,
+    GatewayStatusView,
 )
 
 urlpatterns = [
@@ -13,4 +14,5 @@ urlpatterns = [
     path("priority-distribution/", DashboardPriorityDistributionView.as_view(), name="dashboard-priority"),
     path("developer-leaderboard/", DashboardLeaderboardView.as_view(), name="dashboard-leaderboard"),
     path("recent-activity/", DashboardRecentActivityView.as_view(), name="dashboard-activity"),
+    path("gateway-status/", GatewayStatusView.as_view(), name="dashboard-gateway-status"),
 ]

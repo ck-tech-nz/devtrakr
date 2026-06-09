@@ -50,6 +50,7 @@ import DashboardMentions from '~/components/dashboard/Mentions.vue'
 import DashboardTasks from '~/components/dashboard/Tasks.vue'
 import DashboardActivity from '~/components/dashboard/Activity.vue'
 import DashboardServerResource from '~/components/dashboard/ServerResource.vue'
+import DashboardGatewayStatus from '~/components/dashboard/GatewayStatus.vue'
 
 definePageMeta({ layout: 'default' })
 
@@ -85,6 +86,7 @@ const availability = computed<Record<string, boolean>>(() => ({
   tasks: myTasks.value.length > 0,
   activity: recentActivity.value.length > 0,
   server: !!serverMonitorUrl.value,
+  gateway: true,
 }))
 
 // id -> 组件
@@ -96,6 +98,7 @@ const blockComponents: Record<string, Component> = {
   tasks: DashboardTasks,
   activity: DashboardActivity,
   server: DashboardServerResource,
+  gateway: DashboardGatewayStatus,
 }
 
 // id -> 该组件所需 props(uptime / server 自取数据,无 props)

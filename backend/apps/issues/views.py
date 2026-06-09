@@ -1,4 +1,6 @@
+import logging
 from datetime import timedelta
+import requests
 from rest_framework import generics, status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -7,7 +9,9 @@ from rest_framework.views import APIView
 from apps.permissions import FullDjangoModelPermissions
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import SearchFilter, OrderingFilter
+from django.conf import settings as django_settings
 from django.contrib.auth import get_user_model
+from django.core.cache import cache
 from django.utils import timezone
 from django.db.models import Count, Avg, Case, F, IntegerField, Subquery, OuterRef, Value, TextField, When
 from django.db.models.fields.json import KeyTextTransform
@@ -262,6 +266,59 @@ class DashboardRecentActivityView(APIView):
     def get(self, request):
         activities = Activity.objects.select_related("user", "issue")[:20]
         return Response(ActivitySerializer(activities, many=True).data)
+
+
+logger = logging.getLogger(__name__)
+
+_GW_CACHE_KEY = "gateway_status:payload"
+_GW_LAST_GOOD_KEY = "gateway_status:last_good"
+_GW_LAST_GOOD_TTL = 3600  # 1h:上游短时不可达时回退展示的"上次正常"数据
+
+
+class GatewayStatusView(APIView):
+    """电话线路(SIP 网关)连通 + 今日话务状态代理。
+
+    服务端持密钥拉上游并短缓存(默认 12s),避免前端暴露 X-API-Key、
+    混合内容(上游为 http)与 CORS。上游不可达时回退 last-good 并标记 stale。
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        url = django_settings.GATEWAY_STATUS_URL
+        key = django_settings.GATEWAY_STATUS_API_KEY
+        if not url or not key:
+            return Response({"configured": False, "lines": []})
+
+        cached = cache.get(_GW_CACHE_KEY)
+        if cached is not None:
+            return Response({"configured": True, "stale": False, **cached})
+
+        try:
+            resp = requests.get(url, headers={"X-API-Key": key}, timeout=8, allow_redirects=False)
+            resp.raise_for_status()
+            body = resp.json()
+            if not isinstance(body, dict) or body.get("code") != 0:
+                raise ValueError("unexpected upstream body")
+            data = body.get("data")
+            payload = {
+                "fetched_at": timezone.now().isoformat(),
+                "lines": data if isinstance(data, list) else [],
+            }
+            cache.set(_GW_CACHE_KEY, payload, django_settings.GATEWAY_STATUS_CACHE_TTL)
+            cache.set(_GW_LAST_GOOD_KEY, payload, _GW_LAST_GOOD_TTL)
+            return Response({"configured": True, "stale": False, **payload})
+        except Exception:
+            logger.warning("gateway-status upstream fetch failed", exc_info=True)
+            last_good = cache.get(_GW_LAST_GOOD_KEY)
+            if last_good is not None:
+                return Response({"configured": True, "stale": True, **last_good})
+            return Response({
+                "configured": True,
+                "stale": True,
+                "lines": [],
+                "error": "upstream_unavailable",
+            })
 
 
 class IssueGitHubCreateView(APIView):

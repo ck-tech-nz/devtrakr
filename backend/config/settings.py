@@ -194,6 +194,12 @@ DEVTRAKR_TEST_KEY = os.environ.get("DEVTRAKR_TEST_KEY", "")
 DEVTRAKR_PROD_URL = os.environ.get("DEVTRAKR_PROD_URL", "https://devtrakr.matrixai.xin/api/external/notifications/create/")
 DEVTRAKR_PROD_KEY = os.environ.get("DEVTRAKR_PROD_KEY", "")
 
+# 电话线路(SIP 网关)状态代理 — 前端经 /api/dashboard/gateway-status/ 拉取。
+# API_KEY 是密钥,只写 .env 不入库;后端主机需能出网访问该 URL。
+GATEWAY_STATUS_URL = os.environ.get("GATEWAY_STATUS_URL", "")
+GATEWAY_STATUS_API_KEY = os.environ.get("GATEWAY_STATUS_API_KEY", "")
+GATEWAY_STATUS_CACHE_TTL = int(os.environ.get("GATEWAY_STATUS_CACHE_TTL") or "12")
+
 UNFOLD = {
     "SITE_TITLE": "DevTrack",
     "SITE_HEADER": "DevTrack 管理后台",
