@@ -5,8 +5,8 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from apps.permissions import FullDjangoModelPermissions
-from .models import Notification, NotificationRecipient
-from .serializers import NotificationSerializer, NotificationManageSerializer
+from .models import Notification, NotificationRecipient, Bulletin
+from .serializers import NotificationSerializer, NotificationManageSerializer, BulletinPublicSerializer
 from .services import create_broadcast_notification, generate_recipients
 
 User = get_user_model()
@@ -245,3 +245,18 @@ class ManagePublishView(APIView):
         recipient_count = _generate_recipients(notification)
 
         return Response({"id": str(notification.id), "recipients": recipient_count})
+
+
+# ──────────────────────────────────────────────
+# Bulletin endpoints (header carousel)
+# ──────────────────────────────────────────────
+
+
+class BulletinActiveListView(generics.ListAPIView):
+    """Public (any authenticated user) — active carousel content."""
+    serializer_class = BulletinPublicSerializer
+    permission_classes = [IsAuthenticated]
+    pagination_class = None
+
+    def get_queryset(self):
+        return Bulletin.objects.currently_active()

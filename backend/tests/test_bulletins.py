@@ -41,3 +41,30 @@ class TestBulletinQuerySet:
         b_earlier = Bulletin.objects.create(category="quote", content="earlier", sort_order=101)
         result = list(Bulletin.objects.currently_active())
         assert result.index(b_earlier) < result.index(b_later)
+
+
+from tests.factories import BulletinFactory
+
+
+class TestBulletinActiveEndpoint:
+    URL = "/api/notifications/bulletins/active/"
+
+    def test_returns_only_active_to_regular_user(self, regular_client):
+        BulletinFactory(content="shown", is_active=True)
+        BulletinFactory(content="hidden", is_active=False)
+        res = regular_client.get(self.URL)
+        assert res.status_code == 200
+        contents = [b["content"] for b in res.data]
+        assert "shown" in contents
+        assert "hidden" not in contents
+
+    def test_response_shape_is_lean(self, regular_client):
+        BulletinFactory(content="shape-probe", category="quote", source="Linus")
+        res = regular_client.get(self.URL)
+        assert res.status_code == 200
+        item = next(b for b in res.data if b["content"] == "shape-probe")
+        assert set(item.keys()) == {"id", "category", "content", "source", "link_url"}
+
+    def test_requires_authentication(self, api_client):
+        res = api_client.get(self.URL)
+        assert res.status_code in (401, 403)

@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Notification
+from .models import Notification, Bulletin
 
 
 class NotificationSerializer(serializers.ModelSerializer):
@@ -39,3 +39,11 @@ class NotificationManageSerializer(serializers.ModelSerializer):
 
     def get_recipient_count(self, obj):
         return obj.recipients.count()
+
+
+class BulletinPublicSerializer(serializers.ModelSerializer):
+    """Lean serializer for the carousel — no admin/internal fields."""
+
+    class Meta:
+        model = Bulletin
+        fields = ["id", "category", "content", "source", "link_url"]
