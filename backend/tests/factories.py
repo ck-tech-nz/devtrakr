@@ -270,7 +270,7 @@ class ExternalAPIKeyFactory(factory.django.DjangoModelFactory):
     is_active = True
 
 
-from apps.notifications.models import Notification, NotificationRecipient
+from apps.notifications.models import Notification, NotificationRecipient, Bulletin
 
 
 class NotificationFactory(factory.django.DjangoModelFactory):
@@ -291,6 +291,17 @@ class NotificationRecipientFactory(factory.django.DjangoModelFactory):
     user = factory.SubFactory(UserFactory)
     is_read = False
     is_deleted = False
+
+
+class BulletinFactory(factory.django.DjangoModelFactory):
+    class Meta:
+        model = Bulletin
+
+    category = "quote"
+    content = factory.LazyFunction(lambda: fake.sentence())
+    source = ""
+    is_active = True
+    sort_order = factory.Sequence(lambda n: n)
 
 
 class UptimeMonitorFactory(factory.django.DjangoModelFactory):
