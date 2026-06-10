@@ -28,6 +28,12 @@ import type { Bulletin } from '~/composables/useBulletins'
 
 const { announcements, rotating } = useBulletins()
 
+// 轮播状态需在下方 immediate watch 之前声明 —— 该 watch 会在 setup 同步执行时
+// 立刻回调并写 index.value,若 index 尚未声明会触发 TDZ ReferenceError。
+const index = ref(0)
+const paused = ref(false)
+let timer: ReturnType<typeof setInterval> | null = null
+
 // 非公告池在内容加载后打乱一次,避免每次进页面都同序
 const shuffled = ref<Bulletin[]>([])
 watch(rotating, (list) => {
@@ -42,10 +48,6 @@ watch(rotating, (list) => {
 
 // 有公告时:公告置顶常驻(多条在公告间轮播);无公告:轮播其余四类
 const pool = computed<Bulletin[]>(() => (announcements.value.length ? announcements.value : shuffled.value))
-
-const index = ref(0)
-const paused = ref(false)
-let timer: ReturnType<typeof setInterval> | null = null
 
 const current = computed<Bulletin>(() => pool.value[index.value % Math.max(1, pool.value.length)] ?? pool.value[0]!)
 
