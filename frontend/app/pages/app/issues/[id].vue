@@ -55,33 +55,6 @@
           </div>
         </div>
 
-        <div class="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 p-5">
-          <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-4">分析记录</h3>
-          <div class="space-y-4">
-            <div class="form-row">
-              <div class="flex items-center justify-between h-5">
-                <label>备注</label>
-                <FieldSaveStatus :saving="savingField === 'remark'" :saved="savedField === 'remark'" />
-              </div>
-              <UTextarea v-model="form.remark" :rows="2" placeholder="备注信息" @blur="handleBlurSave('remark')" />
-            </div>
-            <div class="form-row">
-              <div class="flex items-center justify-between h-5">
-                <label>原因分析</label>
-                <FieldSaveStatus :saving="savingField === 'cause'" :saved="savedField === 'cause'" />
-              </div>
-              <UTextarea v-model="form.cause" :rows="3" :placeholder="latestAiCause ? `[AI] ${latestAiCause}` : '问题原因'" @blur="handleBlurSave('cause')" />
-            </div>
-            <div class="form-row">
-              <div class="flex items-center justify-between h-5">
-                <label>解决方案</label>
-                <FieldSaveStatus :saving="savingField === 'solution'" :saved="savedField === 'solution'" />
-              </div>
-              <UTextarea v-model="form.solution" :rows="3" :placeholder="latestAiSolution ? `[AI] ${latestAiSolution}` : '解决办法'" @blur="handleBlurSave('solution')" />
-            </div>
-          </div>
-        </div>
-
         <!-- 评论 -->
         <IssueComments v-if="!isNewIssue && issue?.id" :issue-id="issue.id" />
       </div>
@@ -318,6 +291,34 @@
                 :ui="{ cellTrigger: 'data-[selected]:bg-red-500 dark:data-[selected]:bg-red-600' }"
                 @update:model-value="onCalendarUpdate"
               />
+            </div>
+          </div>
+        </div>
+
+        <!-- 分析记录 -->
+        <div class="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 p-5">
+          <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-4">分析记录</h3>
+          <div class="space-y-4">
+            <div class="form-row">
+              <div class="flex items-center justify-between h-5">
+                <label>备注</label>
+                <FieldSaveStatus :saving="savingField === 'remark'" :saved="savedField === 'remark'" />
+              </div>
+              <UTextarea v-model="form.remark" :rows="2" placeholder="备注信息" @blur="handleBlurSave('remark')" />
+            </div>
+            <div class="form-row">
+              <div class="flex items-center justify-between h-5">
+                <label>原因分析</label>
+                <FieldSaveStatus :saving="savingField === 'cause'" :saved="savedField === 'cause'" />
+              </div>
+              <UTextarea v-model="form.cause" :rows="3" :placeholder="latestAiCause ? `[AI] ${latestAiCause}` : '问题原因'" @blur="handleBlurSave('cause')" />
+            </div>
+            <div class="form-row">
+              <div class="flex items-center justify-between h-5">
+                <label>解决方案</label>
+                <FieldSaveStatus :saving="savingField === 'solution'" :saved="savedField === 'solution'" />
+              </div>
+              <UTextarea v-model="form.solution" :rows="3" :placeholder="latestAiSolution ? `[AI] ${latestAiSolution}` : '解决办法'" @blur="handleBlurSave('solution')" />
             </div>
           </div>
         </div>
