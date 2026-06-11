@@ -69,11 +69,18 @@ class IssueComment(models.Model):
 
 副作用：
 
-- POST 成功后：`Activity.objects.create(user=actor, issue=issue, action="commented")`；
-  对 content 里的 @提及发通知（old_content=""）
+- POST 成功后：
+  - `Activity.objects.create(user=actor, issue=issue, action="commented")`
+  - 对 content 里的 @提及发通知（old_content=""）
+  - **bump issue 的 `updated_at`**，让问题列表/看板的更新时间反映评论动态：
+    `Issue.objects.filter(pk=issue.pk).update(updated_at=timezone.now())`。
+    必须用 queryset `.update()` 而非 `issue.save()`——Issue 挂了 simple_history，
+    `save()` 会写一条无字段变化的历史快照，污染「更新历史」卡。
+    只动 `updated_at`、不动 `updated_by`：后者语义是「谁改了 issue 字段」，
+    且在历史追踪范围内，绕过 history 修改会让下次真实编辑的 diff 出现虚假变更。
 - PATCH 成功后：对**新增**的 @提及发通知（old/new content diff，同 description 现有处理）；
-  不写 Activity（编辑不算动态）
-- DELETE：无副作用（已发出的通知不撤回）
+  不写 Activity、不 bump `updated_at`（编辑既有评论不算新讨论动态）
+- DELETE：无副作用（已发出的通知不撤回，不 bump `updated_at`）
 
 序列化器 `IssueCommentSerializer` 字段：
 `id, author, author_name, content, created_at, updated_at, is_edited`。
@@ -145,6 +152,8 @@ UI 文案全部中文。不涉及新页面/导航/路由，无需改 `sync_page_
 - 他人编辑 → 403；管理员编辑他人评论 → 403（管理员只可删不可改）
 - 作者删除 → 204；管理员删除他人评论 → 204；普通他人删除 → 403
 - POST 后产生 `Activity(action="commented")`
+- POST 后 issue 的 `updated_at` 被刷新，且**不**新增 issue 历史快照
+  （`issue.history.count()` 不变，更新历史不被污染）
 - content 含 @提及 → 产生 MENTION 通知；编辑新增提及 → 只对新增者发；@自己不发
 - 跨 issue 的 comment_id → 404；未登录 → 401
 
