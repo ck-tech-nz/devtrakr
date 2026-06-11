@@ -18,21 +18,23 @@
       >
         <div class="flex items-center justify-between px-3 py-1.5 bg-gray-50 dark:bg-gray-800/60 rounded-t-lg">
           <div class="flex items-center gap-2 min-w-0">
-            <img v-if="c.author_avatar" :src="resolveAvatarUrl(c.author_avatar)" class="w-5 h-5 rounded-full shrink-0" />
+            <img v-if="c.author_avatar" :src="resolveAvatarUrl(c.author_avatar)" alt="" class="w-5 h-5 rounded-full shrink-0" />
             <span class="text-xs font-medium text-gray-700 dark:text-gray-300 truncate">{{ c.author_name || '已注销用户' }}</span>
-            <time class="text-[11px] text-gray-400 dark:text-gray-500 shrink-0" :title="c.created_at">{{ timeAgo(c.created_at) }}</time>
+            <time class="text-[11px] text-gray-400 dark:text-gray-500 shrink-0" :datetime="c.created_at" :title="c.created_at">{{ timeAgo(c.created_at) }}</time>
             <span v-if="c.is_edited" class="text-[11px] text-gray-400 dark:text-gray-500 shrink-0">已编辑</span>
           </div>
           <div class="flex items-center gap-1 shrink-0">
             <UButton
               v-if="canEdit(c)"
               data-testid="edit-comment"
+              aria-label="编辑评论"
               size="xs" variant="ghost" color="neutral" icon="i-heroicons-pencil-square"
               @click="startEdit(c)"
             />
             <UButton
               v-if="canDelete(c)"
               data-testid="delete-comment"
+              aria-label="删除评论"
               size="xs" variant="ghost" color="error" icon="i-heroicons-trash"
               @click="pendingDelete = c"
             />
@@ -149,7 +151,7 @@ async function submit() {
     comments.value.push(created)
     draft.value = ''
   } catch (e: any) {
-    toast.add({ title: e?.data?.detail || '评论发表失败', color: 'error' })
+    toast.add({ title: e?.data?.detail || e?.data?.content?.[0] || '评论发表失败', color: 'error' })
   } finally {
     submitting.value = false
   }
@@ -174,7 +176,7 @@ async function saveEdit(c: IssueCommentItem) {
     if (idx !== -1) comments.value[idx] = updated
     cancelEdit()
   } catch (e: any) {
-    toast.add({ title: e?.data?.detail || '评论保存失败', color: 'error' })
+    toast.add({ title: e?.data?.detail || e?.data?.content?.[0] || '评论保存失败', color: 'error' })
   } finally {
     savingEdit.value = false
   }
@@ -189,7 +191,7 @@ async function confirmDelete() {
     comments.value = comments.value.filter(x => x.id !== target.id)
     pendingDelete.value = null
   } catch (e: any) {
-    toast.add({ title: e?.data?.detail || '评论删除失败', color: 'error' })
+    toast.add({ title: e?.data?.detail || e?.data?.content?.[0] || '评论删除失败', color: 'error' })
   } finally {
     deleting.value = false
   }
@@ -197,3 +199,14 @@ async function confirmDelete() {
 
 onMounted(loadComments)
 </script>
+
+<style scoped>
+/* 弹窗局部样式 — 与 app/pages/app/issues/[id].vue 等页面的 modal 样式保持一致 */
+.modal-form { padding: 1.5rem 2rem; }
+.modal-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.5rem; }
+.modal-header h3 { font-size: 1.125rem; font-weight: 600; color: #111827; }
+:root.dark .modal-header h3 { color: #f3f4f6; }
+.modal-body { display: flex; flex-direction: column; gap: 1rem; }
+.modal-footer { display: flex; justify-content: flex-end; gap: 0.75rem; margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid #f3f4f6; }
+:root.dark .modal-footer { border-top-color: #374151; }
+</style>

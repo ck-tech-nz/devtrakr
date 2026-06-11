@@ -91,6 +91,8 @@ describe('IssueComments', () => {
     })
     expect(w.text()).toContain('新评论内容')
     expect(w.text()).toContain('评论 (1)')
+    // 发表成功后草稿编辑器应被清空
+    expect((w.find('[data-testid="new-comment"] [data-testid="editor"]').element as HTMLTextAreaElement).value).toBe('')
     w.unmount()
   })
 
