@@ -1,0 +1,133 @@
+<div id="plw-{{ widget.name }}" class="mt-1">
+  <p class="text-xs text-gray-400 mb-2">顺序为 高 → 低（第一行为最高优先级）；主色用于前端徽章/卡片/行底色与滑块渐变，「无底色」表示该档不着色。</p>
+  <div id="plw-rows-{{ widget.name }}" class="flex flex-col gap-2"></div>
+  <button type="button" id="plw-add-{{ widget.name }}"
+          class="mt-2 inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-md border border-gray-300 text-gray-600 bg-white hover:bg-gray-50 shadow-sm transition dark:bg-gray-800 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700">
+    + 添加优先级
+  </button>
+  <input type="hidden" id="plw-hidden-{{ widget.name }}" name="{{ widget.name }}" />
+</div>
+
+<script>
+(function() {
+  var items = {{ widget.items_json|safe }};
+  var rowsBox = document.getElementById('plw-rows-{{ widget.name }}');
+  var hidden = document.getElementById('plw-hidden-{{ widget.name }}');
+  var addBtn = document.getElementById('plw-add-{{ widget.name }}');
+
+  var INPUT_CLS = 'px-2 py-1 text-sm rounded-md border border-gray-300 bg-white text-gray-700 dark:bg-gray-900 dark:border-gray-600 dark:text-gray-300 focus:border-primary-500 focus:ring-primary-500';
+  var BTN_CLS = 'px-1.5 py-1 text-xs rounded-md border border-gray-300 text-gray-500 bg-white hover:bg-gray-50 dark:bg-gray-800 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700';
+
+  function sync() {
+    hidden.value = JSON.stringify(items);
+  }
+
+  function render() {
+    rowsBox.innerHTML = '';
+    items.forEach(function(item, i) {
+      var row = document.createElement('div');
+      row.className = 'flex items-center gap-2';
+
+      var colorWrap = document.createElement('div');
+      colorWrap.className = 'flex items-center gap-1.5';
+      var color = document.createElement('input');
+      color.type = 'color';
+      color.value = item.background || '#9ca3af';
+      color.disabled = !item.background;
+      color.style.cssText = 'width:32px;height:26px;padding:1px;border-radius:6px;border:1px solid #d1d5db;background:none;cursor:pointer;' + (item.background ? '' : 'opacity:.3;');
+      color.title = '主色';
+
+      var hex = document.createElement('input');
+      hex.type = 'text';
+      hex.value = item.background || '';
+      hex.placeholder = '#A8B6C4';
+      hex.disabled = !item.background;
+      hex.maxLength = 7;
+      hex.className = INPUT_CLS + ' w-24 font-mono' + (item.background ? '' : ' opacity-30');
+      hex.title = '直接输入色值 (如 #A8B6C4)';
+      // 接受 #RGB / #RRGGBB,可省略 #;非法输入不写回,失焦时还原
+      function normalizeHex(s) {
+        s = s.trim();
+        if (!s) return null;
+        if (s[0] !== '#') s = '#' + s;
+        if (/^#[0-9a-fA-F]{3}$/.test(s)) s = '#' + s[1] + s[1] + s[2] + s[2] + s[3] + s[3];
+        return /^#[0-9a-fA-F]{6}$/.test(s) ? s.toLowerCase() : null;
+      }
+      color.addEventListener('input', function() { item.background = color.value; hex.value = color.value; sync(); });
+      hex.addEventListener('input', function() {
+        var v = normalizeHex(hex.value);
+        if (v) { item.background = v; color.value = v; sync(); }
+      });
+      hex.addEventListener('blur', function() {
+        var v = normalizeHex(hex.value);
+        hex.value = v || item.background || '';
+      });
+
+      var noneLabel = document.createElement('label');
+      noneLabel.className = 'flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400 cursor-pointer select-none';
+      var none = document.createElement('input');
+      none.type = 'checkbox';
+      none.checked = !item.background;
+      none.addEventListener('change', function() {
+        item.background = none.checked ? '' : (color.value === '#9ca3af' ? '#9ca3af' : color.value);
+        render(); sync();
+      });
+      noneLabel.appendChild(none);
+      noneLabel.appendChild(document.createTextNode('无底色'));
+      colorWrap.appendChild(color);
+      colorWrap.appendChild(hex);
+      colorWrap.appendChild(noneLabel);
+
+      var value = document.createElement('input');
+      value.type = 'text';
+      value.value = item.value;
+      value.placeholder = '值 (如 P0)';
+      value.className = INPUT_CLS + ' w-24 font-mono';
+      value.addEventListener('input', function() { item.value = value.value.trim(); sync(); });
+
+      var label = document.createElement('input');
+      label.type = 'text';
+      label.value = item.label;
+      label.placeholder = '显示名 (如 紧急)';
+      label.className = INPUT_CLS + ' w-32';
+      label.addEventListener('input', function() { item.label = label.value.trim(); sync(); });
+
+      function mkBtn(text, title, fn) {
+        var b = document.createElement('button');
+        b.type = 'button';
+        b.textContent = text;
+        b.title = title;
+        b.className = BTN_CLS;
+        b.addEventListener('click', fn);
+        return b;
+      }
+
+      var up = mkBtn('↑', '上移(优先级更高)', function() {
+        if (i > 0) { items.splice(i - 1, 0, items.splice(i, 1)[0]); render(); sync(); }
+      });
+      var down = mkBtn('↓', '下移(优先级更低)', function() {
+        if (i < items.length - 1) { items.splice(i + 1, 0, items.splice(i, 1)[0]); render(); sync(); }
+      });
+      var del = mkBtn('✕', '删除', function() {
+        items.splice(i, 1); render(); sync();
+      });
+
+      row.appendChild(colorWrap);
+      row.appendChild(value);
+      row.appendChild(label);
+      row.appendChild(up);
+      row.appendChild(down);
+      row.appendChild(del);
+      rowsBox.appendChild(row);
+    });
+  }
+
+  addBtn.addEventListener('click', function() {
+    items.push({ value: '', label: '', background: '#9ca3af' });
+    render(); sync();
+  });
+
+  render();
+  sync();
+})();
+</script>

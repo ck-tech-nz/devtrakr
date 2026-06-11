@@ -2,13 +2,15 @@ from django.contrib import admin
 from solo.admin import SingletonModelAdmin
 from unfold.admin import ModelAdmin
 from .models import DatabaseBackup, ExternalAPIKey, SiteSettings
-from .widgets import ApiKeyGeneratorWidget, JsonReadonlyToggleWidget
+from .widgets import ApiKeyGeneratorWidget, JsonReadonlyToggleWidget, PriorityListWidget
 
 
 @admin.register(SiteSettings)
 class SiteSettingsAdmin(ModelAdmin, SingletonModelAdmin):
     def formfield_for_dbfield(self, db_field, request, **kwargs):
-        if db_field.name in ("labels", "priorities", "issue_statuses"):
+        if db_field.name == "priorities":
+            kwargs["widget"] = PriorityListWidget()
+        elif db_field.name in ("labels", "issue_statuses"):
             kwargs["widget"] = JsonReadonlyToggleWidget()
         return super().formfield_for_dbfield(db_field, request, **kwargs)
 

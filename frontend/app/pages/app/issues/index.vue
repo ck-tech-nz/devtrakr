@@ -235,39 +235,13 @@
       :columns="kanbanColumns"
       :item-key="(item: any) => item.id"
       :card-class="kanbanCardClass"
+      :card-style="kanbanCardStyle"
       scrollable
       @drop="onKanbanDrop"
       @load-more="kanban.loadMore"
     >
       <template #card="{ item }">
-        <NuxtLink :to="`/app/issues/${item.id}`" class="block">
-          <div class="flex items-center justify-between mb-1.5">
-            <span class="text-xs text-gray-400 dark:text-gray-500">#{{ item.id }}</span>
-            <div class="flex items-center gap-1">
-              <UBadge v-if="item.source" color="info" variant="subtle" size="xs">外部</UBadge>
-              <UBadge :color="priorityColor(item.priority)" variant="subtle" size="xs">
-                {{ priorityLabel(item.priority) }}
-              </UBadge>
-            </div>
-          </div>
-          <p class="text-sm text-gray-900 dark:text-gray-100 font-medium line-clamp-2">{{ item.title }}</p>
-          <div class="mt-2 flex items-center justify-between gap-2">
-            <div class="flex items-center min-w-0">
-              <div class="w-5 h-5 rounded-full bg-crystal-100 dark:bg-crystal-900 flex items-center justify-center shrink-0">
-                <span class="text-crystal-600 dark:text-crystal-400 text-[10px] font-medium">{{ (item.assignee_name || '?').slice(0, 1) }}</span>
-              </div>
-              <span class="ml-1.5 text-xs text-gray-400 dark:text-gray-500 truncate">{{ item.assignee_name || '-' }}</span>
-            </div>
-            <SharedSmartTime v-if="item.updated_at" :date="item.updated_at" class="text-[11px] text-gray-400 dark:text-gray-500 shrink-0" />
-          </div>
-          <div
-            v-if="item.estimated_completion"
-            class="mt-1.5 flex items-center gap-1 text-[11px] text-amber-600 dark:text-amber-400"
-          >
-            <UIcon name="i-heroicons-calendar-days" class="w-3 h-3 shrink-0" />
-            <span>要求完成日期 {{ item.estimated_completion }}</span>
-          </div>
-        </NuxtLink>
+        <IssueKanbanCard :item="item" />
       </template>
     </SharedKanbanBoard>
 
@@ -309,9 +283,11 @@
           </div>
         </template>
         <template #priority-cell="{ row }">
+          <!-- data-priority 供行级 :has() 选择器按优先级给整行着色 -->
           <UBadge
             :color="priorityColor(row.original.priority)" variant="subtle" size="sm"
             class="cursor-pointer hover:opacity-80"
+            :data-priority="row.original.priority"
             :title="`筛选优先级：${priorityLabel(row.original.priority)}`"
             @click.stop="filterByPriority(row.original)"
           >{{ priorityLabel(row.original.priority) }}</UBadge>
@@ -418,6 +394,25 @@ const { user, can } = useAuth()
 const { isMobile } = useMobile()
 
 const selfUserId = computed(() => Number(user.value?.id ?? 0))
+
+// 优先级档位(含管理员配置的主色),onMounted 拉到站点设置后更新
+const priorityItems = usePriorityItems()
+
+// 表格行按优先级着色:主色管理员可配,无法静态枚举,按配置动态生成规则注入 <head>
+const priorityRowCss = computed(() => priorityItems.value
+  .filter(p => isSafeHexColor(p.background) && /^[\w-]+$/.test(p.value))
+  .map((p) => {
+    const sel = `.issues-table tbody tr:has([data-priority="${p.value}"])`
+    const c = p.background
+    return [
+      `${sel} { background-color: color-mix(in srgb, ${c} 7%, #ffffff); }`,
+      `${sel}:hover { background-color: color-mix(in srgb, ${c} 14%, #ffffff); }`,
+      `:root.dark ${sel} { background-color: color-mix(in srgb, ${c} 22%, transparent); }`,
+      `:root.dark ${sel}:hover { background-color: color-mix(in srgb, ${c} 32%, transparent); }`,
+    ].join('\n')
+  })
+  .join('\n'))
+useHead({ style: [{ innerHTML: priorityRowCss }] })
 
 const transferDialog = ref<{ open: boolean; issueId: number | null; projectId: number | null }>({
   open: false, issueId: null, projectId: null,
@@ -649,7 +644,7 @@ watch([() => newIssue.value.title, () => newIssue.value.description], () => {
 const projectRepoOptions = computed(() => projectRepos.value.map(r => ({ label: r.name, value: String(r.id) })))
 
 const projectOptions = computed(() => projects.value.map(p => ({ label: p.name, value: String(p.id) })))
-const createPriorityOptions = PRIORITY_ITEMS.map(p => ({ label: `${p.value} ${p.label}`, value: p.value }))
+const createPriorityOptions = computed(() => priorityItems.value.map(p => ({ label: `${p.value} ${p.label}`, value: p.value })))
 const createStatusOptions: { label: string; value: string }[] = ISSUE_STATUS_OPTIONS
 const createAssigneeOptions = computed(() => [{ label: '无', value: '_none' }, ...users.value.map(u => ({ label: u.name || u.username, value: String(u.id) }))])
 
@@ -786,11 +781,12 @@ async function onKanbanDrop({ itemId, fromColumn, toColumn }: { itemId: string |
   }
 }
 
-// P0(紧急)卡片用红底高亮,凸显紧急;其余返回空串走默认白底
+// 卡片底色随优先级升高变暖(默认低=白底/中=黄/高=橙/紧急=红),主色可在站点设置配置
 function kanbanCardClass(item: any): string {
-  return item.priority === 'P0'
-    ? 'bg-red-50 dark:bg-red-950/40 border-red-300 dark:border-red-700 ring-1 ring-red-200 dark:ring-red-800/50'
-    : ''
+  return priorityCardClass(item.priority)
+}
+function kanbanCardStyle(item: any): Record<string, string> | undefined {
+  return priorityCardStyle(item.priority)
 }
 
 let rowClickTimer: ReturnType<typeof setTimeout> | null = null
@@ -943,10 +939,10 @@ const batchAssignItems = computed(() => [users.value.map(u => ({
   onSelect: () => batchUpdate('assign', String(u.id)),
 }))])
 
-const batchPriorityItems = [PRIORITY_ITEMS.map(p => ({
+const batchPriorityItems = computed(() => [priorityItems.value.map(p => ({
   label: `${p.value} ${p.label}`,
   onSelect: () => batchUpdate('priority', p.value),
-}))]
+}))])
 
 const batchStatusItems = [filterStatusOptions.map(s => ({
   label: s.label,
@@ -1023,6 +1019,7 @@ onMounted(async () => {
   users.value = usersData || []
   const rawLabels = settingsData?.labels || {}
   labelOptions.value = typeof rawLabels === 'object' && !Array.isArray(rawLabels) ? Object.keys(rawLabels) : rawLabels
+  setPrioritiesFromSettings(settingsData?.priorities)
   projects.value = projectsData?.results || projectsData || []
   repos.value = reposData?.results || reposData || []
   // Check AI analysis status for issues with repos
@@ -1204,4 +1201,6 @@ async function checkAnalyzingIssues() {
 .issues-table :deep(:is(th, td):nth-child(9)) { width: 6%; }     /* 提出人 */
 .issues-table :deep(:is(th, td):nth-child(10)) { width: 7%; }    /* 历时 */
 .issues-table :deep(:is(th, td):nth-child(11)) { width: 5%; }    /* 预计完成 */
+
+/* 表格行按优先级着色:规则随站点设置动态生成,见 script 中 priorityRowCss + useHead */
 </style>

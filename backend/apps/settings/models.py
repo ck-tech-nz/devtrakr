@@ -33,7 +33,13 @@ def default_labels():
 
 
 def default_priorities():
-    return ["P0", "P1", "P2", "P3"]
+    # 顺序为高→低;background 是该优先级主色(前端据此派生卡片/行/滑块底色),空串表示无底色(基线档)
+    return [
+        {"value": "P0", "label": "紧急", "background": "#ef4444"},
+        {"value": "P1", "label": "高", "background": "#f97316"},
+        {"value": "P2", "label": "中", "background": "#facc15"},
+        {"value": "P3", "label": "低", "background": ""},
+    ]
 
 
 def default_issue_statuses():

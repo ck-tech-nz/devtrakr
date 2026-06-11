@@ -43,7 +43,12 @@ class SiteSettingsFactory(factory.django.DjangoModelFactory):
         "性能": {"foreground": "#ffffff", "background": "#f9d0c4", "description": ""},
         "UI/UX": {"foreground": "#ffffff", "background": "#bfd4f2", "description": ""},
     }
-    priorities = ["P0", "P1", "P2", "P3"]
+    priorities = [
+        {"value": "P0", "label": "紧急", "background": "#ef4444"},
+        {"value": "P1", "label": "高", "background": "#f97316"},
+        {"value": "P2", "label": "中", "background": "#facc15"},
+        {"value": "P3", "label": "低", "background": ""},
+    ]
     issue_statuses = ["未计划", "待分配", "待确认", "进行中", "已解决", "已发布", "已关闭"]
 
 

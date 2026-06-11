@@ -14,6 +14,23 @@ html, body {
   --glass-rgb: #000000;
 }
 
+/* 优先级卡片底色(看板/移动端列表):主色由行内 --prio 注入(站点设置可配),
+   深浅用 color-mix 从主色派生;首档(最高优先级)用 .priority-card-top 加描边强调 */
+.priority-card {
+  background-color: color-mix(in srgb, var(--prio) 10%, #ffffff);
+  border-color: color-mix(in srgb, var(--prio) 35%, #ffffff);
+}
+:root.dark .priority-card {
+  background-color: color-mix(in srgb, var(--prio) 22%, #111827);
+  border-color: color-mix(in srgb, var(--prio) 45%, #1f2937);
+}
+.priority-card-top {
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--prio) 25%, #ffffff);
+}
+:root.dark .priority-card-top {
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--prio) 40%, transparent);
+}
+
 @theme {
   --color-crystal-50: #f5f3ff;
   --color-crystal-100: #ede9fe;

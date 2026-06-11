@@ -18,7 +18,11 @@ class TestSiteSettingsModel:
         assert site_settings.labels["前端"]["background"] == "#0075ca"
 
     def test_default_priorities(self, site_settings):
-        assert site_settings.priorities == ["P0", "P1", "P2", "P3"]
+        # 对象列表(高→低),每档带显示名与主色;空 background 表示无底色
+        assert [p["value"] for p in site_settings.priorities] == ["P0", "P1", "P2", "P3"]
+        assert site_settings.priorities[0]["label"] == "紧急"
+        assert site_settings.priorities[0]["background"] == "#ef4444"
+        assert site_settings.priorities[3]["background"] == ""
 
     def test_default_issue_statuses(self, site_settings):
         assert site_settings.issue_statuses == ["未计划", "待分配", "待确认", "进行中", "已解决", "已发布", "已关闭"]

@@ -301,7 +301,9 @@ class IssueCreateUpdateSerializer(serializers.ModelSerializer):
 
     def validate_priority(self, value):
         site_settings = SiteSettings.get_solo()
-        if value not in site_settings.priorities:
+        # 兼容两种格式: 旧版扁平列表 ["P0",...] 与新版对象列表 [{"value": "P0", ...}, ...]
+        valid = {p["value"] if isinstance(p, dict) else p for p in site_settings.priorities}
+        if value not in valid:
             raise serializers.ValidationError(f"无效的优先级: {value}")
         return value
 

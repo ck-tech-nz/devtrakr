@@ -1,14 +1,76 @@
+export interface PriorityItem {
+  value: string
+  label: string
+  background: string // 该档主色(hex),'' = 无底色(基线档)
+}
+
+// 静态默认(高→低),色系低→高: 灰 → 黄 → 橙 → 红。
+// badge 语义色/activeClass 仅对内置四档有意义,自定义档位回退 neutral;
+// 卡片/行/滑块的色系走下方 configured 的动态主色(站点设置可改)。
 export const PRIORITY_ITEMS = [
-  { value: 'P0', label: '紧急', color: 'error',   activeClass: 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300' },
-  { value: 'P1', label: '高',   color: 'warning', activeClass: 'bg-orange-100 text-orange-700 dark:bg-orange-900 dark:text-orange-300' },
-  { value: 'P2', label: '中',   color: 'warning', activeClass: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300' },
-  { value: 'P3', label: '低',   color: 'neutral', activeClass: 'bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-300' },
+  { value: 'P0', label: '紧急', color: 'error',   background: '#ef4444', activeClass: 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300' },
+  { value: 'P1', label: '高',   color: 'warning', background: '#f97316', activeClass: 'bg-orange-100 text-orange-700 dark:bg-orange-900 dark:text-orange-300' },
+  { value: 'P2', label: '中',   color: 'warning', background: '#facc15', activeClass: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300' },
+  { value: 'P3', label: '低',   color: 'neutral', background: '',        activeClass: 'bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-300' },
 ] as const
 
+// 无主色档位(如默认的「低」)在滑块轨道里的兜底色
+export const PRIORITY_FALLBACK_COLOR = '#9ca3af' // gray-400
+
+// 管理员在站点设置配置的优先级;SPA(无 SSR),模块级单例状态安全
+const configured = ref<PriorityItem[]>(
+  PRIORITY_ITEMS.map(p => ({ value: p.value, label: p.label, background: p.background })),
+)
+
+export function usePriorityItems() {
+  return configured
+}
+
+// 接入 /api/settings/ 的 priorities 字段;兼容旧版扁平列表 ["P0",...]
+export function setPrioritiesFromSettings(raw: unknown) {
+  if (!Array.isArray(raw) || raw.length === 0) return
+  const items: PriorityItem[] = []
+  for (const p of raw as any[]) {
+    if (typeof p === 'string') {
+      const def = PRIORITY_ITEMS.find(d => d.value === p)
+      items.push({ value: p, label: def?.label ?? p, background: def?.background ?? '' })
+    } else if (p && typeof p === 'object' && p.value) {
+      items.push({
+        value: String(p.value),
+        label: String(p.label || p.value),
+        background: typeof p.background === 'string' ? p.background : '',
+      })
+    }
+  }
+  if (items.length) configured.value = items
+}
+
+// 主色只允许 hex,防止管理员输入混入生成的 CSS
+export function isSafeHexColor(c: string): boolean {
+  return /^#[0-9a-fA-F]{3,8}$/.test(c)
+}
+
+function find(p: string): PriorityItem | undefined {
+  return configured.value.find(i => i.value === p)
+}
+
 export function priorityLabel(p: string): string {
-  return PRIORITY_ITEMS.find(i => i.value === p)?.label ?? p
+  return find(p)?.label ?? p
 }
 
 export function priorityColor(p: string): string {
   return PRIORITY_ITEMS.find(i => i.value === p)?.color ?? 'neutral'
+}
+
+// 卡片底色(看板/移动端列表):配了主色的档位给 .priority-card(样式见 main.css),
+// 首档(最高优先级)额外描边强调;返回空串表示走调用方默认底色
+export function priorityCardClass(p: string): string {
+  const item = find(p)
+  if (!item?.background || !isSafeHexColor(item.background)) return ''
+  return configured.value[0]?.value === p ? 'priority-card priority-card-top' : 'priority-card'
+}
+
+export function priorityCardStyle(p: string): Record<string, string> | undefined {
+  const bg = find(p)?.background
+  return bg && isSafeHexColor(bg) ? { '--prio': bg } : undefined
 }

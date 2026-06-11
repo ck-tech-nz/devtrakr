@@ -7,13 +7,11 @@
     <div
       v-for="col in columns"
       :key="col.key"
-      class="rounded-xl p-4 transition-colors"
+      class="rounded-xl p-4 transition-colors bg-gray-50 dark:bg-gray-800 border border-gray-200/80 dark:border-gray-700"
       :class="[
         draggable && dragOverTarget === col.key ? 'ring-2 ring-crystal-300 dark:ring-crystal-700' : '',
-        col.color ? '' : 'bg-gray-50 dark:bg-gray-800',
         scrollable ? 'flex flex-col min-h-0 overflow-hidden' : '',
       ]"
-      :style="col.color ? { backgroundColor: col.color + '12' } : {}"
       @dragover.prevent="draggable && onDragOver(col.key)"
       @dragleave="draggable && onDragLeave()"
       @drop="draggable && onDrop(col.key)"
@@ -40,6 +38,7 @@
             draggable ? 'cursor-grab active:cursor-grabbing' : '',
             draggable && draggingId === itemKey(item) ? 'opacity-40' : '',
           ]"
+          :style="cardStyle?.(item)"
           @dragstart="draggable && onDragStart(itemKey(item))"
           @dragend="draggable && onDragEnd()"
         >
@@ -79,6 +78,8 @@ const props = withDefaults(defineProps<{
   draggable?: boolean
   // 可选:按 item 返回卡片容器的覆盖类(返回空串则用默认白底);用于高亮特定卡片
   cardClass?: (item: any) => string
+  // 可选:按 item 返回卡片容器的行内样式;配合 cardClass 注入 CSS 变量(如优先级主色)
+  cardStyle?: (item: any) => Record<string, string> | undefined
   // 定高模式:列内独立滚动,滚动到底部触发 loadMore(学 GitHub Projects)
   scrollable?: boolean
 }>(), {

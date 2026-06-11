@@ -108,6 +108,31 @@ class TestIssueCreate:
         assert response.status_code == 201
         assert response.data["title"] == "新Issue"
 
+    def test_create_issue_invalid_priority(self, auth_client, site_settings):
+        from tests.factories import ProjectFactory
+        project = ProjectFactory()
+        response = auth_client.post("/api/issues/", {
+            "project": str(project.id),
+            "title": "新Issue",
+            "priority": "P9",
+            "status": "待分配",
+        }, format="json")
+        assert response.status_code == 400
+
+    def test_create_issue_priority_legacy_flat_format(self, auth_client, site_settings):
+        """旧版扁平 priorities(["P0",...],未跑数据迁移前)仍能通过优先级校验."""
+        from tests.factories import ProjectFactory
+        site_settings.priorities = ["P0", "P1", "P2", "P3"]
+        site_settings.save()
+        project = ProjectFactory()
+        response = auth_client.post("/api/issues/", {
+            "project": str(project.id),
+            "title": "新Issue",
+            "priority": "P1",
+            "status": "待分配",
+        }, format="json")
+        assert response.status_code == 201
+
     def test_create_issue_invalid_label(self, auth_client, site_settings):
         from tests.factories import ProjectFactory
         project = ProjectFactory()
