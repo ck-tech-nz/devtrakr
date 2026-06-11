@@ -1,16 +1,30 @@
 <template>
   <div class="flex flex-col gap-1 w-32 select-none" title="按优先级筛选">
-    <input
-      type="range"
-      min="0"
-      :max="STOPS.length - 1"
-      step="1"
-      :value="index"
-      class="priority-range"
-      :style="{ '--thumb-color': STOPS[index]?.cssColor, background: trackGradient }"
-      aria-label="优先级筛选"
-      @input="onInput"
-    >
+    <div class="relative">
+      <input
+        type="range"
+        min="0"
+        :max="STOPS.length - 1"
+        step="1"
+        :value="index"
+        class="priority-range"
+        :style="{ background: trackGradient }"
+        aria-label="优先级筛选"
+        @input="onInput"
+      >
+      <!-- 液态玻璃滑块(同 AI 对话「清空对话」按钮):原生 thumb 已透明化只留拖拽交互,
+           这里按档位定位叠加 LiquidGlass 折射玻璃,当前档主色透进玻璃 -->
+      <LiquidGlass
+        aria-hidden="true"
+        tabindex="-1"
+        class="priority-thumb"
+        :style="{ left: thumbLeft, '--thumb-color': STOPS[index]?.cssColor }"
+        :bezel-depth="0.35"
+        :bezel-width="0.35"
+        :blur="0.5"
+        :saturation="160"
+      />
+    </div>
     <div class="flex justify-between text-[10px] leading-none text-gray-400">
       <span
         v-for="(s, i) in STOPS"
@@ -50,6 +64,15 @@ const index = computed(() => {
   return i === -1 ? 0 : i
 })
 
+// 玻璃 thumb 与原生(透明) thumb 同宽,保证中心位置一致(浏览器把 thumb 限制在轨道内,
+// 行程是 width - THUMB_PX,所以百分比之外还要按位置补一个像素偏移)
+const THUMB_PX = 22
+const thumbLeft = computed(() => {
+  const n = STOPS.value.length - 1
+  const t = n ? index.value / n : 0
+  return `calc(${t * 100}% + ${(0.5 - t) * THUMB_PX}px)`
+})
+
 function onInput(e: Event) {
   const i = Number((e.target as HTMLInputElement).value)
   emit('update:modelValue', STOPS.value[i]?.value ?? '')
@@ -60,36 +83,64 @@ function onInput(e: Event) {
 .priority-range {
   appearance: none;
   -webkit-appearance: none;
+  display: block;
   width: 100%;
   height: 6px;
   border-radius: 9999px;
   cursor: pointer;
 }
+/* 原生 thumb 只留尺寸(交互/定位用),外观全部交给叠加的 .priority-thumb */
 .priority-range::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
-  width: 14px;
-  height: 14px;
+  width: 22px;
+  height: 22px;
   border-radius: 9999px;
-  background-color: var(--thumb-color, var(--color-crystal-500));
-  border: 2px solid white;
-  box-shadow: 0 1px 3px rgb(0 0 0 / 0.35);
-  transition: background-color 0.15s ease;
+  background: transparent;
+  border: none;
 }
 .priority-range::-moz-range-thumb {
-  width: 14px;
-  height: 14px;
+  width: 22px;
+  height: 22px;
   border-radius: 9999px;
-  background-color: var(--thumb-color, var(--color-crystal-500));
-  border: 2px solid white;
-  box-shadow: 0 1px 3px rgb(0 0 0 / 0.35);
-  transition: background-color 0.15s ease;
+  background: transparent;
+  border: none;
 }
-:root.dark .priority-range::-webkit-slider-thumb {
-  border-color: var(--color-gray-900);
+/* iOS 26 Liquid Glass(同 .clear-btn 配方):折射由 LiquidGlass 的 backdrop-filter 提供,
+   这里负责形态 — 当前档主色淡淡透进玻璃 + 上沿白高光/下沿暗线 + 浮起阴影 */
+.priority-thumb {
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border-radius: 9999px;
+  pointer-events: none;
+  background-image: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.12) 0%,
+    rgba(180, 200, 220, 0.06) 50%,
+    rgba(255, 255, 255, 0.14) 100%
+  );
+  background-color: color-mix(in srgb, var(--thumb-color, var(--color-crystal-500)) 30%, transparent);
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  box-shadow:
+    inset 0 1px 0.5px rgba(255, 255, 255, 0.65),
+    inset 0 -1px 0.5px rgba(0, 0, 0, 0.08),
+    0 4px 10px -2px rgba(15, 23, 42, 0.25),
+    0 1px 3px rgba(15, 23, 42, 0.15);
+  transition: left 0.15s ease, background-color 0.15s ease, transform 0.15s ease;
 }
-:root.dark .priority-range::-moz-range-thumb {
-  border-color: var(--color-gray-900);
+.priority-range:active + .priority-thumb {
+  transform: translate(-50%, -50%) scale(1.12);
+}
+:root.dark .priority-thumb {
+  border-color: rgba(255, 255, 255, 0.18);
+  box-shadow:
+    inset 0 1px 0.5px rgba(255, 255, 255, 0.25),
+    inset 0 -1px 0.5px rgba(0, 0, 0, 0.3),
+    0 4px 10px -2px rgba(0, 0, 0, 0.5);
 }
 /* 当前档位标签随档位主色着色;往深(浅)混一点保证可读性 */
 .priority-stop-active {

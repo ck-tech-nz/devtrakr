@@ -131,7 +131,8 @@
                 v-for="p in priorityItems"
                 :key="p.value"
                 class="px-3 py-1 rounded-full text-xs font-medium transition-colors"
-                :class="issue.priority === p.value ? p.activeClass : 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'"
+                :class="issue.priority === p.value ? 'priority-chip-active' : 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'"
+                :style="issue.priority === p.value ? { '--prio': p.cssColor } : undefined"
                 @click="updateField('priority', p.value)"
               >{{ p.label }}</button>
             </div>
@@ -1183,7 +1184,12 @@ const form = ref({
   repo: '' as string,
 })
 
-const priorityItems = PRIORITY_ITEMS
+// 与列表页滑块一致:低→紧急排列;主色来自站点设置(usePriority),无主色档位用兜底灰
+const configuredPriorities = usePriorityItems()
+const priorityItems = computed(() => configuredPriorities.value.slice().reverse().map(p => ({
+  ...p,
+  cssColor: isSafeHexColor(p.background) ? p.background : PRIORITY_FALLBACK_COLOR,
+})))
 const statusItems = [
   { label: '未计划', value: '未计划', activeClass: 'bg-violet-500 text-white dark:bg-violet-600 dark:text-white' },
   { label: '待分配', value: '待分配', activeClass: 'bg-amber-500 text-white dark:bg-amber-600 dark:text-white' },
@@ -1476,6 +1482,7 @@ onMounted(async () => {
   issue.value = issueData
   users.value = usersData || []
   labelItems.value = settingsData?.labels || {}
+  setPrioritiesFromSettings(settingsData?.priorities)
   repos.value = reposData?.results || reposData || []
   projects.value = (projectsData as any)?.results || projectsData || []
   if (issueData) populateForm(issueData)
@@ -1624,6 +1631,18 @@ function formatAssignmentDate(s: string): string {
 </script>
 
 <style scoped>
+/* 选中的优先级档位按站点设置主色(--prio)着色,深浅用 color-mix 派生(同列表页行/卡片);
+   描边保证无主色档位(兜底灰)的选中态也能与未选中区分 */
+.priority-chip-active {
+  background-color: color-mix(in srgb, var(--prio) 18%, #ffffff);
+  color: color-mix(in srgb, var(--prio) 75%, #374151);
+  box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--prio) 60%, #ffffff);
+}
+:root.dark .priority-chip-active {
+  background-color: color-mix(in srgb, var(--prio) 30%, #111827);
+  color: color-mix(in srgb, var(--prio) 70%, #e5e7eb);
+  box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--prio) 55%, #1f2937);
+}
 .form-row { display: flex; flex-direction: column; gap: 0.375rem; }
 .form-row label { font-size: 0.8125rem; font-weight: 500; color: #374151; }
 :root.dark .form-row label { color: #9ca3af; }
