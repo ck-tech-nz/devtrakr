@@ -109,4 +109,63 @@ describe('IssueComments', () => {
     expect(w.find('[data-testid="delete-comment"]').exists()).toBe(true)
     w.unmount()
   })
+
+  it('shows error state when loading fails and retry reloads', async () => {
+    apiMock.mockRejectedValueOnce(new Error('network'))
+    const w = await mount()
+    expect(w.text()).toContain('评论加载失败')
+
+    apiMock.mockResolvedValueOnce([comment({ id: 1, content: '重试后的评论' })])
+    const retry = w.findAll('button').find(b => b.text() === '重试')
+    expect(retry).toBeTruthy()
+    await retry!.trigger('click')
+    await flush()
+    expect(w.text()).not.toContain('评论加载失败')
+    expect(w.text()).toContain('重试后的评论')
+    w.unmount()
+  })
+
+  it('author edits a comment: PATCH then list shows updated content', async () => {
+    apiMock.mockImplementation((url: string, opts?: { method?: string; body?: { content: string } }) => {
+      if (opts?.method === 'PATCH') {
+        return Promise.resolve(comment({ id: 1, content: opts.body!.content, is_edited: true }))
+      }
+      return Promise.resolve([comment({ id: 1, content: '原文' })])
+    })
+    const w = await mount()
+    await w.find('[data-testid="edit-comment"]').trigger('click')
+    // 进入编辑态:编辑器预填原文
+    const editor = w.find('[data-testid="comment-item"] [data-testid="editor"]')
+    expect((editor.element as HTMLTextAreaElement).value).toBe('原文')
+    await editor.setValue('改过的内容')
+    const save = w.findAll('button').find(b => b.text() === '保存')
+    await save!.trigger('click')
+    await flush()
+    expect(apiMock).toHaveBeenCalledWith('/api/issues/5/comments/1/', {
+      method: 'PATCH', body: { content: '改过的内容' },
+    })
+    expect(w.text()).toContain('改过的内容')
+    expect(w.text()).toContain('已编辑')
+    w.unmount()
+  })
+
+  it('delete flow: confirm dialog then DELETE removes the comment', async () => {
+    apiMock.mockImplementation((url: string, opts?: { method?: string }) => {
+      if (opts?.method === 'DELETE') return Promise.resolve(undefined)
+      return Promise.resolve([comment({ id: 1, content: '将被删除' })])
+    })
+    const w = await mount()
+    await w.find('[data-testid="delete-comment"]').trigger('click')
+    await flush()
+    // UModal 内容 teleport 到 body,在 document 范围找确认按钮
+    const confirmBtn = Array.from(document.body.querySelectorAll('button'))
+      .find(b => b.textContent?.trim() === '删除')
+    expect(confirmBtn).toBeTruthy()
+    confirmBtn!.click()
+    await flush()
+    expect(apiMock).toHaveBeenCalledWith('/api/issues/5/comments/1/', { method: 'DELETE' })
+    expect(w.text()).not.toContain('将被删除')
+    expect(w.text()).toContain('评论 (0)')
+    w.unmount()
+  })
 })

@@ -124,4 +124,35 @@ describe('useKanbanIssues', () => {
     await flushPromises()
     expect(k.columns.value['进行中']!.items.map((i: any) => i.id)).toEqual([9])
   })
+
+  it('reset failure leaves the column empty and not stuck in loading', async () => {
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    apiMock.mockRejectedValue(new Error('network down'))
+    const k = useKanbanIssues(defaultBuild)
+    await k.reset(['进行中'])
+    await flushPromises()
+
+    const col = k.columns.value['进行中']!
+    expect(col.loading).toBe(false)
+    expect(col.items).toEqual([])
+    expect(errSpy).toHaveBeenCalled()
+    errSpy.mockRestore()
+  })
+
+  it('loadMore failure keeps existing items and hasMore so the user can retry', async () => {
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    apiMock.mockResolvedValueOnce(page([1, 2], 4, true))
+    const k = useKanbanIssues(defaultBuild)
+    await k.reset(['进行中'])
+
+    apiMock.mockRejectedValueOnce(new Error('network down'))
+    await k.loadMore('进行中')
+
+    const col = k.columns.value['进行中']!
+    expect(col.items.map((i: any) => i.id)).toEqual([1, 2]) // 已有数据不丢
+    expect(col.page).toBe(1) // 页码不前进,重试仍取第 2 页
+    expect(col.hasMore).toBe(true)
+    expect(col.loading).toBe(false)
+    errSpy.mockRestore()
+  })
 })

@@ -50,6 +50,43 @@ class TestColorOptionListWidget:
         assert "<img" not in items_json
         assert "\\u003c" in items_json
 
+    def test_get_context_normalizes_legacy_flat_list(self):
+        """旧版扁平列表 ["P0",...] 渲染前统一为对象格式(label=value,无主色)。"""
+        import json
+
+        from apps.settings.widgets import ColorOptionListWidget
+
+        widget = ColorOptionListWidget()
+        ctx = widget.get_context("priorities", ["P0", "P1"], None)
+        items = json.loads(ctx["widget"]["items_json"])
+        assert items == [
+            {"value": "P0", "label": "P0", "background": ""},
+            {"value": "P1", "label": "P1", "background": ""},
+        ]
+
+    def test_get_context_invalid_value_renders_empty_list(self):
+        """非法 JSON 字符串 / 非列表值不应让 admin 页面崩溃,渲染为空列表。"""
+        import json
+
+        from apps.settings.widgets import ColorOptionListWidget
+
+        widget = ColorOptionListWidget()
+        for bad in ("{not json", {"value": "P0"}, None):
+            ctx = widget.get_context("priorities", bad, None)
+            assert json.loads(ctx["widget"]["items_json"]) == []
+
+    def test_value_from_datadict_round_trip(self):
+        """隐藏 input 提交的 JSON 应解析回 Python 列表;非法 JSON 原样返回交给表单校验;缺失返回 []。"""
+        from apps.settings.widgets import ColorOptionListWidget
+
+        widget = ColorOptionListWidget()
+        raw = '[{"value": "P0", "label": "紧急", "background": "#ef4444"}]'
+        assert widget.value_from_datadict({"priorities": raw}, {}, "priorities") == [
+            {"value": "P0", "label": "紧急", "background": "#ef4444"}
+        ]
+        assert widget.value_from_datadict({"priorities": "{broken"}, {}, "priorities") == "{broken"
+        assert widget.value_from_datadict({}, {}, "priorities") == []
+
 
 class TestSiteSettingsAPI:
     def test_get_settings_authenticated(self, auth_client, site_settings):
