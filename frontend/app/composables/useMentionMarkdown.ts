@@ -109,7 +109,8 @@ function mentionPlugin(md: MarkdownIt) {
   })
 
   md.renderer.rules.mention_user = (tokens, idx) => {
-    return `<span class="mention-user">@${tokens[idx]?.content ?? ''}</span>`
+    const name = md.utils.escapeHtml(tokens[idx]?.content ?? '')
+    return `<span class="mention-user">@${name}</span>`
   }
 
   md.inline.ruler.push('mention_issue', (state, silent) => {
