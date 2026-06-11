@@ -38,7 +38,10 @@
             <UIcon name="i-heroicons-x-mark" class="w-3 h-3" />
           </button>
         </UBadge>
-        <UBadge v-if="filterPriorityTag" :color="priorityColor(filterPriorityTag.value)" variant="subtle" size="md" class="shrink-0">
+        <UBadge
+          v-if="filterPriorityTag" :color="priorityColor(filterPriorityTag.value)" variant="subtle" size="md"
+          class="shrink-0" :class="priorityBadgeClass(filterPriorityTag.value)" :style="priorityBadgeStyle(filterPriorityTag.value)"
+        >
           <span>优先级：{{ filterPriorityTag.label }}</span>
           <button class="ml-1 flex items-center" aria-label="清除优先级筛选" @click="filterPriorityTag = null">
             <UIcon name="i-heroicons-x-mark" class="w-3 h-3" />
@@ -287,6 +290,8 @@
           <UBadge
             :color="priorityColor(row.original.priority)" variant="subtle" size="sm"
             class="cursor-pointer hover:opacity-80"
+            :class="priorityBadgeClass(row.original.priority)"
+            :style="priorityBadgeStyle(row.original.priority)"
             :data-priority="row.original.priority"
             :title="`筛选优先级：${priorityLabel(row.original.priority)}`"
             @click.stop="filterByPriority(row.original)"
@@ -867,8 +872,10 @@ const statusColor = statusColorFn
 // 只采纳最新一次请求的响应,丢弃过期响应,避免列表停在上一个筛选条件。
 let fetchSeq = 0
 async function fetchIssues() {
-  // 看板模式:按列独立分页取数,列内有各自的加载态,不占用全局 loading
+  // 看板模式:按列独立分页取数,列内有各自的加载态,不占用全局 loading。
+  // 仍要递增 fetchSeq,作废在途的表格响应,防止其落地覆盖 issues/totalCount
   if (viewMode.value === 'kanban') {
+    fetchSeq++
     loading.value = false
     await kanban.reset(kanbanStatusKeys.value)
     return
@@ -955,7 +962,7 @@ watch(page, () => {
   fetchIssues()
 })
 
-// 看板要全量数据、表格只取当前页,切换视图时重新拉取
+// 看板按列独立分页、表格按页取数,两种视图查询形态不同,切换时重新拉取
 watch(viewMode, () => {
   page.value = 1
   rowSelection.value = {}

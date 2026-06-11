@@ -59,6 +59,7 @@ class IssueListSerializer(serializers.ModelSerializer):
     created_by_name = serializers.SerializerMethodField()
     updated_by_name = serializers.SerializerMethodField()
     assignee_name = serializers.CharField(source="assignee.name", read_only=True, default=None)
+    assignee_avatar = serializers.CharField(source="assignee.avatar", read_only=True, default=None)
     manager_name = serializers.SerializerMethodField()
     helpers = serializers.PrimaryKeyRelatedField(many=True, read_only=True)
     helpers_names = serializers.SerializerMethodField()
@@ -78,7 +79,7 @@ class IssueListSerializer(serializers.ModelSerializer):
             "status", "labels", "reporter",
             "created_by", "created_by_name",
             "updated_by", "updated_by_name",
-            "assignee", "assignee_name", "manager", "manager_name",
+            "assignee", "assignee_name", "assignee_avatar", "manager", "manager_name",
             "helpers", "helpers_names", "remark", "cause", "solution",
             "ai_cause", "ai_solution",
             "resolution_hours", "created_at", "updated_at", "github_issues",

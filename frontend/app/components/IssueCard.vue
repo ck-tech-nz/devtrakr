@@ -11,7 +11,10 @@
       </p>
       <div class="flex items-center gap-1 flex-shrink-0">
         <UBadge v-if="issue.source" color="info" variant="subtle" size="xs">外部</UBadge>
-        <UBadge :color="priorityColor(issue.priority)" variant="subtle" size="xs">
+        <UBadge
+          :color="priorityColor(issue.priority)" variant="subtle" size="xs"
+          :class="priorityBadgeClass(issue.priority)" :style="priorityBadgeStyle(issue.priority)"
+        >
           {{ priorityLabel(issue.priority) }}
         </UBadge>
       </div>

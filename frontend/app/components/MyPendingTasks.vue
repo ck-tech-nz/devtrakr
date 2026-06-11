@@ -30,6 +30,8 @@
               :color="priorityColor(task.priority)"
               variant="subtle"
               size="xs"
+              :class="priorityBadgeClass(task.priority)"
+              :style="priorityBadgeStyle(task.priority)"
             >
               {{ priorityLabel(task.priority) }}
             </UBadge>

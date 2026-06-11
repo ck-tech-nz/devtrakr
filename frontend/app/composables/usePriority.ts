@@ -5,13 +5,13 @@ export interface PriorityItem {
 }
 
 // 静态默认(高→低),色系低→高: 灰 → 黄 → 橙 → 红。
-// badge 语义色/activeClass 仅对内置四档有意义,自定义档位回退 neutral;
-// 卡片/行/滑块的色系走下方 configured 的动态主色(站点设置可改)。
+// badge 语义色(color)只作无主色档位的兜底,自定义档位回退 neutral;
+// 卡片/行/滑块/徽章的色系走下方 configured 的动态主色(站点设置可改)。
 export const PRIORITY_ITEMS = [
-  { value: 'P0', label: '紧急', color: 'error',   background: '#ef4444', activeClass: 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300' },
-  { value: 'P1', label: '高',   color: 'warning', background: '#f97316', activeClass: 'bg-orange-100 text-orange-700 dark:bg-orange-900 dark:text-orange-300' },
-  { value: 'P2', label: '中',   color: 'warning', background: '#facc15', activeClass: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300' },
-  { value: 'P3', label: '低',   color: 'neutral', background: '',        activeClass: 'bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-300' },
+  { value: 'P0', label: '紧急', color: 'error',   background: '#ef4444' },
+  { value: 'P1', label: '高',   color: 'warning', background: '#f97316' },
+  { value: 'P2', label: '中',   color: 'warning', background: '#facc15' },
+  { value: 'P3', label: '低',   color: 'neutral', background: '' },
 ] as const
 
 // 无主色档位(如默认的「低」)在滑块轨道里的兜底色
@@ -45,9 +45,10 @@ export function setPrioritiesFromSettings(raw: unknown) {
   if (items.length) configured.value = items
 }
 
-// 主色只允许 hex,防止管理员输入混入生成的 CSS
+// 主色只允许合法长度的 hex(3/4/6/8 位),防止管理员输入混入生成的 CSS;
+// 5/7 位不是合法 CSS 颜色,混入 color-mix() 会让整条规则失效
 export function isSafeHexColor(c: string): boolean {
-  return /^#[0-9a-fA-F]{3,8}$/.test(c)
+  return /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/.test(c)
 }
 
 function find(p: string): PriorityItem | undefined {
@@ -71,6 +72,20 @@ export function priorityCardClass(p: string): string {
 }
 
 export function priorityCardStyle(p: string): Record<string, string> | undefined {
+  return mainColorVar(p)
+}
+
+// 优先级徽章(看板卡/待办卡/列表/筛选标签):配了主色的档位给 .priority-badge
+// (样式见 main.css,覆盖 UBadge subtle 的语义色);返回空串表示回退静态语义色 badge
+export function priorityBadgeClass(p: string): string {
+  return mainColorVar(p) ? 'priority-badge' : ''
+}
+
+export function priorityBadgeStyle(p: string): Record<string, string> | undefined {
+  return mainColorVar(p)
+}
+
+function mainColorVar(p: string): Record<string, string> | undefined {
   const bg = find(p)?.background
   return bg && isSafeHexColor(bg) ? { '--prio': bg } : undefined
 }

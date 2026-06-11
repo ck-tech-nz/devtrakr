@@ -30,6 +30,15 @@ class TestIssueList:
         response = auth_client.get(f"/api/issues/?assignee={user.id}")
         assert response.data["count"] == 1
 
+    def test_list_includes_assignee_avatar(self, auth_client, site_settings):
+        user = UserFactory(avatar="rubber-duck")
+        IssueFactory(assignee=user)
+        IssueFactory(assignee=None)
+        response = auth_client.get("/api/issues/")
+        by_assignee = {i["assignee"]: i for i in response.data["results"]}
+        assert by_assignee[user.id]["assignee_avatar"] == "rubber-duck"
+        assert by_assignee[None]["assignee_avatar"] is None
+
     def test_search_by_title(self, auth_client, site_settings):
         IssueFactory(title="登录页面崩溃")
         IssueFactory(title="支付功能异常")
