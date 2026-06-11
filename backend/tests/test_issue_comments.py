@@ -131,6 +131,35 @@ class TestCommentMentionService:
             assert n is not None
             assert n.recipients.count() == 1
 
+    def test_mention_toggle_within_window_not_renotified(self, issue, author):
+        # 防刷:删 @ 再加回(短窗口内)不重发通知
+        from apps.notifications.models import Notification
+        target = UserFactory()
+        comment = IssueCommentFactory(
+            issue=issue, author=author, content=f"请看 {mention(target)}",
+        )
+        self._call(comment, old_content="", actor=author)
+        assert Notification.objects.count() == 1
+        # 模拟编辑:上一版无提及,本版重新加回 —— added_ids 视角是「新增」
+        self._call(comment, old_content="已删除提及", actor=author)
+        assert Notification.objects.count() == 1
+
+    def test_mention_renotified_after_window(self, issue, author):
+        # 超出 10 分钟窗口后,重新提及应正常通知
+        from datetime import timedelta
+        from django.utils import timezone
+        from apps.notifications.models import Notification
+        target = UserFactory()
+        comment = IssueCommentFactory(
+            issue=issue, author=author, content=f"请看 {mention(target)}",
+        )
+        self._call(comment, old_content="", actor=author)
+        Notification.objects.update(
+            created_at=timezone.now() - timedelta(minutes=11),
+        )
+        self._call(comment, old_content="已删除提及", actor=author)
+        assert Notification.objects.count() == 2
+
 
 class TestCommentListCreate:
     def test_create_returns_201_with_payload(self, author_client, author, issue):
@@ -160,6 +189,13 @@ class TestCommentListCreate:
             f"/api/issues/{issue.pk}/comments/", {"content": "x" * 65537},
         )
         assert resp.status_code == 400
+
+    def test_content_at_limit_accepted(self, author_client, issue):
+        # 上限边界:恰好 65536 字符应被接受(防 off-by-one)
+        resp = author_client.post(
+            f"/api/issues/{issue.pk}/comments/", {"content": "x" * 65536},
+        )
+        assert resp.status_code == 201
 
     def test_unauthenticated_401(self, api_client, issue):
         assert api_client.get(f"/api/issues/{issue.pk}/comments/").status_code == 401

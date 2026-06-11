@@ -179,6 +179,9 @@ class IssueAssignmentSerializer(serializers.ModelSerializer):
         return None
 
 
+MAX_COMMENT_LENGTH = 65536  # 评论内容长度上限(字符)
+
+
 class IssueCommentSerializer(serializers.ModelSerializer):
     author_name = serializers.SerializerMethodField()
     author_avatar = serializers.SerializerMethodField()
@@ -207,8 +210,8 @@ class IssueCommentSerializer(serializers.ModelSerializer):
     def validate_content(self, value):
         if not value.strip():
             raise serializers.ValidationError("评论内容不能为空")
-        if len(value) > 65536:
-            raise serializers.ValidationError("评论内容过长（上限 65536 字符）")
+        if len(value) > MAX_COMMENT_LENGTH:
+            raise serializers.ValidationError(f"评论内容过长（上限 {MAX_COMMENT_LENGTH} 字符）")
         return value
 
 

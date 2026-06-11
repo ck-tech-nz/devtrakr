@@ -2,7 +2,7 @@ import factory
 from faker import Faker
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
-from apps.settings.models import SiteSettings
+from apps.settings.models import SiteSettings, default_issue_statuses, default_priorities
 from apps.projects.models import Project, ProjectMember
 from apps.issues.models import Issue, Activity, IssueComment
 from apps.repos.models import Repo, GitHubIssue, Commit, GitAuthorAlias
@@ -43,21 +43,9 @@ class SiteSettingsFactory(factory.django.DjangoModelFactory):
         "性能": {"foreground": "#ffffff", "background": "#f9d0c4", "description": ""},
         "UI/UX": {"foreground": "#ffffff", "background": "#bfd4f2", "description": ""},
     }
-    priorities = [
-        {"value": "P0", "label": "紧急", "background": "#ef4444"},
-        {"value": "P1", "label": "高", "background": "#f97316"},
-        {"value": "P2", "label": "中", "background": "#facc15"},
-        {"value": "P3", "label": "低", "background": ""},
-    ]
-    issue_statuses = [
-        {"value": "未计划", "label": "未计划", "background": "#8b5cf6"},
-        {"value": "待分配", "label": "待分配", "background": "#f59e0b"},
-        {"value": "待确认", "label": "待确认", "background": "#eab308"},
-        {"value": "进行中", "label": "进行中", "background": "#3b82f6"},
-        {"value": "已解决", "label": "已解决", "background": "#10b981"},
-        {"value": "已发布", "label": "已发布", "background": "#14b8a6"},
-        {"value": "已关闭", "label": "已关闭", "background": "#6b7280"},
-    ]
+    # 直接复用模型默认值函数,避免默认色改动时模型与工厂双写
+    priorities = factory.LazyFunction(default_priorities)
+    issue_statuses = factory.LazyFunction(default_issue_statuses)
 
 
 class ProjectFactory(factory.django.DjangoModelFactory):

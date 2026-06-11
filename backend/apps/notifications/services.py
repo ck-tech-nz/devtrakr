@@ -1,9 +1,11 @@
 import re
+from datetime import timedelta
 
 import requests
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ImproperlyConfigured
+from django.utils import timezone
 from .models import Notification, NotificationRecipient
 
 User = get_user_model()
@@ -105,7 +107,11 @@ def create_broadcast_notification(
 
 
 def create_comment_mention_notifications(*, comment, old_content: str, new_content: str, actor):
-    """评论中 @提及 的站内通知。只对本次新增的提及发，@自己不发。"""
+    """评论中 @提及 的站内通知。只对本次新增的提及发，@自己不发。
+
+    新增提及只对比上一版内容,反复编辑(删 @ 再加回)本可无限重发;
+    故加一层短窗口去重:同一 actor 在同一 issue 上 10 分钟内对同一用户只发一次。
+    """
     old_ids = extract_mentioned_user_ids(old_content)
     new_ids = extract_mentioned_user_ids(new_content)
     added_ids = new_ids - old_ids - {actor.id}
@@ -114,7 +120,18 @@ def create_comment_mention_notifications(*, comment, old_content: str, new_conte
 
     issue = comment.issue
     users = User.objects.filter(id__in=added_ids, is_active=True)
+    recently_notified = set(
+        NotificationRecipient.objects.filter(
+            user__in=users,
+            notification__notification_type=Notification.Type.MENTION,
+            notification__source_user=actor,
+            notification__source_issue=issue,
+            notification__created_at__gte=timezone.now() - timedelta(minutes=10),
+        ).values_list("user_id", flat=True)
+    )
     for user in users:
+        if user.id in recently_notified:
+            continue
         notification = Notification.objects.create(
             notification_type=Notification.Type.MENTION,
             title=f"{actor.name or actor.username} 在 #{issue.pk} 的评论中提到了你",

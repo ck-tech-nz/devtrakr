@@ -28,11 +28,14 @@ def forwards(apps, schema_editor):
 
 
 def backwards(apps, schema_editor):
+    # 回滚有损:自定义的 label/background 会被丢弃,只保留 value 列表。
+    # .get 兜底防御缺 value 键的脏数据,避免回滚中途 KeyError
     SiteSettings = apps.get_model("settings", "SiteSettings")
     for obj in SiteSettings.objects.all():
         if isinstance(obj.priorities, list):
             obj.priorities = [
-                p["value"] if isinstance(p, dict) else p for p in obj.priorities
+                p.get("value", "") if isinstance(p, dict) else p
+                for p in obj.priorities
             ]
             obj.save(update_fields=["priorities"])
 

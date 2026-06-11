@@ -46,6 +46,11 @@ class AiCheckDuplicateThrottle(UserRateThrottle):
     scope = "ai_duplicate_check"
 
 
+class IssueCommentWriteThrottle(UserRateThrottle):
+    """评论写操作(发表/编辑/删除)限频:防脚本刷评论、借 @提及 刷通知。"""
+    scope = "issue_comment_write"
+
+
 def _with_ai_fields(qs):
     """Annotate issues with cause/solution from latest completed AI analysis."""
     latest = (
@@ -70,7 +75,13 @@ def _with_ai_fields(qs):
 
 
 class IssueListCreateView(generics.ListCreateAPIView):
-    queryset = Issue.objects.select_related("created_by", "assignee").prefetch_related("github_issues__repo")
+    # updated_by/manager/helpers 均被列表序列化器逐行读取,不预取会放大为每行 N+1
+    # (看板按列并发分页后该端点请求量倍增,见 useKanbanIssues)
+    queryset = (
+        Issue.objects
+        .select_related("created_by", "assignee", "updated_by", "manager")
+        .prefetch_related("github_issues__repo", "helpers")
+    )
     permission_classes = [IsAuthenticated, FullDjangoModelPermissions]
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     filterset_fields = ["priority", "status", "assignee", "project", "helpers"]
@@ -537,14 +548,15 @@ class IssueAttachmentsView(APIView):
         return Response(status=204)
 
 
-def _can_moderate_comments(user) -> bool:
-    """管理员（superuser 或「管理员」组）可删除任意评论。"""
-    return user.is_superuser or user.groups.filter(name="管理员").exists()
-
-
 class IssueCommentsView(APIView):
     """GET: 评论列表（旧→新）。POST: 发表评论。"""
     permission_classes = [IsAuthenticated]
+
+    def get_throttles(self):
+        # 只限写操作,浏览评论不限频
+        if self.request.method == "POST":
+            return [IssueCommentWriteThrottle()]
+        return []
 
     def get(self, request, pk):
         issue = Issue.objects.filter(pk=pk).first()
@@ -580,6 +592,7 @@ class IssueCommentsView(APIView):
 class IssueCommentDetailView(APIView):
     """PATCH: 仅作者可编辑。DELETE: 作者或管理员。"""
     permission_classes = [IsAuthenticated]
+    throttle_classes = [IssueCommentWriteThrottle]  # PATCH/DELETE 均为写操作
 
     def _get_comment(self, pk, comment_id):
         return (
@@ -615,7 +628,8 @@ class IssueCommentDetailView(APIView):
         comment = self._get_comment(pk, comment_id)
         if not comment:
             return Response({"detail": "评论不存在"}, status=status.HTTP_404_NOT_FOUND)
-        if comment.author_id != request.user.id and not _can_moderate_comments(request.user):
+        # 作者本人或管理员（_is_manager: superuser / 「管理员」组）可删除
+        if comment.author_id != request.user.id and not _is_manager(request.user):
             return Response({"detail": "无权删除该评论"}, status=status.HTTP_403_FORBIDDEN)
         comment.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)

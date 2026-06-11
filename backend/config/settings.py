@@ -117,6 +117,7 @@ REST_FRAMEWORK = {
     "DEFAULT_THROTTLE_RATES": {
         "ai_wizard": "10/min",
         "ai_duplicate_check": "30/min",
+        "issue_comment_write": "20/min",
     },
 }
 
