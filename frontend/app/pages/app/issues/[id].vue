@@ -131,8 +131,8 @@
                 v-for="p in priorityItems"
                 :key="p.value"
                 class="px-3 py-1 rounded-full text-xs font-medium transition-colors"
-                :class="issue.priority === p.value ? 'priority-chip-active' : 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'"
-                :style="issue.priority === p.value ? { '--prio': p.cssColor } : undefined"
+                :class="issue.priority === p.value ? 'priority-chip-active' : 'priority-chip'"
+                :style="{ '--prio': p.cssColor }"
                 @click="updateField('priority', p.value)"
               >{{ p.label }}</button>
             </div>
@@ -1631,10 +1631,25 @@ function formatAssignmentDate(s: string): string {
 </script>
 
 <style scoped>
-/* 选中的优先级档位按站点设置主色(--prio)着色,深浅用 color-mix 派生(同列表页行/卡片);
-   描边保证无主色档位(兜底灰)的选中态也能与未选中区分 */
-.priority-chip-active {
+/* 优先级胶囊全部按站点设置主色(--prio)着色,深浅用 color-mix 派生(同列表页行/卡片)。
+   未选中:弱底+灰调字;选中:深底+深字+描边+加粗,低饱和主色档位也能区分 */
+.priority-chip {
+  background-color: color-mix(in srgb, var(--prio) 9%, #ffffff);
+  color: color-mix(in srgb, var(--prio) 40%, #9ca3af);
+}
+.priority-chip:hover {
   background-color: color-mix(in srgb, var(--prio) 18%, #ffffff);
+}
+:root.dark .priority-chip {
+  background-color: color-mix(in srgb, var(--prio) 14%, #111827);
+  color: color-mix(in srgb, var(--prio) 40%, #6b7280);
+}
+:root.dark .priority-chip:hover {
+  background-color: color-mix(in srgb, var(--prio) 24%, #111827);
+}
+.priority-chip-active {
+  font-weight: 600;
+  background-color: color-mix(in srgb, var(--prio) 20%, #ffffff);
   color: color-mix(in srgb, var(--prio) 75%, #374151);
   box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--prio) 60%, #ffffff);
 }
