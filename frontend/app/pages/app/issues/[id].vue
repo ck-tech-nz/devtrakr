@@ -403,8 +403,8 @@
           </div>
         </div>
 
-        <!-- 关联 Issues — 自动 (AI 创建时去重命中) + 手动 -->
-        <div v-if="relatedIssuesResolved.length || relatedSearchOpen" class="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 p-5 space-y-3">
+        <!-- 关联 Issues — 自动 (AI 创建时去重命中) + 手动; 常显以便空列表时也能点 + 添加 -->
+        <div class="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 p-5 space-y-3">
           <div class="flex items-center justify-between">
             <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100">关联 Issues</h3>
             <UButton

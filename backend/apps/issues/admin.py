@@ -9,6 +9,7 @@ class IssueAdmin(SimpleHistoryAdmin, ModelAdmin):
     list_display = ("id", "title", "priority", "status", "assignee", "created_by", "is_deleted", "created_at")
     list_filter = ("priority", "status", "is_deleted")
     search_fields = ("title",)
+    autocomplete_fields = ("github_issues", "attachments")
     history_list_display = ("status", "priority", "assignee", "title")
 
     def get_queryset(self, request):
