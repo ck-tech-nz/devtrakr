@@ -202,3 +202,104 @@ class TestCommentListCreate:
             notification_type=Notification.Type.MENTION, source_issue=issue,
         ).first()
         assert n is not None and n.recipients.filter(user=target).exists()
+
+
+class TestCommentEditDelete:
+    def _backdate(self, comment, seconds=10):
+        """把 created_at 回拨,使编辑后 is_edited 的 1 秒容差判定生效。"""
+        from datetime import timedelta
+        from django.utils import timezone
+        IssueComment.objects.filter(pk=comment.pk).update(
+            created_at=timezone.now() - timedelta(seconds=seconds),
+        )
+
+    def test_author_can_edit(self, author_client, author, issue):
+        comment = IssueCommentFactory(issue=issue, author=author, content="原文")
+        self._backdate(comment)
+        resp = author_client.patch(
+            f"/api/issues/{issue.pk}/comments/{comment.pk}/", {"content": "改过的"},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["content"] == "改过的"
+        assert data["is_edited"] is True
+
+    def test_non_author_cannot_edit(self, other_client, author, issue):
+        comment = IssueCommentFactory(issue=issue, author=author)
+        resp = other_client.patch(
+            f"/api/issues/{issue.pk}/comments/{comment.pk}/", {"content": "篡改"},
+        )
+        assert resp.status_code == 403
+
+    def test_admin_cannot_edit_others(self, admin_client, author, issue):
+        # 管理员只可删不可改
+        comment = IssueCommentFactory(issue=issue, author=author)
+        resp = admin_client.patch(
+            f"/api/issues/{issue.pk}/comments/{comment.pk}/", {"content": "篡改"},
+        )
+        assert resp.status_code == 403
+
+    def test_edit_blank_content_rejected(self, author_client, author, issue):
+        comment = IssueCommentFactory(issue=issue, author=author)
+        resp = author_client.patch(
+            f"/api/issues/{issue.pk}/comments/{comment.pk}/", {"content": " "},
+        )
+        assert resp.status_code == 400
+
+    def test_author_can_delete(self, author_client, author, issue):
+        comment = IssueCommentFactory(issue=issue, author=author)
+        resp = author_client.delete(f"/api/issues/{issue.pk}/comments/{comment.pk}/")
+        assert resp.status_code == 204
+        assert not IssueComment.objects.filter(pk=comment.pk).exists()
+
+    def test_admin_group_can_delete_any(self, admin_client, author, issue):
+        comment = IssueCommentFactory(issue=issue, author=author)
+        resp = admin_client.delete(f"/api/issues/{issue.pk}/comments/{comment.pk}/")
+        assert resp.status_code == 204
+
+    def test_superuser_can_delete_any(self, superuser_client, author, issue):
+        comment = IssueCommentFactory(issue=issue, author=author)
+        resp = superuser_client.delete(f"/api/issues/{issue.pk}/comments/{comment.pk}/")
+        assert resp.status_code == 204
+
+    def test_other_user_cannot_delete(self, other_client, author, issue):
+        comment = IssueCommentFactory(issue=issue, author=author)
+        resp = other_client.delete(f"/api/issues/{issue.pk}/comments/{comment.pk}/")
+        assert resp.status_code == 403
+        assert IssueComment.objects.filter(pk=comment.pk).exists()
+
+    def test_comment_under_wrong_issue_404(self, author_client, author, issue):
+        other_issue = IssueFactory()
+        comment = IssueCommentFactory(issue=other_issue, author=author)
+        resp = author_client.patch(
+            f"/api/issues/{issue.pk}/comments/{comment.pk}/", {"content": "x"},
+        )
+        assert resp.status_code == 404
+
+    def test_edit_notifies_only_new_mentions(self, author_client, author, issue):
+        from apps.notifications.models import Notification
+        first, second = UserFactory(), UserFactory()
+        comment = IssueCommentFactory(
+            issue=issue, author=author, content=f"已提及 {mention(first)}",
+        )
+        resp = author_client.patch(
+            f"/api/issues/{issue.pk}/comments/{comment.pk}/",
+            {"content": f"已提及 {mention(first)} 新增 {mention(second)}"},
+        )
+        assert resp.status_code == 200
+        recipients = list(
+            Notification.objects.filter(source_issue=issue)
+            .values_list("recipients__user", flat=True)
+        )
+        assert second.id in recipients
+        assert first.id not in recipients
+
+    def test_list_serializes_deleted_author(self, author_client, issue):
+        # on_delete=SET_NULL 后 author 为 None 的序列化分支
+        IssueCommentFactory(issue=issue, author=None, content="孤儿评论")
+        resp = author_client.get(f"/api/issues/{issue.pk}/comments/")
+        assert resp.status_code == 200
+        data = resp.json()[-1]
+        assert data["author"] is None
+        assert data["author_name"] is None
+        assert data["author_avatar"] == ""

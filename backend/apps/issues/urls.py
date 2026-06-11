@@ -7,7 +7,7 @@ from .views import (
     IssueAiDraftView, IssueAiDraftReviseView, IssueAiChatView,
     IssueRelatedView,
     IssueClaimView, IssueConfirmView, IssueTransferView, IssueAssignView,
-    IssueCommentsView,
+    IssueCommentsView, IssueCommentDetailView,
 )
 
 urlpatterns = [
@@ -20,6 +20,11 @@ urlpatterns = [
     path("<int:pk>/", IssueDetailView.as_view(), name="issue-detail"),
     path("<int:pk>/attachments/", IssueAttachmentsView.as_view(), name="issue-attachments"),
     path("<int:pk>/comments/", IssueCommentsView.as_view(), name="issue-comments"),
+    path(
+        "<int:pk>/comments/<int:comment_id>/",
+        IssueCommentDetailView.as_view(),
+        name="issue-comment-detail",
+    ),
     path("<int:pk>/github-create/", IssueGitHubCreateView.as_view(), name="issue-github-create"),
     path("<int:pk>/github-link/", IssueGitHubLinkView.as_view(), name="issue-github-link"),
     path("<int:pk>/related/", IssueRelatedView.as_view(), name="issue-related"),

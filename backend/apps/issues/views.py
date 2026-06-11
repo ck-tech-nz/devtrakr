@@ -7,6 +7,7 @@ from rest_framework.response import Response
 from rest_framework.throttling import UserRateThrottle
 from rest_framework.views import APIView
 from apps.permissions import FullDjangoModelPermissions
+from django.db import transaction
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import SearchFilter, OrderingFilter
 from django.conf import settings as django_settings
@@ -552,6 +553,7 @@ class IssueCommentsView(APIView):
         comments = issue.comments.select_related("author")
         return Response(IssueCommentSerializer(comments, many=True).data)
 
+    @transaction.atomic
     def post(self, request, pk):
         issue = Issue.objects.filter(pk=pk).first()
         if not issue:
@@ -573,6 +575,46 @@ class IssueCommentsView(APIView):
         return Response(
             IssueCommentSerializer(comment).data, status=status.HTTP_201_CREATED,
         )
+
+
+class IssueCommentDetailView(APIView):
+    """PATCH: 仅作者可编辑。DELETE: 作者或管理员。"""
+    permission_classes = [IsAuthenticated]
+
+    def _get_comment(self, pk, comment_id):
+        return (
+            IssueComment.objects.select_related("author", "issue")
+            .filter(pk=comment_id, issue_id=pk)
+            .first()
+        )
+
+    @transaction.atomic
+    def patch(self, request, pk, comment_id):
+        comment = self._get_comment(pk, comment_id)
+        if not comment:
+            return Response({"detail": "评论不存在"}, status=status.HTTP_404_NOT_FOUND)
+        if comment.author_id != request.user.id:
+            return Response({"detail": "只能编辑自己的评论"}, status=status.HTTP_403_FORBIDDEN)
+        serializer = IssueCommentSerializer(comment, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        old_content = comment.content
+        comment.content = serializer.validated_data.get("content", comment.content)
+        comment.save(update_fields=["content", "updated_at"])
+        # 编辑不写 Activity、不 bump issue.updated_at（既有评论的修订不算新讨论动态）
+        create_comment_mention_notifications(
+            comment=comment, old_content=old_content, new_content=comment.content,
+            actor=request.user,
+        )
+        return Response(IssueCommentSerializer(comment).data)
+
+    def delete(self, request, pk, comment_id):
+        comment = self._get_comment(pk, comment_id)
+        if not comment:
+            return Response({"detail": "评论不存在"}, status=status.HTTP_404_NOT_FOUND)
+        if comment.author_id != request.user.id and not _can_moderate_comments(request.user):
+            return Response({"detail": "无权删除该评论"}, status=status.HTTP_403_FORBIDDEN)
+        comment.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 FIELD_LABELS = {
