@@ -47,7 +47,8 @@ const html = computed(() => {
 .markdown-view table { border-collapse: collapse; margin: 0.5em 0; }
 .markdown-view th, .markdown-view td { border: 1px solid #d1d5db; padding: 0.4em 0.6em; }
 :root.dark .markdown-view th, :root.dark .markdown-view td { border-color: #4b5563; }
-.markdown-view img { max-width: 100%; border-radius: 6px; margin: 0.5em 0; }
+.markdown-view img { max-width: 100%; border-radius: 6px; margin: 0.5em 0; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.08), 0 2px 8px rgba(0, 0, 0, 0.12); }
+:root.dark .markdown-view img { box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.1), 0 2px 8px rgba(0, 0, 0, 0.45); }
 
 /* 以下 mention/file-card/task-list 样式与 MarkdownEditor.vue 的 .markdown-body 段保持同步 */
 
