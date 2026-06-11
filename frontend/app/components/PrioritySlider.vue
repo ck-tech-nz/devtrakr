@@ -64,13 +64,11 @@ const index = computed(() => {
   return i === -1 ? 0 : i
 })
 
-// 玻璃 thumb 与原生(透明) thumb 同宽,保证中心位置一致(浏览器把 thumb 限制在轨道内,
-// 行程是 width - THUMB_PX,所以百分比之外还要按位置补一个像素偏移)
-const THUMB_PX = 28
+// 玻璃 thumb 以中心点定位:两端时中心点正好落在轨道最左/最右端(允许半个 thumb 悬出轨道)
 const thumbLeft = computed(() => {
   const n = STOPS.value.length - 1
   const t = n ? index.value / n : 0
-  return `calc(${t * 100}% + ${(0.5 - t) * THUMB_PX}px)`
+  return `${t * 100}%`
 })
 
 function onInput(e: Event) {
@@ -89,18 +87,20 @@ function onInput(e: Event) {
   border-radius: 9999px;
   cursor: pointer;
 }
-/* 原生 thumb 只留尺寸(交互/定位用),外观全部交给叠加的 .priority-thumb */
+/* 原生 thumb 只留交互,外观全部交给叠加的 .priority-thumb;
+   做窄是因为浏览器把 thumb 限制在轨道内(行程 = 宽度 - thumb 宽),
+   越窄按下/拖拽的位置映射越接近玻璃 thumb 的全程中心点定位 */
 .priority-range::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
-  width: 28px;
+  width: 8px;
   height: 20px;
   border-radius: 9999px;
   background: transparent;
   border: none;
 }
 .priority-range::-moz-range-thumb {
-  width: 28px;
+  width: 8px;
   height: 20px;
   border-radius: 9999px;
   background: transparent;
