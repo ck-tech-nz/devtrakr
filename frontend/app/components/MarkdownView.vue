@@ -49,6 +49,8 @@ const html = computed(() => {
 :root.dark .markdown-view th, :root.dark .markdown-view td { border-color: #4b5563; }
 .markdown-view img { max-width: 100%; border-radius: 6px; margin: 0.5em 0; }
 
+/* 以下 mention/file-card/task-list 样式与 MarkdownEditor.vue 的 .markdown-body 段保持同步 */
+
 /* Mention styles */
 .markdown-view .mention-user {
   background: #dbeafe;
@@ -159,4 +161,31 @@ const html = computed(() => {
 :root.dark .markdown-view .md-file-ppt .md-file-ext { background: #7c2d12; color: #fed7aa; }
 :root.dark .markdown-view .md-file-text .md-file-ext { background: #374151; color: #e5e7eb; }
 :root.dark .markdown-view .md-file-archive .md-file-ext { background: #4b5563; color: #f3f4f6; }
+
+/* Task list (todo) styles */
+.markdown-view ul.contains-task-list { padding-left: 1.5em; list-style: none; margin: 0.5em 0; }
+.markdown-view .task-list-item { list-style: none; }
+.markdown-view .md-checkbox {
+  display: inline-block;
+  width: 0.95em; height: 0.95em;
+  border: 1.5px solid #9ca3af;
+  border-radius: 3px;
+  margin-right: 0.4em;
+  vertical-align: middle;
+  position: relative;
+  top: -0.05em;
+}
+.markdown-view .md-checkbox.md-checked {
+  background: #6366f1;
+  border-color: #6366f1;
+}
+.markdown-view .md-checkbox.md-checked::after {
+  content: '';
+  position: absolute;
+  left: 2.5px; top: 0.5px;
+  width: 4px; height: 8px;
+  border: solid #fff;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
 </style>
