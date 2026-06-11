@@ -67,13 +67,12 @@
               <div class="text-xs text-gray-400">新建问题/AI 向导会默认选中该项目</div>
             </div>
             <USelect
-              v-model="defaultProjectId"
+              :model-value="defaultProjectId || '_default'"
               :items="projectOptions"
               value-key="value"
-              placeholder="（使用站点默认）"
               size="sm"
               class="w-48"
-              @update:model-value="saveDefaultProject"
+              @update:model-value="onDefaultProjectChange"
             />
           </div>
           <div class="flex items-center justify-between">
@@ -157,10 +156,16 @@ const themeOptions = [{ label: '浅色', value: 'light' }, { label: '深色', va
 const projects = ref<{ id: string; name: string }[]>([])
 const defaultProjectId = ref<string>('')
 
+// SelectItem 不允许空字符串 value，「使用站点默认」用 '_default' 哨兵表示
 const projectOptions = computed(() => [
-  { label: '（使用站点默认）', value: '' },
+  { label: '（使用站点默认）', value: '_default' },
   ...projects.value.map(p => ({ label: p.name, value: String(p.id) })),
 ])
+
+function onDefaultProjectChange(v: string) {
+  defaultProjectId.value = v === '_default' ? '' : v
+  saveDefaultProject(defaultProjectId.value)
+}
 
 onMounted(async () => {
   const data = await api<any>('/api/projects/').catch(() => ({ results: [] }))

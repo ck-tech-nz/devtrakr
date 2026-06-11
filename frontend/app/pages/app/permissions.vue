@@ -195,10 +195,11 @@
               <div class="form-row">
                 <label>关联权限</label>
                 <USelect
-                  v-model="routeForm.permission"
+                  :model-value="routeForm.permission || '_none'"
                   :items="permSelectOptions"
                   placeholder="不绑定权限"
                   value-key="value"
+                  @update:model-value="(v: string) => routeForm.permission = v === '_none' ? '' : v"
                 />
               </div>
               <div class="form-grid-2">
@@ -350,9 +351,9 @@ const permColumns = [
   { accessorKey: 'actions', header: '操作' },
 ]
 
-// Permission select options for route form
+// Permission select options for route form（SelectItem 不允许空字符串 value，「不绑定」用 '_none' 哨兵表示）
 const permSelectOptions = computed(() => [
-  { label: '不绑定权限', value: '' },
+  { label: '不绑定权限', value: '_none' },
   ...allPermissions.value.map(p => ({ label: p.full_codename, value: p.full_codename })),
 ])
 

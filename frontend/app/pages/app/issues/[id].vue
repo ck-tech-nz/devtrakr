@@ -699,7 +699,7 @@
           <div class="modal-body">
             <div class="form-row">
               <label>筛选仓库</label>
-              <USelect v-model="ghLinkRepoFilter" :items="[{ label: '全部', value: '' }, ...repoOptions]" value-key="value" />
+              <USelect :model-value="ghLinkRepoFilter || '_all'" :items="[{ label: '全部', value: '_all' }, ...repoOptions]" value-key="value" @update:model-value="(v: string) => ghLinkRepoFilter = v === '_all' ? '' : v" />
             </div>
             <div class="max-h-60 overflow-y-auto space-y-1 mt-2">
               <div v-for="gh in availableGHIssues" :key="gh.id" class="flex items-center space-x-2 px-2 py-1.5 rounded hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer" @click="toggleGHSelection(gh.id)">

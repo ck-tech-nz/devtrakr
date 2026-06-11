@@ -21,7 +21,7 @@
           >
             只看我的
           </UButton>
-          <USelect v-model="filterAssignee" :items="filterAssigneeOptions" class="w-28" value-key="value" placeholder="负责人" />
+          <USelect :model-value="filterAssignee" :items="filterAssigneeOptions" class="w-28" value-key="value" placeholder="负责人" @update:model-value="(v: string) => filterAssignee = v === '_all' ? '' : v" />
         </UButtonGroup>
         <PrioritySlider v-model="filterPriority" />
         <div class="relative">
@@ -648,9 +648,9 @@ const createPriorityOptions = computed(() => priorityItems.value.map(p => ({ lab
 const createStatusOptions: { label: string; value: string }[] = ISSUE_STATUS_OPTIONS
 const createAssigneeOptions = computed(() => [{ label: '无', value: '_none' }, ...users.value.map(u => ({ label: u.name || u.username, value: String(u.id) }))])
 
-// 首项「全部负责人」(value '') 用于清除负责人筛选,替代原来的浮层 × 按钮
+// 首项「全部负责人」用于清除负责人筛选；SelectItem 不允许空字符串 value，用 '_all' 哨兵在模板里映射回 ''
 const filterAssigneeOptions = computed(() => [
-  { label: '全部负责人', value: '' },
+  { label: '全部负责人', value: '_all' },
   ...users.value.map(u => ({ label: u.name || u.username, value: String(u.id) })),
 ])
 const filterStatusOptions: { label: string; value: string }[] = ISSUE_STATUS_OPTIONS

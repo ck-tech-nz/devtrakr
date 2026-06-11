@@ -68,10 +68,11 @@
 
         <!-- 角色筛选 -->
         <USelect
-          v-model="selectedRole"
+          :model-value="selectedRole || '_all'"
           :items="roleOptions"
           size="sm"
           class="w-32"
+          @update:model-value="(v: string) => selectedRole = v === '_all' ? '' : v"
         />
 
         <!-- 刷新 -->
@@ -434,9 +435,10 @@ watch(popoverOpen, (open) => {
   }
 })
 
+// SelectItem 不允许空字符串 value，「全部」用 '_all' 哨兵在模板里映射回 ''
 const roleOptions = [
   { label: '开发者', value: '开发者' },
-  { label: '全部', value: '' },
+  { label: '全部', value: '_all' },
 ]
 
 const columns = [
