@@ -19,9 +19,9 @@ services:
       - "traefik.http.routers.devtrakr-backend.entrypoints=web"
       - "traefik.http.services.devtrakr-backend.loadbalancer.server.port=8000"
     command: >
-      sh -c "uv run python manage.py migrate --noinput &&
-             uv run python manage.py sync_page_perms 2>/dev/null || true &&
-             uv run uvicorn config.asgi:application --host 0.0.0.0 --port 8000 --workers 4"
+      sh -c "uv run --no-sync python manage.py migrate --noinput &&
+             uv run --no-sync python manage.py sync_page_perms 2>/dev/null || true &&
+             uv run --no-sync uvicorn config.asgi:application --host 0.0.0.0 --port 8000 --workers 4"
 
   frontend:
     image: registry.cktech.hk/devtrakr/frontend-prod
@@ -56,7 +56,7 @@ services:
       - db-network
     labels:
       - com.centurylinklabs.watchtower.enable=true
-    command: uv run celery -A config worker -l info
+    command: uv run --no-sync celery -A config worker -l info
 
   celery-beat:
     image: registry.cktech.hk/devtrakr/backend-prod
@@ -68,7 +68,7 @@ services:
       - db-network
     labels:
       - com.centurylinklabs.watchtower.enable=true
-    command: uv run celery -A config beat -l info --scheduler django_celery_beat.schedulers.DatabaseScheduler
+    command: uv run --no-sync celery -A config beat -l info --scheduler django_celery_beat.schedulers.DatabaseScheduler
 
 networks:
   db-network:
