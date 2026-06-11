@@ -53,6 +53,23 @@ class TestIssueList:
         response = api_client.get("/api/issues/")
         assert response.status_code == 401
 
+    def test_page_size_param_honored(self, auth_client, site_settings):
+        # 看板视图依赖 page_size 全量拉取;默认 PageNumberPagination 会静默忽略该参数
+        IssueFactory.create_batch(7)
+        response = auth_client.get("/api/issues/?page_size=5")
+        assert response.data["count"] == 7
+        assert len(response.data["results"]) == 5
+        assert response.data["next"] is not None
+
+    def test_page_size_capped_at_max(self):
+        from rest_framework.request import Request
+        from rest_framework.test import APIRequestFactory
+
+        from apps.pagination import DefaultPagination
+
+        request = Request(APIRequestFactory().get("/api/issues/", {"page_size": "100000"}))
+        assert DefaultPagination().get_page_size(request) == DefaultPagination.max_page_size
+
 
 class TestIssueDetail:
     def test_get_issue_detail(self, auth_client, site_settings):

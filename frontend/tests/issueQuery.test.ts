@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { buildIssueQueryParams, type IssueFilterState } from '../app/utils/issueQuery'
+import { buildIssueQueryParams, fetchAllIssuePages, type IssueFilterState, type PagedIssues } from '../app/utils/issueQuery'
 
 function base(over: Partial<IssueFilterState> = {}): IssueFilterState {
   return {
@@ -81,5 +81,51 @@ describe('buildIssueQueryParams', () => {
     expect(p.has('priority')).toBe(false)
     expect(p.has('status')).toBe(false)
     expect(p.has('search')).toBe(false)
+  })
+})
+
+describe('fetchAllIssuePages', () => {
+  // 伪造分页接口:按调用次数依次返回预设的每一页,并记录每次收到的查询参数
+  function pagedFetcher(pages: PagedIssues[]) {
+    const calls: URLSearchParams[] = []
+    const fetchPage = async (params: URLSearchParams): Promise<PagedIssues> => {
+      calls.push(new URLSearchParams(params))
+      return pages[calls.length - 1]!
+    }
+    return { calls, fetchPage }
+  }
+
+  it('follows next across pages and concatenates results in order', async () => {
+    const { calls, fetchPage } = pagedFetcher([
+      { results: [{ id: 1 }, { id: 2 }], count: 5, next: 'p2' },
+      { results: [{ id: 3 }, { id: 4 }], count: 5, next: 'p3' },
+      { results: [{ id: 5 }], count: 5, next: null },
+    ])
+    const data = await fetchAllIssuePages(fetchPage, new URLSearchParams('status=进行中'), 2)
+    expect(data.results.map(r => r.id)).toEqual([1, 2, 3, 4, 5])
+    expect(data.count).toBe(5)
+    expect(calls.map(c => c.get('page'))).toEqual(['1', '2', '3'])
+    expect(calls.every(c => c.get('page_size') === '2')).toBe(true)
+    expect(calls.every(c => c.get('status') === '进行中')).toBe(true)
+  })
+
+  it('stops after a single request when next is null', async () => {
+    const { calls, fetchPage } = pagedFetcher([
+      { results: [{ id: 1 }], count: 1, next: null },
+    ])
+    const data = await fetchAllIssuePages(fetchPage, new URLSearchParams(), 100)
+    expect(data.results.map(r => r.id)).toEqual([1])
+    expect(data.count).toBe(1)
+    expect(calls.length).toBe(1)
+  })
+
+  it('does not mutate the base params', async () => {
+    const baseParams = new URLSearchParams('page=9&page_size=15')
+    const { fetchPage } = pagedFetcher([
+      { results: [], count: 0, next: null },
+    ])
+    await fetchAllIssuePages(fetchPage, baseParams, 100)
+    expect(baseParams.get('page')).toBe('9')
+    expect(baseParams.get('page_size')).toBe('15')
   })
 })

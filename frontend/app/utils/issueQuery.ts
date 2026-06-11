@@ -20,6 +20,36 @@ export interface IssueFilterState {
   search: string
 }
 
+export interface PagedIssues {
+  results: any[]
+  count: number
+  next: string | null
+}
+
+// 看板按状态分桶需要全量数据:循环拉取所有分页直到 next 为空,
+// 否则排序靠后的问题(如创建较早的进行中问题)会被第 1 页截断、永远不显示。
+// pageSize 需 ≤ 后端 max_page_size(200)。
+export const KANBAN_PAGE_SIZE = 100
+
+export async function fetchAllIssuePages(
+  fetchPage: (params: URLSearchParams) => Promise<PagedIssues>,
+  baseParams: URLSearchParams,
+  pageSize: number = KANBAN_PAGE_SIZE,
+): Promise<{ results: any[]; count: number }> {
+  const results: any[] = []
+  let count = 0
+  for (let pageNum = 1; ; pageNum++) {
+    const params = new URLSearchParams(baseParams)
+    params.set('page', String(pageNum))
+    params.set('page_size', String(pageSize))
+    const data = await fetchPage(params)
+    results.push(...(data.results || []))
+    count = data.count ?? results.length
+    if (!data.next) break
+  }
+  return { results, count }
+}
+
 export function buildIssueQueryParams(s: IssueFilterState): URLSearchParams {
   const params = new URLSearchParams()
   params.set('page', String(s.page))

@@ -402,7 +402,7 @@ import { ISSUE_STATUS, ISSUE_STATUS_OPTIONS, kanbanColor, KANBAN_DEFAULT_COLUMNS
 import StatusCell from '~/components/issue/StatusCell.vue'
 import TransferDialog from '~/components/issue/TransferDialog.vue'
 import AssignDialog from '~/components/issue/AssignDialog.vue'
-import { buildIssueQueryParams } from '~/utils/issueQuery'
+import { buildIssueQueryParams, fetchAllIssuePages } from '~/utils/issueQuery'
 
 definePageMeta({ layout: 'default' })
 
@@ -862,7 +862,10 @@ async function fetchIssues() {
       search: searchQuery.value,
     })
 
-    const data = await api<any>(`/api/issues/?${params.toString()}`)
+    // 看板按状态分桶需要全量数据,只取一页会把排序靠后的问题截断在看板之外
+    const data = viewMode.value === 'kanban'
+      ? await fetchAllIssuePages(p => api<any>(`/api/issues/?${p.toString()}`), params)
+      : await api<any>(`/api/issues/?${params.toString()}`)
     if (seq !== fetchSeq) return // 已有更新的请求发出,丢弃这个过期响应
     issues.value = data.results || data || []
     totalCount.value = data.count ?? issues.value.length
@@ -924,6 +927,13 @@ const batchStatusItems = [filterStatusOptions.map(s => ({
 }))]
 
 watch(page, () => {
+  rowSelection.value = {}
+  fetchIssues()
+})
+
+// 看板要全量数据、表格只取当前页,切换视图时重新拉取
+watch(viewMode, () => {
+  page.value = 1
   rowSelection.value = {}
   fetchIssues()
 })
