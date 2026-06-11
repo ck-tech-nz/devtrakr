@@ -129,6 +129,11 @@ function canDelete(c: IssueCommentItem): boolean {
   return isAuthor(c) || isAdmin.value
 }
 
+// DRF 错误结构统一提取:字段级错误(content)优先级低于全局 detail
+function errMsg(e: any, fallback: string): string {
+  return e?.data?.detail || e?.data?.content?.[0] || fallback
+}
+
 async function loadComments() {
   loading.value = true
   loadError.value = false
@@ -151,7 +156,7 @@ async function submit() {
     comments.value.push(created)
     draft.value = ''
   } catch (e: any) {
-    toast.add({ title: e?.data?.detail || e?.data?.content?.[0] || '评论发表失败', color: 'error' })
+    toast.add({ title: errMsg(e, '评论发表失败'), color: 'error' })
   } finally {
     submitting.value = false
   }
@@ -176,7 +181,7 @@ async function saveEdit(c: IssueCommentItem) {
     if (idx !== -1) comments.value[idx] = updated
     cancelEdit()
   } catch (e: any) {
-    toast.add({ title: e?.data?.detail || e?.data?.content?.[0] || '评论保存失败', color: 'error' })
+    toast.add({ title: errMsg(e, '评论保存失败'), color: 'error' })
   } finally {
     savingEdit.value = false
   }
@@ -191,7 +196,7 @@ async function confirmDelete() {
     comments.value = comments.value.filter(x => x.id !== target.id)
     pendingDelete.value = null
   } catch (e: any) {
-    toast.add({ title: e?.data?.detail || e?.data?.content?.[0] || '评论删除失败', color: 'error' })
+    toast.add({ title: errMsg(e, '评论删除失败'), color: 'error' })
   } finally {
     deleting.value = false
   }

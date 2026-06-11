@@ -135,7 +135,7 @@ function mentionPlugin(md: MarkdownIt) {
   }
 }
 
-export function useMentionMarkdown() {
+function createMentionMarkdown(): MarkdownIt {
   const md = new MarkdownIt({ html: false, linkify: true })
     .use(taskLists, { enabled: true })
     .use(fileCardPlugin)
@@ -148,5 +148,26 @@ export function useMentionMarkdown() {
   // 该 API 会整体替换 TLD 列表,且两字符国家域名在 linkify-it 里是硬编码的。
   md.linkify.set({ fuzzyLink: false })
 
-  return { md, mentionPlugin }
+  // 行内图片补 loading=lazy/decoding=async:评论流里的截图滚到视口再加载
+  const defaultImage = md.renderer.rules.image
+    ?? ((tokens, idx, options, _env, self) => self.renderToken(tokens, idx, options))
+  md.renderer.rules.image = (tokens, idx, options, env, self) => {
+    const token = tokens[idx]
+    if (token) {
+      token.attrSet('loading', 'lazy')
+      token.attrSet('decoding', 'async')
+    }
+    return defaultImage(tokens, idx, options, env, self)
+  }
+
+  return md
+}
+
+// 实例无状态,模块级单例:评论区每条评论挂一个 MarkdownView,
+// 避免每次组件 setup 都重建 MarkdownIt + linkify 实例
+let sharedMd: MarkdownIt | null = null
+
+export function useMentionMarkdown() {
+  if (!sharedMd) sharedMd = createMentionMarkdown()
+  return { md: sharedMd, mentionPlugin }
 }

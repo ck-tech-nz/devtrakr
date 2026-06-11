@@ -53,9 +53,9 @@ const STOPS = computed(() => [
   })),
 ])
 
-// 轨道本身就是优先级色系渐变: 全部(crystal) → 各档主色(低→高),均匀分布
+// 轨道本身就是优先级色系渐变: 全部(crystal-400,比 thumb 浅一档) → 各档主色(低→高),均匀分布
 const trackGradient = computed(() => {
-  const colors = STOPS.value.map((s, i) => (i === 0 ? '#a78bfa' : s.cssColor))
+  const colors = STOPS.value.map((s, i) => (i === 0 ? 'var(--color-crystal-400)' : s.cssColor))
   const n = colors.length - 1
   return `linear-gradient(to right, ${colors.map((c, i) => `${c} ${n ? Math.round(i * 100 / n) : 0}%`).join(', ')})`
 })
@@ -119,6 +119,11 @@ function onInput(e: Event) {
   border-radius: 9999px;
   background: transparent;
   border: none;
+}
+/* 原生 thumb 透明化后键盘焦点不可见,补一圈轨道外焦点环 */
+.priority-range:focus-visible {
+  outline: 2px solid var(--color-crystal-500);
+  outline-offset: 4px;
 }
 /* iOS 26 Liquid Glass(同 .clear-btn 配方):折射由 LiquidGlass 的 backdrop-filter 提供,
    这里负责形态 — 当前档主色淡淡透进玻璃 + 上沿白高光/下沿暗线 + 浮起阴影 */

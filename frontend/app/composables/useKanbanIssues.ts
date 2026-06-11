@@ -85,8 +85,14 @@ export function useKanbanIssues(
       col.count = data.count ?? col.count
       col.page += 1
       col.hasMore = !!data.next
-    } catch (e) {
-      if (seq === resetSeq) console.error(`Failed to load more for ${status}:`, e)
+    } catch (e: any) {
+      if (seq !== resetSeq) return
+      console.error(`Failed to load more for ${status}:`, e)
+      // 列在翻页期间收缩(他人拖走/改状态)时,越界页码会被 DRF 以 404 拒绝:
+      // 置 hasMore=false 止损,避免每次触底都重发注定失败的请求;其余错误保留重试机会
+      if (e?.statusCode === 404 || e?.status === 404 || e?.response?.status === 404) {
+        col.hasMore = false
+      }
     } finally {
       if (seq === resetSeq) col.loading = false
     }
