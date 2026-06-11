@@ -51,9 +51,15 @@ def mention(user) -> str:
 
 class TestIssueCommentModel:
     def test_ordering_oldest_first(self, issue, author):
+        from datetime import timedelta
+        from django.utils import timezone
         c1 = IssueCommentFactory(issue=issue, author=author)
         c2 = IssueCommentFactory(issue=issue, author=author)
-        assert list(issue.comments.all()) == [c1, c2]
+        # 把 c2 回拨到 c1 之前,验证排序确实按 created_at 而非插入顺序
+        IssueComment.objects.filter(pk=c2.pk).update(
+            created_at=timezone.now() - timedelta(minutes=5),
+        )
+        assert list(issue.comments.all()) == [c2, c1]
 
     def test_str(self, issue, author):
         c = IssueCommentFactory(issue=issue, author=author, content="x" * 100)

@@ -195,7 +195,7 @@ class IssueComment(models.Model):
     class Meta:
         verbose_name = "问题评论"
         verbose_name_plural = "问题评论"
-        ordering = ["created_at"]  # 旧→新,同 GitHub
+        ordering = ["created_at", "id"]  # 旧→新,同 GitHub; id 兜底保证同时间戳时排序稳定
         indexes = [models.Index(fields=["issue", "created_at"])]
 
     def __str__(self):
