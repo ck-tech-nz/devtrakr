@@ -206,11 +206,13 @@ class TestCommentListCreate:
 
 class TestCommentEditDelete:
     def _backdate(self, comment, seconds=10):
-        """把 created_at 回拨,使编辑后 is_edited 的 1 秒容差判定生效。"""
+        """把 created_at/updated_at 一起回拨,模拟一条有年龄的旧评论:
+        编辑后 is_edited 的 1 秒容差判定生效,未编辑时不会误判。"""
         from datetime import timedelta
         from django.utils import timezone
+        past = timezone.now() - timedelta(seconds=seconds)
         IssueComment.objects.filter(pk=comment.pk).update(
-            created_at=timezone.now() - timedelta(seconds=seconds),
+            created_at=past, updated_at=past,
         )
 
     def test_author_can_edit(self, author_client, author, issue):
@@ -335,3 +337,16 @@ class TestCommentEditDelete:
         assert author_client.delete(
             f"/api/issues/{issue.pk}/comments/{comment.pk}/"
         ).status_code == 404
+        assert author_client.get(f"/api/issues/{issue.pk}/comments/").status_code == 404
+        assert author_client.post(
+            f"/api/issues/{issue.pk}/comments/", {"content": "x"},
+        ).status_code == 404
+
+    def test_edit_same_content_not_marked_edited(self, author_client, author, issue):
+        comment = IssueCommentFactory(issue=issue, author=author, content="原文")
+        self._backdate(comment)
+        resp = author_client.patch(
+            f"/api/issues/{issue.pk}/comments/{comment.pk}/", {"content": "原文"},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["is_edited"] is False

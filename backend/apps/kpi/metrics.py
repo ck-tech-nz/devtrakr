@@ -519,6 +519,7 @@ def compute_workload_metrics(
     )
     response_hours_list: list[float] = []
     for issue in assigned_in_period.only("id", "created_at"):
+        # action="commented" 也计入首次响应: 负责人评论即视为已响应(2026-06 评论功能引入,有意为之)
         first_act = (
             Activity.objects.filter(issue_id=issue.pk, user=user)
             .order_by("created_at")

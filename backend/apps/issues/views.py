@@ -597,10 +597,12 @@ class IssueCommentDetailView(APIView):
             return Response({"detail": "只能编辑自己的评论"}, status=status.HTTP_403_FORBIDDEN)
         serializer = IssueCommentSerializer(comment, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
-        if "content" not in serializer.validated_data:
+        new_content = serializer.validated_data.get("content")
+        if new_content is None or new_content == comment.content:
+            # 无实际变更: 不保存、不 bump updated_at、不误标「已编辑」
             return Response(IssueCommentSerializer(comment).data)
         old_content = comment.content
-        comment.content = serializer.validated_data.get("content", comment.content)
+        comment.content = new_content
         comment.save(update_fields=["content", "updated_at"])
         # 编辑不写 Activity、不 bump issue.updated_at（既有评论的修订不算新讨论动态）
         create_comment_mention_notifications(
