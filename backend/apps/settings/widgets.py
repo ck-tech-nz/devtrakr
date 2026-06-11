@@ -9,10 +9,22 @@ class ApiKeyGeneratorWidget(UnfoldAdminTextInputWidget):
     template_name = "widgets/api_key_generator.html"
 
 
-class PriorityListWidget(Widget):
-    """优先级对象列表的行编辑器:每行 value/label/主色(原生取色器),支持增删与上下移."""
+class ColorOptionListWidget(Widget):
+    """带主色的选项对象列表行编辑器:每行 value/label/主色(原生取色器),支持增删与上下移.
 
-    template_name = "widgets/priority_list.html"
+    通用于 priorities / issue_statuses 这类 [{"value","label","background"},...] JSONField;
+    hint/add_label/占位文案由调用方按字段语义传入.
+    """
+
+    template_name = "widgets/color_option_list.html"
+
+    def __init__(self, *, hint="", add_label="+ 添加选项",
+                 value_placeholder="值", label_placeholder="显示名", attrs=None):
+        super().__init__(attrs)
+        self.hint = hint
+        self.add_label = add_label
+        self.value_placeholder = value_placeholder
+        self.label_placeholder = label_placeholder
 
     def get_context(self, name, value, attrs):
         context = super().get_context(name, value, attrs)
@@ -34,7 +46,18 @@ class PriorityListWidget(Widget):
                 })
             else:
                 items.append({"value": p, "label": p, "background": ""})
-        context["widget"]["items_json"] = json.dumps(items, ensure_ascii=False)
+        # 模板把这段 JSON 以 |safe 注入 <script>,必须转义 HTML 敏感字符防止
+        # 存储值里的 </script> 突破脚本块(同 Django json_script 的处理)
+        context["widget"]["items_json"] = (
+            json.dumps(items, ensure_ascii=False)
+            .replace("<", "\\u003c")
+            .replace(">", "\\u003e")
+            .replace("&", "\\u0026")
+        )
+        context["widget"]["hint"] = self.hint
+        context["widget"]["add_label"] = self.add_label
+        context["widget"]["value_placeholder"] = self.value_placeholder
+        context["widget"]["label_placeholder"] = self.label_placeholder
         return context
 
     def value_from_datadict(self, data, files, name):

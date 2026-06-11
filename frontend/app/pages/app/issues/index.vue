@@ -381,7 +381,7 @@
 </template>
 
 <script setup lang="ts">
-import { ISSUE_STATUS, ISSUE_STATUS_OPTIONS, kanbanColor, KANBAN_DEFAULT_COLUMNS, KANBAN_COMPLETED_LEFT, KANBAN_COMPLETED_RIGHT, statusColor as statusColorFn } from '~/constants/issueStatus'
+import { ISSUE_STATUS, ISSUE_STATUS_OPTIONS, KANBAN_DEFAULT_COLUMNS, KANBAN_COMPLETED_LEFT, KANBAN_COMPLETED_RIGHT, statusColor as statusColorFn } from '~/constants/issueStatus'
 import StatusCell from '~/components/issue/StatusCell.vue'
 import TransferDialog from '~/components/issue/TransferDialog.vue'
 import AssignDialog from '~/components/issue/AssignDialog.vue'
@@ -645,7 +645,8 @@ const projectRepoOptions = computed(() => projectRepos.value.map(r => ({ label: 
 
 const projectOptions = computed(() => projects.value.map(p => ({ label: p.name, value: String(p.id) })))
 const createPriorityOptions = computed(() => priorityItems.value.map(p => ({ label: `${p.value} ${p.label}`, value: p.value })))
-const createStatusOptions: { label: string; value: string }[] = ISSUE_STATUS_OPTIONS
+// 状态选项 label 走站点配置(statusLabel),value 是流转逻辑依赖的固定值
+const createStatusOptions = computed(() => ISSUE_STATUS_OPTIONS.map(o => ({ value: o.value, label: statusLabel(o.value) })))
 const createAssigneeOptions = computed(() => [{ label: '无', value: '_none' }, ...users.value.map(u => ({ label: u.name || u.username, value: String(u.id) }))])
 
 // 首项「全部负责人」用于清除负责人筛选；SelectItem 不允许空字符串 value，用 '_all' 哨兵在模板里映射回 ''
@@ -653,7 +654,7 @@ const filterAssigneeOptions = computed(() => [
   { label: '全部负责人', value: '_all' },
   ...users.value.map(u => ({ label: u.name || u.username, value: String(u.id) })),
 ])
-const filterStatusOptions: { label: string; value: string }[] = ISSUE_STATUS_OPTIONS
+const filterStatusOptions = computed(() => ISSUE_STATUS_OPTIONS.map(o => ({ value: o.value, label: statusLabel(o.value) })))
 
 function closeCreateModal() {
   onCreateModalUpdate(false)
@@ -755,8 +756,8 @@ const kanbanColumns = computed(() => kanbanStatusKeys.value.map((key) => {
   const col = kanban.columns.value[key]
   return {
     key,
-    label: key,
-    color: kanbanColor(key),
+    label: statusLabel(key),
+    color: statusMainColor(key),
     items: col?.items ?? [],
     count: col?.count ?? 0,
     hasMore: col?.hasMore ?? false,
@@ -944,10 +945,10 @@ const batchPriorityItems = computed(() => [priorityItems.value.map(p => ({
   onSelect: () => batchUpdate('priority', p.value),
 }))])
 
-const batchStatusItems = [filterStatusOptions.map(s => ({
+const batchStatusItems = computed(() => [filterStatusOptions.value.map(s => ({
   label: s.label,
   onSelect: () => batchUpdate('set_status', s.value),
-}))]
+}))])
 
 watch(page, () => {
   rowSelection.value = {}
@@ -1020,6 +1021,7 @@ onMounted(async () => {
   const rawLabels = settingsData?.labels || {}
   labelOptions.value = typeof rawLabels === 'object' && !Array.isArray(rawLabels) ? Object.keys(rawLabels) : rawLabels
   setPrioritiesFromSettings(settingsData?.priorities)
+  setStatusesFromSettings(settingsData?.issue_statuses)
   projects.value = projectsData?.results || projectsData || []
   repos.value = reposData?.results || reposData || []
   // Check AI analysis status for issues with repos

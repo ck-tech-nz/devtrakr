@@ -45,15 +45,4 @@ export function statusColor(status: string): BadgeColor {
   }
 }
 
-export function kanbanColor(status: string): string {
-  switch (status) {
-    case ISSUE_STATUS.UNPLANNED: return '#8b5cf6'
-    case ISSUE_STATUS.UNASSIGNED: return '#f59e0b'
-    case ISSUE_STATUS.PENDING_CONFIRMATION: return '#eab308'
-    case ISSUE_STATUS.IN_PROGRESS: return '#3b82f6'
-    case ISSUE_STATUS.RESOLVED: return '#10b981'
-    case ISSUE_STATUS.PUBLISHED: return '#14b8a6'
-    case ISSUE_STATUS.CLOSED: return '#6b7280'
-    default: return '#9ca3af'
-  }
-}
+// 状态主色已迁移到站点设置(composables/useStatus.ts statusMainColor),此处不再保留硬编码色值

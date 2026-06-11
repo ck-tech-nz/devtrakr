@@ -25,7 +25,30 @@ class TestSiteSettingsModel:
         assert site_settings.priorities[3]["background"] == ""
 
     def test_default_issue_statuses(self, site_settings):
-        assert site_settings.issue_statuses == ["未计划", "待分配", "待确认", "进行中", "已解决", "已发布", "已关闭"]
+        # 对象列表,每个状态带显示名与主色(前端状态胶囊/看板列圆点据此着色)
+        assert [s["value"] for s in site_settings.issue_statuses] == [
+            "未计划", "待分配", "待确认", "进行中", "已解决", "已发布", "已关闭"
+        ]
+        assert site_settings.issue_statuses[0]["label"] == "未计划"
+        assert site_settings.issue_statuses[0]["background"] == "#8b5cf6"
+        assert all(s["background"].startswith("#") for s in site_settings.issue_statuses)
+
+
+class TestColorOptionListWidget:
+    def test_items_json_escapes_html(self):
+        """items_json 以 |safe 注入 <script>,存储值里的 </script> 必须被转义防 XSS。"""
+        from apps.settings.widgets import ColorOptionListWidget
+
+        widget = ColorOptionListWidget()
+        ctx = widget.get_context(
+            "issue_statuses",
+            [{"value": "</script><img src=x onerror=alert(1)>", "label": "x", "background": ""}],
+            None,
+        )
+        items_json = ctx["widget"]["items_json"]
+        assert "</script>" not in items_json
+        assert "<img" not in items_json
+        assert "\\u003c" in items_json
 
 
 class TestSiteSettingsAPI:

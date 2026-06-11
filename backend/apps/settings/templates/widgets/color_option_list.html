@@ -1,9 +1,9 @@
 <div id="plw-{{ widget.name }}" class="mt-1">
-  <p class="text-xs text-gray-400 mb-2">顺序为 高 → 低（第一行为最高优先级）；主色用于前端徽章/卡片/行底色与滑块渐变，「无底色」表示该档不着色。</p>
+  {% if widget.hint %}<p class="text-xs text-gray-400 mb-2">{{ widget.hint }}</p>{% endif %}
   <div id="plw-rows-{{ widget.name }}" class="flex flex-col gap-2"></div>
   <button type="button" id="plw-add-{{ widget.name }}"
           class="mt-2 inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-md border border-gray-300 text-gray-600 bg-white hover:bg-gray-50 shadow-sm transition dark:bg-gray-800 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700">
-    + 添加优先级
+    {{ widget.add_label }}
   </button>
   <input type="hidden" id="plw-hidden-{{ widget.name }}" name="{{ widget.name }}" />
 </div>
@@ -81,14 +81,14 @@
       var value = document.createElement('input');
       value.type = 'text';
       value.value = item.value;
-      value.placeholder = '值 (如 P0)';
+      value.placeholder = '{{ widget.value_placeholder|escapejs }}';
       value.className = INPUT_CLS + ' w-24 font-mono';
       value.addEventListener('input', function() { item.value = value.value.trim(); sync(); });
 
       var label = document.createElement('input');
       label.type = 'text';
       label.value = item.label;
-      label.placeholder = '显示名 (如 紧急)';
+      label.placeholder = '{{ widget.label_placeholder|escapejs }}';
       label.className = INPUT_CLS + ' w-32';
       label.addEventListener('input', function() { item.label = label.value.trim(); sync(); });
 
@@ -102,10 +102,10 @@
         return b;
       }
 
-      var up = mkBtn('↑', '上移(优先级更高)', function() {
+      var up = mkBtn('↑', '上移', function() {
         if (i > 0) { items.splice(i - 1, 0, items.splice(i, 1)[0]); render(); sync(); }
       });
-      var down = mkBtn('↓', '下移(优先级更低)', function() {
+      var down = mkBtn('↓', '下移', function() {
         if (i < items.length - 1) { items.splice(i + 1, 0, items.splice(i, 1)[0]); render(); sync(); }
       });
       var del = mkBtn('✕', '删除', function() {

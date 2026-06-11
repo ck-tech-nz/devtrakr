@@ -49,7 +49,15 @@ class SiteSettingsFactory(factory.django.DjangoModelFactory):
         {"value": "P2", "label": "中", "background": "#facc15"},
         {"value": "P3", "label": "低", "background": ""},
     ]
-    issue_statuses = ["未计划", "待分配", "待确认", "进行中", "已解决", "已发布", "已关闭"]
+    issue_statuses = [
+        {"value": "未计划", "label": "未计划", "background": "#8b5cf6"},
+        {"value": "待分配", "label": "待分配", "background": "#f59e0b"},
+        {"value": "待确认", "label": "待确认", "background": "#eab308"},
+        {"value": "进行中", "label": "进行中", "background": "#3b82f6"},
+        {"value": "已解决", "label": "已解决", "background": "#10b981"},
+        {"value": "已发布", "label": "已发布", "background": "#14b8a6"},
+        {"value": "已关闭", "label": "已关闭", "background": "#6b7280"},
+    ]
 
 
 class ProjectFactory(factory.django.DjangoModelFactory):
