@@ -4,7 +4,7 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
 from apps.settings.models import SiteSettings
 from apps.projects.models import Project, ProjectMember
-from apps.issues.models import Issue, Activity
+from apps.issues.models import Issue, Activity, IssueComment
 from apps.repos.models import Repo, GitHubIssue, Commit, GitAuthorAlias
 from apps.ai.models import LLMConfig, Prompt, Analysis
 from apps.tools.models import Attachment
@@ -96,6 +96,15 @@ class ActivityFactory(factory.django.DjangoModelFactory):
     issue = factory.SubFactory(IssueFactory)
     action = "created"
     detail = ""
+
+
+class IssueCommentFactory(factory.django.DjangoModelFactory):
+    class Meta:
+        model = IssueComment
+
+    issue = factory.SubFactory(IssueFactory)
+    author = factory.SubFactory(UserFactory)
+    content = factory.Sequence(lambda n: f"评论内容 {n}")
 
 
 class RepoFactory(factory.django.DjangoModelFactory):
