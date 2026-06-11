@@ -92,6 +92,7 @@ git push -f origin main:env/prod     # Deploy to production
 ## Key Conventions
 
 - Backend uses `uv` as package manager (not pip)
+- Migrations: prefer Django-generated migration files (`makemigrations`) over hand-written ones; hand-write only data migrations (`RunPython`) that Django cannot generate. Never edit a Django-generated migration file after it exists — create a new migration instead. Stay faithful to the framework.
 - Issue numbers are auto-incremented integers, displayed as `ISS-001`
 - `SiteSettings` is a singleton (django-solo) for labels, priorities, and issue statuses
 - `FullDjangoModelPermissions` in `apps/permissions.py` enforces `view_*` on GET (unlike default DRF which allows unauthenticated reads)
