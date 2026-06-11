@@ -5,8 +5,8 @@ WORKDIR /app
 ARG NUXT_API_BASE=http://backend:8000
 ENV NUXT_API_BASE=${NUXT_API_BASE}
 
-COPY package.json ./
-RUN npm install
+COPY package.json package-lock.json ./
+RUN npm ci
 COPY . .
 RUN npm run build
 
