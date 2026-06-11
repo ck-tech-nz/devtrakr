@@ -81,6 +81,9 @@
             </div>
           </div>
         </div>
+
+        <!-- 评论 -->
+        <IssueComments v-if="!isNewIssue && issue?.id" :issue-id="issue.id" />
       </div>
 
       <!-- Sidebar -->
@@ -941,6 +944,7 @@ const latestAiSolution = computed(() => {
   return done?.results?.solution || ''
 })
 
+import IssueComments from '~/components/issue/IssueComments.vue'
 import MarkdownIt from 'markdown-it'
 const md = new MarkdownIt({ html: false, linkify: true })
 function renderMarkdown(text: string) {
