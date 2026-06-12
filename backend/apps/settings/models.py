@@ -33,11 +33,27 @@ def default_labels():
 
 
 def default_priorities():
-    return ["P0", "P1", "P2", "P3"]
+    # 顺序为高→低;background 是该优先级主色(前端据此派生卡片/行/滑块底色),空串表示无底色(基线档)
+    return [
+        {"value": "P0", "label": "紧急", "background": "#ef4444"},
+        {"value": "P1", "label": "高", "background": "#f97316"},
+        {"value": "P2", "label": "中", "background": "#facc15"},
+        {"value": "P3", "label": "低", "background": ""},
+    ]
 
 
 def default_issue_statuses():
-    return ["未计划", "待分配", "待确认", "进行中", "已解决", "已发布", "已关闭"]
+    # background 是该状态主色(前端据此渲染状态胶囊/看板列圆点),空串表示无底色。
+    # 注意:状态流转逻辑(issues services/serializers)硬编码这些 value,admin 只应改 label/颜色
+    return [
+        {"value": "未计划", "label": "未计划", "background": "#8b5cf6"},
+        {"value": "待分配", "label": "待分配", "background": "#f59e0b"},
+        {"value": "待确认", "label": "待确认", "background": "#eab308"},
+        {"value": "进行中", "label": "进行中", "background": "#3b82f6"},
+        {"value": "已解决", "label": "已解决", "background": "#10b981"},
+        {"value": "已发布", "label": "已发布", "background": "#14b8a6"},
+        {"value": "已关闭", "label": "已关闭", "background": "#6b7280"},
+    ]
 
 
 def default_modules():

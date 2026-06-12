@@ -1,5 +1,6 @@
 <template>
-  <div class="space-y-6">
+  <!-- 看板模式定高(学 GitHub Projects):页面不滚动,列内独立滚动 -->
+  <div :class="viewMode === 'kanban' ? 'h-full min-h-0 flex flex-col gap-6' : 'space-y-6'">
     <MyPendingTasks />
     <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
       <h1 class="text-xl md:text-2xl font-semibold text-gray-900 dark:text-gray-100">问题跟踪</h1>
@@ -20,7 +21,7 @@
           >
             只看我的
           </UButton>
-          <USelect v-model="filterAssignee" :items="filterAssigneeOptions" class="w-28" value-key="value" placeholder="负责人" />
+          <USelect :model-value="filterAssignee" :items="filterAssigneeOptions" class="w-28" value-key="value" placeholder="负责人" @update:model-value="(v: string) => filterAssignee = v === '_all' ? '' : v" />
         </UButtonGroup>
         <PrioritySlider v-model="filterPriority" />
         <div class="relative">
@@ -37,7 +38,10 @@
             <UIcon name="i-heroicons-x-mark" class="w-3 h-3" />
           </button>
         </UBadge>
-        <UBadge v-if="filterPriorityTag" :color="priorityColor(filterPriorityTag.value)" variant="subtle" size="md" class="shrink-0">
+        <UBadge
+          v-if="filterPriorityTag" :color="priorityColor(filterPriorityTag.value)" variant="subtle" size="md"
+          class="shrink-0" :class="priorityBadgeClass(filterPriorityTag.value)" :style="priorityBadgeStyle(filterPriorityTag.value)"
+        >
           <span>优先级：{{ filterPriorityTag.label }}</span>
           <button class="ml-1 flex items-center" aria-label="清除优先级筛选" @click="filterPriorityTag = null">
             <UIcon name="i-heroicons-x-mark" class="w-3 h-3" />
@@ -230,37 +234,17 @@
     <!-- Kanban View -->
     <SharedKanbanBoard
       v-else-if="viewMode === 'kanban'"
+      class="flex-1 min-h-0"
       :columns="kanbanColumns"
       :item-key="(item: any) => item.id"
       :card-class="kanbanCardClass"
+      :card-style="kanbanCardStyle"
+      scrollable
       @drop="onKanbanDrop"
+      @load-more="kanban.loadMore"
     >
       <template #card="{ item }">
-        <NuxtLink :to="`/app/issues/${item.id}`" class="block">
-          <div class="flex items-center justify-between mb-1.5">
-            <span class="text-xs text-gray-400 dark:text-gray-500">#{{ item.id }}</span>
-            <div class="flex items-center gap-1">
-              <UBadge v-if="item.source" color="info" variant="subtle" size="xs">外部</UBadge>
-              <UBadge :color="priorityColor(item.priority)" variant="subtle" size="xs">
-                {{ priorityLabel(item.priority) }}
-              </UBadge>
-            </div>
-          </div>
-          <p class="text-sm text-gray-900 dark:text-gray-100 font-medium line-clamp-2">{{ item.title }}</p>
-          <div class="mt-2 flex items-center">
-            <div class="w-5 h-5 rounded-full bg-crystal-100 dark:bg-crystal-900 flex items-center justify-center">
-              <span class="text-crystal-600 dark:text-crystal-400 text-[10px] font-medium">{{ (item.assignee_name || '?').slice(0, 1) }}</span>
-            </div>
-            <span class="ml-1.5 text-xs text-gray-400 dark:text-gray-500">{{ item.assignee_name || '-' }}</span>
-          </div>
-          <div
-            v-if="item.estimated_completion"
-            class="mt-1.5 flex items-center gap-1 text-[11px] text-amber-600 dark:text-amber-400"
-          >
-            <UIcon name="i-heroicons-calendar-days" class="w-3 h-3 shrink-0" />
-            <span>要求完成日期 {{ item.estimated_completion }}</span>
-          </div>
-        </NuxtLink>
+        <IssueKanbanCard :item="item" />
       </template>
     </SharedKanbanBoard>
 
@@ -302,9 +286,13 @@
           </div>
         </template>
         <template #priority-cell="{ row }">
+          <!-- data-priority 供行级 :has() 选择器按优先级给整行着色 -->
           <UBadge
             :color="priorityColor(row.original.priority)" variant="subtle" size="sm"
             class="cursor-pointer hover:opacity-80"
+            :class="priorityBadgeClass(row.original.priority)"
+            :style="priorityBadgeStyle(row.original.priority)"
+            :data-priority="row.original.priority"
             :title="`筛选优先级：${priorityLabel(row.original.priority)}`"
             @click.stop="filterByPriority(row.original)"
           >{{ priorityLabel(row.original.priority) }}</UBadge>
@@ -398,11 +386,11 @@
 </template>
 
 <script setup lang="ts">
-import { ISSUE_STATUS, ISSUE_STATUS_OPTIONS, kanbanColor, KANBAN_DEFAULT_COLUMNS, KANBAN_COMPLETED_LEFT, KANBAN_COMPLETED_RIGHT, statusColor as statusColorFn } from '~/constants/issueStatus'
+import { ISSUE_STATUS, ISSUE_STATUS_OPTIONS, KANBAN_DEFAULT_COLUMNS, KANBAN_COMPLETED_LEFT, KANBAN_COMPLETED_RIGHT, statusColor as statusColorFn } from '~/constants/issueStatus'
 import StatusCell from '~/components/issue/StatusCell.vue'
 import TransferDialog from '~/components/issue/TransferDialog.vue'
 import AssignDialog from '~/components/issue/AssignDialog.vue'
-import { buildIssueQueryParams } from '~/utils/issueQuery'
+import { buildIssueQueryParams, buildIssueFilterParams } from '~/utils/issueQuery'
 
 definePageMeta({ layout: 'default' })
 
@@ -411,6 +399,25 @@ const { user, can } = useAuth()
 const { isMobile } = useMobile()
 
 const selfUserId = computed(() => Number(user.value?.id ?? 0))
+
+// 优先级档位(含管理员配置的主色),onMounted 拉到站点设置后更新
+const priorityItems = usePriorityItems()
+
+// 表格行按优先级着色:主色管理员可配,无法静态枚举,按配置动态生成规则注入 <head>
+const priorityRowCss = computed(() => priorityItems.value
+  .filter(p => isSafeHexColor(p.background) && /^[\w-]+$/.test(p.value))
+  .map((p) => {
+    const sel = `.issues-table tbody tr:has([data-priority="${p.value}"])`
+    const c = p.background
+    return [
+      `${sel} { background-color: color-mix(in srgb, ${c} 7%, #ffffff); }`,
+      `${sel}:hover { background-color: color-mix(in srgb, ${c} 14%, #ffffff); }`,
+      `:root.dark ${sel} { background-color: color-mix(in srgb, ${c} 22%, transparent); }`,
+      `:root.dark ${sel}:hover { background-color: color-mix(in srgb, ${c} 32%, transparent); }`,
+    ].join('\n')
+  })
+  .join('\n'))
+useHead({ style: [{ innerHTML: priorityRowCss }] })
 
 const transferDialog = ref<{ open: boolean; issueId: number | null; projectId: number | null }>({
   open: false, issueId: null, projectId: null,
@@ -642,16 +649,17 @@ watch([() => newIssue.value.title, () => newIssue.value.description], () => {
 const projectRepoOptions = computed(() => projectRepos.value.map(r => ({ label: r.name, value: String(r.id) })))
 
 const projectOptions = computed(() => projects.value.map(p => ({ label: p.name, value: String(p.id) })))
-const createPriorityOptions = PRIORITY_ITEMS.map(p => ({ label: `${p.value} ${p.label}`, value: p.value }))
-const createStatusOptions: { label: string; value: string }[] = ISSUE_STATUS_OPTIONS
+const createPriorityOptions = computed(() => priorityItems.value.map(p => ({ label: `${p.value} ${p.label}`, value: p.value })))
+// 状态选项 label 走站点配置(statusLabel),value 是流转逻辑依赖的固定值
+const createStatusOptions = computed(() => ISSUE_STATUS_OPTIONS.map(o => ({ value: o.value, label: statusLabel(o.value) })))
 const createAssigneeOptions = computed(() => [{ label: '无', value: '_none' }, ...users.value.map(u => ({ label: u.name || u.username, value: String(u.id) }))])
 
-// 首项「全部负责人」(value '') 用于清除负责人筛选,替代原来的浮层 × 按钮
+// 首项「全部负责人」用于清除负责人筛选；SelectItem 不允许空字符串 value，用 '_all' 哨兵在模板里映射回 ''
 const filterAssigneeOptions = computed(() => [
-  { label: '全部负责人', value: '' },
+  { label: '全部负责人', value: '_all' },
   ...users.value.map(u => ({ label: u.name || u.username, value: String(u.id) })),
 ])
-const filterStatusOptions: { label: string; value: string }[] = ISSUE_STATUS_OPTIONS
+const filterStatusOptions = computed(() => ISSUE_STATUS_OPTIONS.map(o => ({ value: o.value, label: statusLabel(o.value) })))
 
 function closeCreateModal() {
   onCreateModalUpdate(false)
@@ -727,46 +735,64 @@ const columns = computed(() => {
   return cols
 })
 
-async function onStatusChange({ issueId, newStatus }: { issueId: number, newStatus: string }) {
-  const issue = issues.value.find((i: any) => i.id === issueId)
-  if (!issue) return
+// 看板按列独立取数(学 GitHub Projects):每列 20 条起,滚动到底续取。
+// 列参数 = 当前筛选条件 + 该列状态;状态下拉筛了别的状态时该列置空不取数。
+const kanban = useKanbanIssues((status, pageNum) => {
+  if (filterStatus.value && filterStatus.value !== status) return null
+  const p = buildIssueFilterParams({
+    filterStatus: status,
+    filterAssignee: filterAssignee.value,
+    filterHandlerId: filterHandler.value?.id ?? null,
+    filterPriority: filterPriority.value,
+    filterPriorityTagValue: filterPriorityTag.value?.value ?? null,
+    filterReporter: filterReporter.value,
+    search: searchQuery.value,
+  })
+  p.set('page', String(pageNum))
+  p.set('page_size', String(KANBAN_COLUMN_PAGE_SIZE))
+  return p
+})
 
-  const oldStatus = issue.status
-  issue.status = newStatus
+const kanbanStatusKeys = computed(() => showCompleted.value
+  ? [...KANBAN_COMPLETED_LEFT, ...KANBAN_DEFAULT_COLUMNS, ...KANBAN_COMPLETED_RIGHT]
+  : KANBAN_DEFAULT_COLUMNS)
 
+const kanbanColumns = computed(() => kanbanStatusKeys.value.map((key) => {
+  const col = kanban.columns.value[key]
+  return {
+    key,
+    label: statusLabel(key),
+    color: statusMainColor(key),
+    items: col?.items ?? [],
+    count: col?.count ?? 0,
+    hasMore: col?.hasMore ?? false,
+    loading: col?.loading ?? false,
+  }
+}))
+
+async function onKanbanDrop({ itemId, fromColumn, toColumn }: { itemId: string | number; fromColumn: string; toColumn: string }) {
+  // 乐观迁移,失败回滚
+  const rollback = kanban.moveCard(itemId, fromColumn, toColumn)
+  const moved = kanban.columns.value[toColumn]?.items.find((i: any) => i.id === itemId)
+  if (moved) moved.status = toColumn
   try {
-    await api(`/api/issues/${issueId}/`, {
+    await api(`/api/issues/${itemId}/`, {
       method: 'PATCH',
-      body: { status: newStatus },
+      body: { status: toColumn },
     })
   } catch (e) {
     console.error('Failed to update issue status:', e)
-    issue.status = oldStatus
+    if (moved) moved.status = fromColumn
+    rollback()
   }
 }
 
-const kanbanColumns = computed(() => {
-  const baseKeys = KANBAN_DEFAULT_COLUMNS
-  const keys = showCompleted.value
-    ? [...KANBAN_COMPLETED_LEFT, ...baseKeys, ...KANBAN_COMPLETED_RIGHT]
-    : baseKeys
-  return keys.map(key => ({
-    key,
-    label: key,
-    color: kanbanColor(key),
-    items: issues.value.filter(i => i.status === key),
-  }))
-})
-
-function onKanbanDrop({ itemId, toColumn }: { itemId: string | number; fromColumn: string; toColumn: string }) {
-  onStatusChange({ issueId: itemId as number, newStatus: toColumn })
-}
-
-// P0(紧急)卡片用红底高亮,凸显紧急;其余返回空串走默认白底
+// 卡片底色随优先级升高变暖(默认低=白底/中=黄/高=橙/紧急=红),主色可在站点设置配置
 function kanbanCardClass(item: any): string {
-  return item.priority === 'P0'
-    ? 'bg-red-50 dark:bg-red-950/40 border-red-300 dark:border-red-700 ring-1 ring-red-200 dark:ring-red-800/50'
-    : ''
+  return priorityCardClass(item.priority)
+}
+function kanbanCardStyle(item: any): Record<string, string> | undefined {
+  return priorityCardStyle(item.priority)
 }
 
 let rowClickTimer: ReturnType<typeof setTimeout> | null = null
@@ -846,6 +872,14 @@ const statusColor = statusColorFn
 // 只采纳最新一次请求的响应,丢弃过期响应,避免列表停在上一个筛选条件。
 let fetchSeq = 0
 async function fetchIssues() {
+  // 看板模式:按列独立分页取数,列内有各自的加载态,不占用全局 loading。
+  // 仍要递增 fetchSeq,作废在途的表格响应,防止其落地覆盖 issues/totalCount
+  if (viewMode.value === 'kanban') {
+    fetchSeq++
+    loading.value = false
+    await kanban.reset(kanbanStatusKeys.value)
+    return
+  }
   const seq = ++fetchSeq
   loading.value = true
   try {
@@ -913,17 +947,24 @@ const batchAssignItems = computed(() => [users.value.map(u => ({
   onSelect: () => batchUpdate('assign', String(u.id)),
 }))])
 
-const batchPriorityItems = [PRIORITY_ITEMS.map(p => ({
+const batchPriorityItems = computed(() => [priorityItems.value.map(p => ({
   label: `${p.value} ${p.label}`,
   onSelect: () => batchUpdate('priority', p.value),
-}))]
+}))])
 
-const batchStatusItems = [filterStatusOptions.map(s => ({
+const batchStatusItems = computed(() => [filterStatusOptions.value.map(s => ({
   label: s.label,
   onSelect: () => batchUpdate('set_status', s.value),
-}))]
+}))])
 
 watch(page, () => {
+  rowSelection.value = {}
+  fetchIssues()
+})
+
+// 看板按列独立分页、表格按页取数,两种视图查询形态不同,切换时重新拉取
+watch(viewMode, () => {
+  page.value = 1
   rowSelection.value = {}
   fetchIssues()
 })
@@ -986,6 +1027,8 @@ onMounted(async () => {
   users.value = usersData || []
   const rawLabels = settingsData?.labels || {}
   labelOptions.value = typeof rawLabels === 'object' && !Array.isArray(rawLabels) ? Object.keys(rawLabels) : rawLabels
+  setPrioritiesFromSettings(settingsData?.priorities)
+  setStatusesFromSettings(settingsData?.issue_statuses)
   projects.value = projectsData?.results || projectsData || []
   repos.value = reposData?.results || reposData || []
   // Check AI analysis status for issues with repos
@@ -1167,4 +1210,6 @@ async function checkAnalyzingIssues() {
 .issues-table :deep(:is(th, td):nth-child(9)) { width: 6%; }     /* 提出人 */
 .issues-table :deep(:is(th, td):nth-child(10)) { width: 7%; }    /* 历时 */
 .issues-table :deep(:is(th, td):nth-child(11)) { width: 5%; }    /* 预计完成 */
+
+/* 表格行按优先级着色:规则随站点设置动态生成,见 script 中 priorityRowCss + useHead */
 </style>

@@ -40,15 +40,11 @@ const assigneeLabel = computed(() => {
   return isAssignedToSelf.value ? '我' : props.issue.assignee_name
 })
 
+// 徽章文案走站点配置的显示名(statusLabel);「进行中」在表格语境刻意显示为
+// 「处理中」(配合处理人前缀,如「我 处理中」),不随配置改名
 const trailingActionLabel = computed(() => {
-  switch (props.issue.status) {
-    case ISSUE_STATUS.PENDING_CONFIRMATION: return '待确认'
-    case ISSUE_STATUS.IN_PROGRESS: return '处理中'
-    case ISSUE_STATUS.RESOLVED: return '已解决'
-    case ISSUE_STATUS.PUBLISHED: return '已发布'
-    case ISSUE_STATUS.CLOSED: return '已关闭'
-    default: return props.issue.status
-  }
+  if (props.issue.status === ISSUE_STATUS.IN_PROGRESS) return '处理中'
+  return statusLabel(props.issue.status)
 })
 
 const badgeLabel = computed(() => {
@@ -93,7 +89,7 @@ async function onConfirm() {
       <UBadge
         v-if="!issue.can_claim && !issue.can_assign"
         :color="statusColor(issue.status)" variant="subtle" size="sm"
-      >待分配</UBadge>
+      >{{ statusLabel(ISSUE_STATUS.UNASSIGNED) }}</UBadge>
     </template>
 
     <!-- 待确认: 自己的 -->

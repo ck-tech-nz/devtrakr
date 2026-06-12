@@ -2,9 +2,9 @@ import factory
 from faker import Faker
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
-from apps.settings.models import SiteSettings
+from apps.settings.models import SiteSettings, default_issue_statuses, default_priorities
 from apps.projects.models import Project, ProjectMember
-from apps.issues.models import Issue, Activity
+from apps.issues.models import Issue, Activity, IssueComment
 from apps.repos.models import Repo, GitHubIssue, Commit, GitAuthorAlias
 from apps.ai.models import LLMConfig, Prompt, Analysis
 from apps.tools.models import Attachment
@@ -43,8 +43,9 @@ class SiteSettingsFactory(factory.django.DjangoModelFactory):
         "性能": {"foreground": "#ffffff", "background": "#f9d0c4", "description": ""},
         "UI/UX": {"foreground": "#ffffff", "background": "#bfd4f2", "description": ""},
     }
-    priorities = ["P0", "P1", "P2", "P3"]
-    issue_statuses = ["未计划", "待分配", "待确认", "进行中", "已解决", "已发布", "已关闭"]
+    # 直接复用模型默认值函数,避免默认色改动时模型与工厂双写
+    priorities = factory.LazyFunction(default_priorities)
+    issue_statuses = factory.LazyFunction(default_issue_statuses)
 
 
 class ProjectFactory(factory.django.DjangoModelFactory):
@@ -96,6 +97,15 @@ class ActivityFactory(factory.django.DjangoModelFactory):
     issue = factory.SubFactory(IssueFactory)
     action = "created"
     detail = ""
+
+
+class IssueCommentFactory(factory.django.DjangoModelFactory):
+    class Meta:
+        model = IssueComment
+
+    issue = factory.SubFactory(IssueFactory)
+    author = factory.SubFactory(UserFactory)
+    content = factory.Sequence(lambda n: f"评论内容 {n}")
 
 
 class RepoFactory(factory.django.DjangoModelFactory):

@@ -47,5 +47,146 @@ const html = computed(() => {
 .markdown-view table { border-collapse: collapse; margin: 0.5em 0; }
 .markdown-view th, .markdown-view td { border: 1px solid #d1d5db; padding: 0.4em 0.6em; }
 :root.dark .markdown-view th, :root.dark .markdown-view td { border-color: #4b5563; }
-.markdown-view img { max-width: 100%; border-radius: 6px; margin: 0.5em 0; }
+.markdown-view img { max-width: 100%; border-radius: 6px; margin: 0.5em 0; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.08), 0 2px 8px rgba(0, 0, 0, 0.12); }
+:root.dark .markdown-view img { box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.1), 0 2px 8px rgba(0, 0, 0, 0.45); }
+
+/* 以下 mention/file-card/task-list 样式与 MarkdownEditor.vue 的 .markdown-body 段保持同步 */
+
+/* Mention styles */
+.markdown-view .mention-user {
+  background: #dbeafe;
+  color: #1d4ed8;
+  padding: 0.1em 0.3em;
+  border-radius: 3px;
+  font-size: 0.9em;
+  font-weight: 500;
+}
+.markdown-view .mention-issue {
+  background: #dcfce7;
+  color: #15803d;
+  padding: 0.1em 0.3em;
+  border-radius: 3px;
+  font-size: 0.9em;
+  font-weight: 500;
+  text-decoration: none;
+}
+.markdown-view .mention-issue:hover {
+  text-decoration: underline;
+}
+:root.dark .markdown-view .mention-user {
+  background: #1e3a5f;
+  color: #93c5fd;
+}
+:root.dark .markdown-view .mention-issue {
+  background: #14532d;
+  color: #86efac;
+}
+
+/* File card (non-image attachments in markdown preview) */
+.markdown-view .md-file-card {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5em;
+  padding: 0.4em 0.75em;
+  margin: 0.25em 0.25em 0.25em 0;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  background: #f9fafb;
+  color: #1f2937;
+  text-decoration: none;
+  font-size: 0.875em;
+  line-height: 1.2;
+  transition: background 0.15s, border-color 0.15s;
+  max-width: 100%;
+}
+.markdown-view .md-file-card:hover {
+  background: #f3f4f6;
+  border-color: #d1d5db;
+  text-decoration: none;
+}
+.markdown-view .md-file-card .md-file-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.markdown-view .md-file-card .md-file-ext {
+  font-size: 0.7em;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  padding: 0.15em 0.4em;
+  border-radius: 3px;
+  background: rgba(0, 0, 0, 0.06);
+  color: #4b5563;
+}
+.markdown-view .md-file-card .md-file-icon {
+  display: inline-block;
+  width: 1.1em;
+  height: 1.1em;
+  flex-shrink: 0;
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: contain;
+}
+.markdown-view .md-file-pdf .md-file-icon::before { content: '📄'; }
+.markdown-view .md-file-word .md-file-icon::before { content: '📝'; }
+.markdown-view .md-file-excel .md-file-icon::before { content: '📊'; }
+.markdown-view .md-file-ppt .md-file-icon::before { content: '📽'; }
+.markdown-view .md-file-text .md-file-icon::before { content: '📄'; }
+.markdown-view .md-file-archive .md-file-icon::before { content: '📦'; }
+
+.markdown-view .md-file-pdf .md-file-ext { background: #fee2e2; color: #b91c1c; }
+.markdown-view .md-file-word .md-file-ext { background: #dbeafe; color: #1d4ed8; }
+.markdown-view .md-file-excel .md-file-ext { background: #dcfce7; color: #15803d; }
+.markdown-view .md-file-ppt .md-file-ext { background: #ffedd5; color: #c2410c; }
+.markdown-view .md-file-text .md-file-ext { background: #f3f4f6; color: #4b5563; }
+.markdown-view .md-file-archive .md-file-ext { background: #e5e7eb; color: #374151; }
+
+:root.dark .markdown-view .md-file-card {
+  background: #1f2937;
+  border-color: #374151;
+  color: #e5e7eb;
+}
+:root.dark .markdown-view .md-file-card:hover {
+  background: #374151;
+  border-color: #4b5563;
+}
+:root.dark .markdown-view .md-file-card .md-file-ext {
+  background: rgba(255, 255, 255, 0.08);
+  color: #d1d5db;
+}
+:root.dark .markdown-view .md-file-pdf .md-file-ext { background: #7f1d1d; color: #fecaca; }
+:root.dark .markdown-view .md-file-word .md-file-ext { background: #1e3a5f; color: #bfdbfe; }
+:root.dark .markdown-view .md-file-excel .md-file-ext { background: #14532d; color: #bbf7d0; }
+:root.dark .markdown-view .md-file-ppt .md-file-ext { background: #7c2d12; color: #fed7aa; }
+:root.dark .markdown-view .md-file-text .md-file-ext { background: #374151; color: #e5e7eb; }
+:root.dark .markdown-view .md-file-archive .md-file-ext { background: #4b5563; color: #f3f4f6; }
+
+/* Task list (todo) styles */
+.markdown-view ul.contains-task-list { padding-left: 1.5em; list-style: none; margin: 0.5em 0; }
+.markdown-view .task-list-item { list-style: none; }
+.markdown-view .md-checkbox {
+  display: inline-block;
+  width: 0.95em; height: 0.95em;
+  border: 1.5px solid #9ca3af;
+  border-radius: 3px;
+  margin-right: 0.4em;
+  vertical-align: middle;
+  position: relative;
+  top: -0.05em;
+}
+.markdown-view .md-checkbox.md-checked {
+  background: #6366f1;
+  border-color: #6366f1;
+}
+.markdown-view .md-checkbox.md-checked::after {
+  content: '';
+  position: absolute;
+  left: 2.5px; top: 0.5px;
+  width: 4px; height: 8px;
+  border: solid #fff;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
 </style>

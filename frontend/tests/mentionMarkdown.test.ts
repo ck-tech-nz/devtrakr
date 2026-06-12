@@ -45,4 +45,17 @@ describe('useMentionMarkdown 渲染', () => {
     const html = md.render('#[#问题-042](issue:42)')
     expect(html).toContain('href="/app/issues/42"')
   })
+
+  it('escapes html in mention display names (XSS)', () => {
+    const html = md.render('@[<img src=x onerror=alert(1)>](user:1)')
+    expect(html).not.toContain('<img')
+    expect(html).toContain('&lt;img')
+  })
+
+  it('issue mention ignores display name — renders from id, not user-supplied label', () => {
+    // mention_issue renderer 用 id 重建标签,忽略 token.content,无 XSS 风险
+    const html = md.render('#[<script>alert(1)</script>](issue:99)')
+    expect(html).not.toContain('<script>')
+    expect(html).toContain('#问题-099')
+  })
 })

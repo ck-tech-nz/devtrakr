@@ -178,3 +178,25 @@ class IssueAssignment(models.Model):
 
     def __str__(self):
         return f"{self.issue_id} {self.action} → {self.to_user_id}"
+
+
+class IssueComment(models.Model):
+    issue = models.ForeignKey(
+        Issue, on_delete=models.CASCADE, related_name="comments",
+    )
+    author = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True,
+        related_name="issue_comments", verbose_name="作者",
+    )
+    content = models.TextField(verbose_name="内容")  # markdown 原文,附件以内联链接存在
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "问题评论"
+        verbose_name_plural = "问题评论"
+        ordering = ["created_at", "id"]  # 旧→新,同 GitHub; id 兜底保证同时间戳时排序稳定
+        indexes = [models.Index(fields=["issue", "created_at"])]
+
+    def __str__(self):
+        return f"#{self.issue_id} {self.author}: {self.content[:30]}"

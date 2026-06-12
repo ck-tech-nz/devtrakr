@@ -671,7 +671,7 @@ async function uploadFiles(files: File[]) {
 .markdown-body pre { background: #f3f4f6; padding: 1em; border-radius: 6px; overflow-x: auto; margin: 0.5em 0; }
 .markdown-body pre code { background: none; padding: 0; }
 .markdown-body blockquote { border-left: 4px solid #d1d5db; padding-left: 1em; color: #6b7280; margin: 0.5em 0; }
-.markdown-body img { max-width: 100%; border-radius: 6px; margin: 0.5em 0; }
+.markdown-body img { max-width: 100%; border-radius: 6px; margin: 0.5em 0; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.08), 0 2px 8px rgba(0, 0, 0, 0.12); }
 .markdown-body a { color: #2563eb; text-decoration: none; }
 .markdown-body a:hover { text-decoration: underline; }
 .markdown-body hr { border: none; border-top: 1px solid #e5e7eb; margin: 1em 0; }
@@ -712,6 +712,7 @@ async function uploadFiles(files: File[]) {
 :root.dark .markdown-body blockquote { border-left-color: #4b5563; color: #9ca3af; }
 :root.dark .markdown-body h1, :root.dark .markdown-body h2 { border-bottom-color: #374151; }
 :root.dark .markdown-body a { color: #60a5fa; }
+:root.dark .markdown-body img { box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.1), 0 2px 8px rgba(0, 0, 0, 0.45); }
 :root.dark .markdown-body hr { border-top-color: #374151; }
 :root.dark .markdown-body th, :root.dark .markdown-body td { border-color: #4b5563; }
 :root.dark .markdown-body th { background: #1f2937; }

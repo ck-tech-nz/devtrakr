@@ -114,6 +114,7 @@ function activityIcon(action: string): string {
     case 'status_changed': return 'i-heroicons-arrow-path'
     case 'assigned': return 'i-heroicons-user-plus'
     case 'priority_changed': return 'i-heroicons-flag'
+    case 'commented': return 'i-heroicons-chat-bubble-left-ellipsis'
     default: return 'i-heroicons-information-circle'
   }
 }
@@ -127,6 +128,7 @@ function activityMessage(item: any): string {
     case 'status_changed': return `${name} 更新了 ${issueRef} 的状态${item.detail ? '：' + item.detail : ''}`
     case 'assigned': return `${name} 分配了问题 ${issueRef}${item.detail ? '给 ' + item.detail : ''}`
     case 'priority_changed': return `${name} 修改了 ${issueRef} 的优先级${item.detail ? '：' + item.detail : ''}`
+    case 'commented': return `${name} 评论了问题 ${issueRef}${item.issue_title ? '「' + item.issue_title + '」' : ''}`
     default: return `${name} ${item.action} ${issueRef} ${item.detail || ''}`.trim()
   }
 }

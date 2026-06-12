@@ -55,32 +55,8 @@
           </div>
         </div>
 
-        <div class="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 p-5">
-          <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-4">分析记录</h3>
-          <div class="space-y-4">
-            <div class="form-row">
-              <div class="flex items-center justify-between h-5">
-                <label>备注</label>
-                <FieldSaveStatus :saving="savingField === 'remark'" :saved="savedField === 'remark'" />
-              </div>
-              <UTextarea v-model="form.remark" :rows="2" placeholder="备注信息" @blur="handleBlurSave('remark')" />
-            </div>
-            <div class="form-row">
-              <div class="flex items-center justify-between h-5">
-                <label>原因分析</label>
-                <FieldSaveStatus :saving="savingField === 'cause'" :saved="savedField === 'cause'" />
-              </div>
-              <UTextarea v-model="form.cause" :rows="3" :placeholder="latestAiCause ? `[AI] ${latestAiCause}` : '问题原因'" @blur="handleBlurSave('cause')" />
-            </div>
-            <div class="form-row">
-              <div class="flex items-center justify-between h-5">
-                <label>解决方案</label>
-                <FieldSaveStatus :saving="savingField === 'solution'" :saved="savedField === 'solution'" />
-              </div>
-              <UTextarea v-model="form.solution" :rows="3" :placeholder="latestAiSolution ? `[AI] ${latestAiSolution}` : '解决办法'" @blur="handleBlurSave('solution')" />
-            </div>
-          </div>
-        </div>
+        <!-- 评论 -->
+        <IssueComments v-if="!isNewIssue && issue?.id" :issue-id="issue.id" />
       </div>
 
       <!-- Sidebar -->
@@ -154,8 +130,9 @@
               <button
                 v-for="p in priorityItems"
                 :key="p.value"
-                class="px-3 py-1 rounded-full text-xs font-medium transition-colors"
-                :class="issue.priority === p.value ? p.activeClass : 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'"
+                class="px-3 py-1 min-w-12 text-center rounded-full text-xs font-medium transition-colors"
+                :class="issue.priority === p.value ? 'option-chip-active' : 'option-chip'"
+                :style="{ '--chip': p.cssColor, '--chip-text': p.textOn }"
                 @click="updateField('priority', p.value)"
               >{{ p.label }}</button>
             </div>
@@ -166,8 +143,9 @@
               <button
                 v-for="s in statusItems"
                 :key="s.value"
-                class="px-3 py-1 rounded-full text-xs font-medium transition-colors"
-                :class="issue.status === s.value ? s.activeClass : 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'"
+                class="px-3 py-1 min-w-12 text-center rounded-full text-xs font-medium transition-colors"
+                :class="issue.status === s.value ? 'option-chip-active' : 'option-chip'"
+                :style="{ '--chip': s.cssColor, '--chip-text': s.textOn }"
                 @click="handleStatusClick(s.value)"
               >{{ s.label }}</button>
             </div>
@@ -319,6 +297,34 @@
           </div>
         </div>
 
+        <!-- 分析记录 -->
+        <div class="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 p-5">
+          <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-4">分析记录</h3>
+          <div class="space-y-4">
+            <div class="form-row">
+              <div class="flex items-center justify-between h-5">
+                <label>备注</label>
+                <FieldSaveStatus :saving="savingField === 'remark'" :saved="savedField === 'remark'" />
+              </div>
+              <UTextarea v-model="form.remark" :rows="2" placeholder="备注信息" @blur="handleBlurSave('remark')" />
+            </div>
+            <div class="form-row">
+              <div class="flex items-center justify-between h-5">
+                <label>原因分析</label>
+                <FieldSaveStatus :saving="savingField === 'cause'" :saved="savedField === 'cause'" />
+              </div>
+              <UTextarea v-model="form.cause" :rows="3" :placeholder="latestAiCause ? `[AI] ${latestAiCause}` : '问题原因'" @blur="handleBlurSave('cause')" />
+            </div>
+            <div class="form-row">
+              <div class="flex items-center justify-between h-5">
+                <label>解决方案</label>
+                <FieldSaveStatus :saving="savingField === 'solution'" :saved="savedField === 'solution'" />
+              </div>
+              <UTextarea v-model="form.solution" :rows="3" :placeholder="latestAiSolution ? `[AI] ${latestAiSolution}` : '解决办法'" @blur="handleBlurSave('solution')" />
+            </div>
+          </div>
+        </div>
+
         <!-- 关联附件 -->
         <div class="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 p-5 space-y-3">
           <div class="flex items-center justify-between">
@@ -403,8 +409,8 @@
           </div>
         </div>
 
-        <!-- 关联 Issues — 自动 (AI 创建时去重命中) + 手动 -->
-        <div v-if="relatedIssuesResolved.length || relatedSearchOpen" class="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 p-5 space-y-3">
+        <!-- 关联 Issues — 自动 (AI 创建时去重命中) + 手动; 常显以便空列表时也能点 + 添加 -->
+        <div class="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 p-5 space-y-3">
           <div class="flex items-center justify-between">
             <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100">关联 Issues</h3>
             <UButton
@@ -694,7 +700,7 @@
           <div class="modal-body">
             <div class="form-row">
               <label>筛选仓库</label>
-              <USelect v-model="ghLinkRepoFilter" :items="[{ label: '全部', value: '' }, ...repoOptions]" value-key="value" />
+              <USelect :model-value="ghLinkRepoFilter || '_all'" :items="[{ label: '全部', value: '_all' }, ...repoOptions]" value-key="value" @update:model-value="(v: string) => ghLinkRepoFilter = v === '_all' ? '' : v" />
             </div>
             <div class="max-h-60 overflow-y-auto space-y-1 mt-2">
               <div v-for="gh in availableGHIssues" :key="gh.id" class="flex items-center space-x-2 px-2 py-1.5 rounded hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer" @click="toggleGHSelection(gh.id)">
@@ -941,6 +947,7 @@ const latestAiSolution = computed(() => {
   return done?.results?.solution || ''
 })
 
+import IssueComments from '~/components/issue/IssueComments.vue'
 import MarkdownIt from 'markdown-it'
 const md = new MarkdownIt({ html: false, linkify: true })
 function renderMarkdown(text: string) {
@@ -1178,16 +1185,27 @@ const form = ref({
   repo: '' as string,
 })
 
-const priorityItems = PRIORITY_ITEMS
-const statusItems = [
-  { label: '未计划', value: '未计划', activeClass: 'bg-violet-500 text-white dark:bg-violet-600 dark:text-white' },
-  { label: '待分配', value: '待分配', activeClass: 'bg-amber-500 text-white dark:bg-amber-600 dark:text-white' },
-  { label: '待确认', value: '待确认', activeClass: 'bg-yellow-500 text-white dark:bg-yellow-600 dark:text-white' },
-  { label: '进行中', value: '进行中', activeClass: 'bg-blue-500 text-white dark:bg-blue-600 dark:text-white' },
-  { label: '已解决', value: '已解决', activeClass: 'bg-emerald-500 text-white dark:bg-emerald-600 dark:text-white' },
-  { label: '已发布', value: '已发布', activeClass: 'bg-teal-500 text-white dark:bg-teal-600 dark:text-white' },
-  { label: '已关闭', value: '已关闭', activeClass: 'bg-gray-500 text-white dark:bg-gray-600 dark:text-white' },
-]
+// 选中胶囊是主色实底,按主色亮度挑白/深字,保证浅主色(如纯黄)也可读
+function chipTextOn(hex: string): string {
+  const h = hex.length === 4 ? `#${hex[1]}${hex[1]}${hex[2]}${hex[2]}${hex[3]}${hex[3]}` : hex
+  const r = parseInt(h.slice(1, 3), 16) / 255
+  const g = parseInt(h.slice(3, 5), 16) / 255
+  const b = parseInt(h.slice(5, 7), 16) / 255
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b > 0.62 ? '#374151' : '#ffffff'
+}
+
+// 与列表页滑块一致:低→紧急排列;主色来自站点设置(usePriority),无主色档位用兜底灰
+const configuredPriorities = usePriorityItems()
+const priorityItems = computed(() => configuredPriorities.value.slice().reverse().map((p) => {
+  const cssColor = isSafeHexColor(p.background) ? p.background : PRIORITY_FALLBACK_COLOR
+  return { ...p, cssColor, textOn: chipTextOn(cssColor) }
+}))
+// 状态列表与主色来自站点设置(useStatus),statusMainColor 已做安全 hex 校验与兜底
+const configuredStatuses = useStatusItems()
+const statusItems = computed(() => configuredStatuses.value.map((s) => {
+  const cssColor = statusMainColor(s.value)
+  return { ...s, cssColor, textOn: chipTextOn(cssColor) }
+}))
 const assigneeItems = computed(() => [
   { label: '无', value: '_none' },
   ...users.value.map(u => ({ label: u.name || u.username, value: String(u.id) })),
@@ -1471,6 +1489,8 @@ onMounted(async () => {
   issue.value = issueData
   users.value = usersData || []
   labelItems.value = settingsData?.labels || {}
+  setPrioritiesFromSettings(settingsData?.priorities)
+  setStatusesFromSettings(settingsData?.issue_statuses)
   repos.value = reposData?.results || reposData || []
   projects.value = (projectsData as any)?.results || projectsData || []
   if (issueData) populateForm(issueData)
@@ -1619,6 +1639,34 @@ function formatAssignmentDate(s: string): string {
 </script>
 
 <style scoped>
+/* 优先级/状态胶囊按站点设置主色(--chip)着色,深浅用 color-mix 派生(同列表页行/卡片)。
+   未选中:弱底+灰调字;选中:深底+深字+2px 描边+加粗,选中/未选中需一眼可辨 */
+.option-chip {
+  background-color: color-mix(in srgb, var(--chip) 9%, #ffffff);
+  color: color-mix(in srgb, var(--chip) 40%, #9ca3af);
+}
+.option-chip:hover {
+  background-color: color-mix(in srgb, var(--chip) 20%, #ffffff);
+}
+:root.dark .option-chip {
+  background-color: color-mix(in srgb, var(--chip) 14%, #111827);
+  color: color-mix(in srgb, var(--chip) 40%, #6b7280);
+}
+:root.dark .option-chip:hover {
+  background-color: color-mix(in srgb, var(--chip) 26%, #111827);
+}
+/* 选中:主色实底+亮度自适应字色(--chip-text 由 chipTextOn 算出)+留缝外圈光环 */
+.option-chip-active {
+  font-weight: 600;
+  background-color: var(--chip);
+  color: var(--chip-text, #ffffff);
+  box-shadow: 0 0 0 2px #ffffff, 0 0 0 3.5px color-mix(in srgb, var(--chip) 60%, #d1d5db);
+}
+:root.dark .option-chip-active {
+  background-color: var(--chip);
+  color: var(--chip-text, #ffffff);
+  box-shadow: 0 0 0 2px #111827, 0 0 0 3.5px color-mix(in srgb, var(--chip) 70%, #4b5563);
+}
 .form-row { display: flex; flex-direction: column; gap: 0.375rem; }
 .form-row label { font-size: 0.8125rem; font-weight: 500; color: #374151; }
 :root.dark .form-row label { color: #9ca3af; }

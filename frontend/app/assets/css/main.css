@@ -14,6 +14,37 @@ html, body {
   --glass-rgb: #000000;
 }
 
+/* 优先级卡片底色(看板/移动端列表):主色由行内 --prio 注入(站点设置可配),
+   深浅用 color-mix 从主色派生;首档(最高优先级)用 .priority-card-top 加描边强调 */
+.priority-card {
+  background-color: color-mix(in srgb, var(--prio) 10%, #ffffff);
+  border-color: color-mix(in srgb, var(--prio) 35%, #ffffff);
+}
+:root.dark .priority-card {
+  background-color: color-mix(in srgb, var(--prio) 22%, #111827);
+  border-color: color-mix(in srgb, var(--prio) 45%, #1f2937);
+}
+.priority-card-top {
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--prio) 25%, #ffffff);
+}
+:root.dark .priority-card-top {
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--prio) 40%, transparent);
+}
+
+/* 优先级徽章(看板卡/待办卡/列表/筛选标签):配色随站点设置主色(--prio)派生,
+   覆盖 UBadge subtle 的语义色底/字/描边(ring 经 --tw-ring-color 接管);
+   无主色档位不挂本类,回退语义色 badge */
+.priority-badge {
+  background-color: color-mix(in srgb, var(--prio) 12%, #ffffff);
+  color: color-mix(in srgb, var(--prio) 72%, #374151);
+  --tw-ring-color: color-mix(in srgb, var(--prio) 45%, #ffffff);
+}
+:root.dark .priority-badge {
+  background-color: color-mix(in srgb, var(--prio) 20%, #111827);
+  color: color-mix(in srgb, var(--prio) 75%, #e5e7eb);
+  --tw-ring-color: color-mix(in srgb, var(--prio) 50%, #1f2937);
+}
+
 @theme {
   --color-crystal-50: #f5f3ff;
   --color-crystal-100: #ede9fe;

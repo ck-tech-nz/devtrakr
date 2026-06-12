@@ -30,6 +30,15 @@ class TestIssueList:
         response = auth_client.get(f"/api/issues/?assignee={user.id}")
         assert response.data["count"] == 1
 
+    def test_list_includes_assignee_avatar(self, auth_client, site_settings):
+        user = UserFactory(avatar="rubber-duck")
+        IssueFactory(assignee=user)
+        IssueFactory(assignee=None)
+        response = auth_client.get("/api/issues/")
+        by_assignee = {i["assignee"]: i for i in response.data["results"]}
+        assert by_assignee[user.id]["assignee_avatar"] == "rubber-duck"
+        assert by_assignee[None]["assignee_avatar"] is None
+
     def test_search_by_title(self, auth_client, site_settings):
         IssueFactory(title="登录页面崩溃")
         IssueFactory(title="支付功能异常")
@@ -52,6 +61,23 @@ class TestIssueList:
     def test_unauthenticated(self, api_client):
         response = api_client.get("/api/issues/")
         assert response.status_code == 401
+
+    def test_page_size_param_honored(self, auth_client, site_settings):
+        # 看板视图依赖 page_size 全量拉取;默认 PageNumberPagination 会静默忽略该参数
+        IssueFactory.create_batch(7)
+        response = auth_client.get("/api/issues/?page_size=5")
+        assert response.data["count"] == 7
+        assert len(response.data["results"]) == 5
+        assert response.data["next"] is not None
+
+    def test_page_size_capped_at_max(self):
+        from rest_framework.request import Request
+        from rest_framework.test import APIRequestFactory
+
+        from apps.pagination import DefaultPagination
+
+        request = Request(APIRequestFactory().get("/api/issues/", {"page_size": "100000"}))
+        assert DefaultPagination().get_page_size(request) == DefaultPagination.max_page_size
 
 
 class TestIssueDetail:
@@ -90,6 +116,31 @@ class TestIssueCreate:
         }, format="json")
         assert response.status_code == 201
         assert response.data["title"] == "新Issue"
+
+    def test_create_issue_invalid_priority(self, auth_client, site_settings):
+        from tests.factories import ProjectFactory
+        project = ProjectFactory()
+        response = auth_client.post("/api/issues/", {
+            "project": str(project.id),
+            "title": "新Issue",
+            "priority": "P9",
+            "status": "待分配",
+        }, format="json")
+        assert response.status_code == 400
+
+    def test_create_issue_priority_legacy_flat_format(self, auth_client, site_settings):
+        """旧版扁平 priorities(["P0",...],未跑数据迁移前)仍能通过优先级校验."""
+        from tests.factories import ProjectFactory
+        site_settings.priorities = ["P0", "P1", "P2", "P3"]
+        site_settings.save()
+        project = ProjectFactory()
+        response = auth_client.post("/api/issues/", {
+            "project": str(project.id),
+            "title": "新Issue",
+            "priority": "P1",
+            "status": "待分配",
+        }, format="json")
+        assert response.status_code == 201
 
     def test_create_issue_invalid_label(self, auth_client, site_settings):
         from tests.factories import ProjectFactory

@@ -273,7 +273,7 @@
 </template>
 
 <script setup lang="ts">
-import { ISSUE_STATUS_OPTIONS, kanbanColor, KANBAN_DEFAULT_COLUMNS, KANBAN_COMPLETED_LEFT, KANBAN_COMPLETED_RIGHT } from '~/constants/issueStatus'
+import { ISSUE_STATUS_OPTIONS, KANBAN_DEFAULT_COLUMNS, KANBAN_COMPLETED_LEFT, KANBAN_COMPLETED_RIGHT } from '~/constants/issueStatus'
 import StatusCell from '~/components/issue/StatusCell.vue'
 import TransferDialog from '~/components/issue/TransferDialog.vue'
 import AssignDialog from '~/components/issue/AssignDialog.vue'
@@ -328,10 +328,11 @@ const filterStatus = ref('_all')
 const filterAssignee = ref('_all')
 
 const priorityOptions = [{ label: '全部', value: '_all' }, { label: 'P0', value: 'P0' }, { label: 'P1', value: 'P1' }, { label: 'P2', value: 'P2' }, { label: 'P3', value: 'P3' }]
-const statusOptions = [
+// 状态选项 label 走站点配置(statusLabel),value 是流转逻辑依赖的固定值
+const statusOptions = computed(() => [
   { label: '全部', value: '_all' },
-  ...ISSUE_STATUS_OPTIONS,
-]
+  ...ISSUE_STATUS_OPTIONS.map(o => ({ value: o.value, label: statusLabel(o.value) })),
+])
 const assigneeOptions = computed(() => [{ label: '全部', value: '_all' }, ...users.value.map(u => ({ label: u.name || u.username, value: String(u.id) }))])
 
 const roleOptions = computed(() => [
@@ -385,8 +386,8 @@ const kanbanColumns = computed(() => {
   const keys = [...KANBAN_COMPLETED_LEFT, ...baseKeys, ...KANBAN_COMPLETED_RIGHT]
   return keys.map(key => ({
     key,
-    label: key,
-    color: kanbanColor(key),
+    label: statusLabel(key),
+    color: statusMainColor(key),
     items: filteredIssues.value.filter(i => i.status === key),
   }))
 })
@@ -525,12 +526,16 @@ const tableColumns = [
 onMounted(async () => {
   const id = route.params.id
   try {
-    const [projectData, issuesData, usersData, rolesData] = await Promise.all([
+    const [projectData, issuesData, usersData, rolesData, settingsData] = await Promise.all([
       api<any>(`/api/projects/${id}/`),
       api<any>(`/api/projects/${id}/issues/`),
       api<any[]>('/api/users/choices/').catch(() => []),
       api<any[]>('/api/projects/role-choices/').catch(() => []),
+      api<any>('/api/settings/').catch(() => null),
     ])
+    // 看板列圆点/优先级徽章的主色来自站点设置
+    setPrioritiesFromSettings(settingsData?.priorities)
+    setStatusesFromSettings(settingsData?.issue_statuses)
     project.value = projectData
     projectIssues.value = issuesData.results || issuesData || []
     users.value = usersData || []

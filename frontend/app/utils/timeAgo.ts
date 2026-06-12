@@ -11,3 +11,17 @@ export function timeAgo(isoDate: string): string {
   const diffDay = Math.floor(diffHour / 24)
   return `${diffDay} 天前`
 }
+
+// 看板卡片用:今天显示时分,昨天/前天显示文字,更早显示具体日期(跨年带年份)。
+export function formatCardTime(isoDate: string): string {
+  const d = new Date(isoDate)
+  if (Number.isNaN(d.getTime())) return ''
+  const now = new Date()
+  const startOfDay = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime()
+  const diffDays = Math.round((startOfDay(now) - startOfDay(d)) / 86400000)
+  if (diffDays <= 0) return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+  if (diffDays === 1) return '昨天'
+  if (diffDays === 2) return '前天'
+  const md = `${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  return d.getFullYear() === now.getFullYear() ? md : `${d.getFullYear()}-${md}`
+}

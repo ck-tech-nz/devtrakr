@@ -20,14 +20,11 @@ export interface IssueFilterState {
   search: string
 }
 
-export function buildIssueQueryParams(s: IssueFilterState): URLSearchParams {
+// 纯筛选条件部分(不含分页/状态默认排除),看板按列取数时复用
+export type IssueFilterOnly = Omit<IssueFilterState, 'page' | 'pageSize' | 'showCompleted'>
+
+export function buildIssueFilterParams(s: IssueFilterOnly): URLSearchParams {
   const params = new URLSearchParams()
-  params.set('page', String(s.page))
-  params.set('page_size', String(s.pageSize))
-  // 未勾选「显示已完成」且没有显式选状态时,默认排除已关闭/未计划
-  if (!s.showCompleted && !s.filterStatus) {
-    params.set('exclude_statuses', '已关闭,未计划')
-  }
   // 行内处理人徽标优先于筛选栏负责人下拉
   const assigneeId = s.filterHandlerId || s.filterAssignee
   if (assigneeId) params.set('assignee', assigneeId)
@@ -38,5 +35,16 @@ export function buildIssueQueryParams(s: IssueFilterState): URLSearchParams {
   if (s.filterReporter) params.set(s.filterReporter.type, s.filterReporter.value)
   const search = s.search.trim()
   if (search) params.set('search', search)
+  return params
+}
+
+export function buildIssueQueryParams(s: IssueFilterState): URLSearchParams {
+  const params = buildIssueFilterParams(s)
+  params.set('page', String(s.page))
+  params.set('page_size', String(s.pageSize))
+  // 未勾选「显示已完成」且没有显式选状态时,默认排除已关闭/未计划
+  if (!s.showCompleted && !s.filterStatus) {
+    params.set('exclude_statuses', '已关闭,未计划')
+  }
   return params
 }

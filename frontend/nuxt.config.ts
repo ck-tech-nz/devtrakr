@@ -10,10 +10,11 @@ function getBuildInfo() {
   const versionFile = resolve(__dirname, 'VERSION')
   if (existsSync(versionFile)) {
     const content = readFileSync(versionFile, 'utf-8').trim()
-    // VERSION written by CI: "env/prod v2026-5-22 abc1234"
+    // VERSION written by CI: "env/prod abc1234"(两段式: 环境 + 短 SHA,日期已去除以便镜像层按 SHA 复用)
     const parts = content.split(' ')
     const gitHash = parts[parts.length - 1]
-    const buildDate = parts.slice(0, -1).join(' ')
+    // 构建日期不再来自 VERSION:nuxt build 就在 CI 构建时执行,取当时日期即构建日期
+    const buildDate = new Date().toISOString().slice(0, 10)
     return { version: content, gitHash, buildDate }
   }
   try {

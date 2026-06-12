@@ -59,16 +59,18 @@ backend → PostgreSQL (外部)
 推送到 `env/test` 或 `env/prod` 分支触发 GitHub Actions (`.github/workflows/build-push.yml`)：
 
 ```bash
-git push origin main:env/test     # 部署到测试环境
-git push origin main:env/prod     # 部署到生产环境
+git push -f origin main:env/test     # 部署到测试环境
+git push -f origin main:env/prod     # 部署到生产环境
 ```
+
+`env/test` 和 `env/prod` 是发布分支，只反映当前部署的内容，始终从 `main` 强推。
 
 **构建过程：**
 
 1. 根据分支确定环境 (`test` / `prod`)
-2. 生成 `VERSION` 文件 (构建时间 + git SHA)
-3. 并行构建后端和前端 Docker 镜像
-4. 推送到私有镜像仓库 `registry.aimenu.tech/devtrack/{backend,frontend}-{env}`
+2. 生成 `VERSION` 文件（两段式格式：`env/<环境> <git短SHA>`）
+3. 并行构建后端和前端 Docker 镜像（buildx + GitHub Actions 层缓存；同一 SHA 的镜像已存在时跳过构建，直接提升为 `latest`）
+4. 推送到私有镜像仓库 `registry.cktech.hk/devtrakr/{backend,frontend}-{env}`
 5. 通过 Day.app webhook 发送构建通知
 
 **服务端自动更新：** Watchtower 监听镜像更新，自动拉取并重启容器。
@@ -78,51 +80,61 @@ git push origin main:env/prod     # 部署到生产环境
 **后端** (`backend/Dockerfile`)：
 
 - 基于 `python:3.14-slim`
-- 安装 git、curl、opencode (AI 代码分析工具)
+- 安装 git、curl、postgresql-client、opencode (AI 代码分析工具)
 - 使用 uv 管理依赖，`collectstatic` 打包静态文件 (WhiteNoise 伺服)
+- 容器内统一 `uv run --no-sync`，启动时不联网重装依赖
 
 **前端** (`frontend/Dockerfile`)：
 
 - 多阶段构建，基于 `node:22-slim`
+- 依赖用 `npm ci` 按 lockfile 安装，保证构建可复现
 - 构建时通过 `NUXT_API_BASE` 指定后端地址 (默认 `http://backend:8000`)
 - 运行阶段仅包含 `.output` 产物
 
 ### 服务器部署
 
-参考 `servers/test/` 目录结构部署：
+部署配置以仓库 `deploy/{env}/`（`test` / `prod`）为源，同步到服务器对应目录：
 
 ```
-servers/{env}/
-├── docker-compose.yml    # 服务编排
-├── .env                  # 环境变量
-└── .gitconfig-proxy      # Git 代理配置 (用于仓库克隆)
+deploy/{env}/
+├── docker-compose.yml    # 服务编排（仓库内为源，改动需手动同步到服务器）
+├── .env                  # 环境变量（仅存服务器，不入库）
+└── .gitconfig-proxy      # Git 代理配置 (仅 prod，用于仓库克隆)
 ```
 
-**docker-compose.yml** 要点：
+**docker-compose.yml** 要点（完整文件见 `deploy/test/docker-compose.yml`）：
 
 ```yaml
 services:
   backend:
-    image: registry.aimenu.tech/devtrack/backend-{env}
+    image: registry.cktech.hk/devtrakr/backend-{env}
     env_file: .env
-    volumes:
-      - ./.gitconfig-proxy:/root/.gitconfig:ro   # Git 代理
-      - repo_data:/data/repos                     # 克隆的仓库
+    volumes:                                          # 仅 prod
+      - ./.gitconfig-proxy:/root/.gitconfig:ro        # Git 代理
+      - repo_data:/data/repos                         # 克隆的仓库
     command: >
-      sh -c "uv run python manage.py migrate --noinput &&
-             uv run python manage.py sync_page_perms 2>/dev/null || true &&
-             uv run python manage.py runserver 0.0.0.0:8000"
+      sh -c "uv run --no-sync python manage.py migrate --noinput &&
+             uv run --no-sync python manage.py sync_page_perms 2>/dev/null || true &&
+             uv run --no-sync python manage.py runserver 0.0.0.0:8000"
+             # prod 为 uvicorn config.asgi:application --workers 4
     labels:
       - com.centurylinklabs.watchtower.enable=true
-      - traefik.http.routers.devtrack-backend.rule=PathPrefix(`/api`)
+      - "traefik.http.routers.devtrakr-backend.rule=Host(`<域名>`) && PathPrefix(`/api`)"
 
   frontend:
-    image: registry.aimenu.tech/devtrack/frontend-{env}
+    image: registry.cktech.hk/devtrakr/frontend-{env}
     depends_on: [backend]
     labels:
       - com.centurylinklabs.watchtower.enable=true
-      - traefik.http.routers.devtrack-frontend.rule=PathPrefix(`/`)
-      - traefik.http.routers.devtrack-frontend.priority=1
+      - "traefik.http.routers.devtrakr-frontend.rule=Host(`<域名>`)"
+
+  celery-worker:    # 异步任务
+    image: registry.cktech.hk/devtrakr/backend-{env}
+    command: uv run --no-sync celery -A config worker -l info
+
+  celery-beat:      # 定时任务
+    image: registry.cktech.hk/devtrakr/backend-{env}
+    command: uv run --no-sync celery -A config beat -l info --scheduler django_celery_beat.schedulers.DatabaseScheduler
 
 networks:
   db-network:
@@ -131,7 +143,7 @@ networks:
     external: true
 ```
 
-容器启动时自动执行 `migrate` 和 `sync_page_perms`。
+容器启动时自动执行 `migrate` 和 `sync_page_perms`。注意：Watchtower 只自动拉取新镜像，compose 文件改动不会自动生效，需手动同步到服务器并 `docker compose up -d --force-recreate`。
 
 ### 环境变量
 

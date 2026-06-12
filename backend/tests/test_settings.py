@@ -18,10 +18,74 @@ class TestSiteSettingsModel:
         assert site_settings.labels["前端"]["background"] == "#0075ca"
 
     def test_default_priorities(self, site_settings):
-        assert site_settings.priorities == ["P0", "P1", "P2", "P3"]
+        # 对象列表(高→低),每档带显示名与主色;空 background 表示无底色
+        assert [p["value"] for p in site_settings.priorities] == ["P0", "P1", "P2", "P3"]
+        assert site_settings.priorities[0]["label"] == "紧急"
+        assert site_settings.priorities[0]["background"] == "#ef4444"
+        assert site_settings.priorities[3]["background"] == ""
 
     def test_default_issue_statuses(self, site_settings):
-        assert site_settings.issue_statuses == ["未计划", "待分配", "待确认", "进行中", "已解决", "已发布", "已关闭"]
+        # 对象列表,每个状态带显示名与主色(前端状态胶囊/看板列圆点据此着色)
+        assert [s["value"] for s in site_settings.issue_statuses] == [
+            "未计划", "待分配", "待确认", "进行中", "已解决", "已发布", "已关闭"
+        ]
+        assert site_settings.issue_statuses[0]["label"] == "未计划"
+        assert site_settings.issue_statuses[0]["background"] == "#8b5cf6"
+        assert all(s["background"].startswith("#") for s in site_settings.issue_statuses)
+
+
+class TestColorOptionListWidget:
+    def test_items_json_escapes_html(self):
+        """items_json 以 |safe 注入 <script>,存储值里的 </script> 必须被转义防 XSS。"""
+        from apps.settings.widgets import ColorOptionListWidget
+
+        widget = ColorOptionListWidget()
+        ctx = widget.get_context(
+            "issue_statuses",
+            [{"value": "</script><img src=x onerror=alert(1)>", "label": "x", "background": ""}],
+            None,
+        )
+        items_json = ctx["widget"]["items_json"]
+        assert "</script>" not in items_json
+        assert "<img" not in items_json
+        assert "\\u003c" in items_json
+
+    def test_get_context_normalizes_legacy_flat_list(self):
+        """旧版扁平列表 ["P0",...] 渲染前统一为对象格式(label=value,无主色)。"""
+        import json
+
+        from apps.settings.widgets import ColorOptionListWidget
+
+        widget = ColorOptionListWidget()
+        ctx = widget.get_context("priorities", ["P0", "P1"], None)
+        items = json.loads(ctx["widget"]["items_json"])
+        assert items == [
+            {"value": "P0", "label": "P0", "background": ""},
+            {"value": "P1", "label": "P1", "background": ""},
+        ]
+
+    def test_get_context_invalid_value_renders_empty_list(self):
+        """非法 JSON 字符串 / 非列表值不应让 admin 页面崩溃,渲染为空列表。"""
+        import json
+
+        from apps.settings.widgets import ColorOptionListWidget
+
+        widget = ColorOptionListWidget()
+        for bad in ("{not json", {"value": "P0"}, None):
+            ctx = widget.get_context("priorities", bad, None)
+            assert json.loads(ctx["widget"]["items_json"]) == []
+
+    def test_value_from_datadict_round_trip(self):
+        """隐藏 input 提交的 JSON 应解析回 Python 列表;非法 JSON 原样返回交给表单校验;缺失返回 []。"""
+        from apps.settings.widgets import ColorOptionListWidget
+
+        widget = ColorOptionListWidget()
+        raw = '[{"value": "P0", "label": "紧急", "background": "#ef4444"}]'
+        assert widget.value_from_datadict({"priorities": raw}, {}, "priorities") == [
+            {"value": "P0", "label": "紧急", "background": "#ef4444"}
+        ]
+        assert widget.value_from_datadict({"priorities": "{broken"}, {}, "priorities") == "{broken"
+        assert widget.value_from_datadict({}, {}, "priorities") == []
 
 
 class TestSiteSettingsAPI:

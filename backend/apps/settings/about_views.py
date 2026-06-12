@@ -1,6 +1,7 @@
 import os
 import platform
 import subprocess
+from datetime import datetime
 
 import django
 import rest_framework
@@ -54,12 +55,19 @@ class AboutView(APIView):
         git_hash = None
         build_date = None
 
-        if build_version and "-" in build_version:
-            # 格式: YYYY-MM-DD-HH:MM:SS-SHORT_SHA
-            parts = build_version.rsplit("-", 1)
-            if len(parts) == 2:
-                build_date = parts[0]
+        if build_version:
+            # CI 两段式格式: "env/<env> <short_sha>"(日期已去除以便镜像按 SHA 去重)
+            parts = build_version.split()
+            if len(parts) == 2 and parts[0].startswith("env/"):
                 git_hash = parts[1]
+            # 构建日期取 VERSION 文件自身的修改时间(CI 构建时写入镜像)
+            version_file = BASE_DIR / "VERSION"
+            try:
+                build_date = datetime.fromtimestamp(
+                    version_file.stat().st_mtime
+                ).strftime("%Y-%m-%d")
+            except OSError:
+                build_date = None
 
         if not git_hash:
             git_hash = _get_git_hash()

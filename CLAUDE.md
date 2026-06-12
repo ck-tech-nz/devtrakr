@@ -53,9 +53,9 @@ docker compose up --build                  # Start full stack (backend :8000, fr
 - **`backend/apps/`** — All Django apps, plus shared `urls.py` and `permissions.py`
 - **`backend/tests/`** — All tests in one directory, not per-app
 
-Django apps: `users`, `projects`, `issues`, `repos`, `settings`
+Django apps: `users`, `projects`, `issues`, `repos`, `settings`, `ai`, `tools`, `notifications`, `uptime`, `kpi`, `external`, `ai_testing`
 
-API is mounted at `/api/` with sub-routes: `auth/`, `users/`, `projects/`, `issues/`, `dashboard/`, `repos/`, `settings/`.
+API is mounted at `/api/` with sub-routes: `auth/`, `users/`, `projects/`, `issues/`, `dashboard/`, `repos/`, `settings/`, `ai/`, `tools/`, `notifications/`, `uptime/`, `kpi/`, `page-perms/`, `external/`, `about/`.
 
 ### Frontend
 
@@ -92,8 +92,9 @@ git push -f origin main:env/prod     # Deploy to production
 ## Key Conventions
 
 - Backend uses `uv` as package manager (not pip)
+- Migrations: prefer Django-generated migration files (`makemigrations`) over hand-written ones; hand-write only data migrations (`RunPython`) that Django cannot generate. Never edit a Django-generated migration file after it exists — create a new migration instead. Stay faithful to the framework.
 - Issue numbers are auto-incremented integers, displayed as `ISS-001`
-- `SiteSettings` is a singleton (django-solo) for labels, priorities, and issue statuses
+- `SiteSettings` is a singleton (django-solo) for labels, priorities, and issue statuses. Priorities and issue statuses are object lists (`{value, label, background}`): `value` is locked (models and state transitions depend on it), while display name, color, and order are editable in the admin color-option widget
 - `FullDjangoModelPermissions` in `apps/permissions.py` enforces `view_*` on GET (unlike default DRF which allows unauthenticated reads)
 - User groups are defined in `sync_page_perms` management command — run after migrations
 - Frontend language is Chinese (zh-hans)

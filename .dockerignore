@@ -6,6 +6,8 @@
 **/.output
 **/.env
 **/*.pyc
+**/.pytest_cache
+**/staticfiles
 frontend/
 docs/
 .github/

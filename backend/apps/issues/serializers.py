@@ -11,7 +11,7 @@ from apps.repos.serializers import GitHubIssueBriefSerializer
 from apps.tools.models import Attachment
 from apps.tools.serializers import AttachmentSerializer
 from apps.notifications.services import create_mention_notifications
-from .models import Issue, IssueStatus, Activity, IssueAssignment
+from .models import Issue, IssueStatus, Activity, IssueAssignment, IssueComment
 
 User = get_user_model()
 
@@ -59,6 +59,7 @@ class IssueListSerializer(serializers.ModelSerializer):
     created_by_name = serializers.SerializerMethodField()
     updated_by_name = serializers.SerializerMethodField()
     assignee_name = serializers.CharField(source="assignee.name", read_only=True, default=None)
+    assignee_avatar = serializers.CharField(source="assignee.avatar", read_only=True, default=None)
     manager_name = serializers.SerializerMethodField()
     helpers = serializers.PrimaryKeyRelatedField(many=True, read_only=True)
     helpers_names = serializers.SerializerMethodField()
@@ -78,7 +79,7 @@ class IssueListSerializer(serializers.ModelSerializer):
             "status", "labels", "reporter",
             "created_by", "created_by_name",
             "updated_by", "updated_by_name",
-            "assignee", "assignee_name", "manager", "manager_name",
+            "assignee", "assignee_name", "assignee_avatar", "manager", "manager_name",
             "helpers", "helpers_names", "remark", "cause", "solution",
             "ai_cause", "ai_solution",
             "resolution_hours", "created_at", "updated_at", "github_issues",
@@ -179,6 +180,42 @@ class IssueAssignmentSerializer(serializers.ModelSerializer):
         return None
 
 
+MAX_COMMENT_LENGTH = 65536  # 评论内容长度上限(字符)
+
+
+class IssueCommentSerializer(serializers.ModelSerializer):
+    author_name = serializers.SerializerMethodField()
+    author_avatar = serializers.SerializerMethodField()
+    is_edited = serializers.SerializerMethodField()
+
+    class Meta:
+        model = IssueComment
+        fields = [
+            "id", "author", "author_name", "author_avatar",
+            "content", "created_at", "updated_at", "is_edited",
+        ]
+        read_only_fields = ["id", "author", "created_at", "updated_at"]
+
+    def get_author_name(self, obj):
+        if obj.author:
+            return obj.author.name or obj.author.username
+        return None
+
+    def get_author_avatar(self, obj):
+        return obj.author.avatar if obj.author else ""
+
+    def get_is_edited(self, obj):
+        # auto_now 与 auto_now_add 在创建时存在微小差异,用 1 秒容差判定
+        return (obj.updated_at - obj.created_at).total_seconds() > 1
+
+    def validate_content(self, value):
+        if not value.strip():
+            raise serializers.ValidationError("评论内容不能为空")
+        if len(value) > MAX_COMMENT_LENGTH:
+            raise serializers.ValidationError(f"评论内容过长（上限 {MAX_COMMENT_LENGTH} 字符）")
+        return value
+
+
 class IssueDetailSerializer(IssueListSerializer):
     github_issues = GitHubIssueBriefSerializer(many=True, read_only=True)
     attachments = AttachmentSerializer(many=True, read_only=True)
@@ -268,7 +305,9 @@ class IssueCreateUpdateSerializer(serializers.ModelSerializer):
 
     def validate_priority(self, value):
         site_settings = SiteSettings.get_solo()
-        if value not in site_settings.priorities:
+        # 兼容两种格式: 旧版扁平列表 ["P0",...] 与新版对象列表 [{"value": "P0", ...}, ...]
+        valid = {p["value"] if isinstance(p, dict) else p for p in site_settings.priorities}
+        if value not in valid:
             raise serializers.ValidationError(f"无效的优先级: {value}")
         return value
 

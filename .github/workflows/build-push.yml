@@ -38,7 +38,14 @@ jobs:
         run: |
           SHORT_SHA=${GITHUB_SHA:0:7}
           ENV=${{ needs.set-env.outputs.env }}
-          echo "env/${ENV} v$(date +'%Y-%-m-%-d') ${SHORT_SHA}" > backend/VERSION
+          echo "env/${ENV} ${SHORT_SHA}" > backend/VERSION
+
+      - name: Set short SHA
+        id: vars
+        run: echo "short_sha=${GITHUB_SHA:0:7}" >> $GITHUB_OUTPUT
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
       - name: Login to Docker Registry
         uses: docker/login-action@v4
@@ -47,21 +54,41 @@ jobs:
           username: ${{ env.REGISTRY_USERNAME }}
           password: ${{ secrets.ARTIFACT_REGISTRY_PRIVATE_KEY }}
 
-      - name: Build and push Backend image
+      - name: Check existing Backend image
+        id: image-check
         env:
-          DOCKER_BUILDKIT: 1
+          IMAGE: ${{ env.REGISTRY }}/${{ env.PROJECT_NAME }}/backend-${{ needs.set-env.outputs.env }}
+          SHORT_SHA: ${{ steps.vars.outputs.short_sha }}
         run: |
-          SHORT_SHA=${GITHUB_SHA:0:7}
-          ENV=${{ needs.set-env.outputs.env }}
-          IMAGE_NAME="${{ env.REGISTRY }}/${{ env.PROJECT_NAME }}/backend-${ENV}"
+          if docker buildx imagetools inspect "${IMAGE}:${SHORT_SHA}" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
 
-          docker build \
-            -f backend/Dockerfile \
-            -t ${IMAGE_NAME}:latest \
-            -t ${IMAGE_NAME}:${SHORT_SHA} \
-            .
+      - name: Build and push Backend image
+        if: steps.image-check.outputs.exists != 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: backend/Dockerfile
+          push: true
+          # 关闭 provenance，保持产物为普通镜像 manifest，兼容自建 registry 和 Watchtower
+          provenance: false
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.PROJECT_NAME }}/backend-${{ needs.set-env.outputs.env }}:latest
+            ${{ env.REGISTRY }}/${{ env.PROJECT_NAME }}/backend-${{ needs.set-env.outputs.env }}:${{ steps.vars.outputs.short_sha }}
+          cache-from: type=gha,scope=backend-${{ needs.set-env.outputs.env }}
+          cache-to: type=gha,scope=backend-${{ needs.set-env.outputs.env }},mode=max
 
-          docker push ${IMAGE_NAME} --all-tags
+      - name: Skip existing Backend image
+        if: steps.image-check.outputs.exists == 'true'
+        env:
+          IMAGE: ${{ env.REGISTRY }}/${{ env.PROJECT_NAME }}/backend-${{ needs.set-env.outputs.env }}
+          SHORT_SHA: ${{ steps.vars.outputs.short_sha }}
+        run: |
+          echo "Backend image for ${SHORT_SHA} already exists; promoting it to latest without rebuilding."
+          docker buildx imagetools create --prefer-index=false --tag "${IMAGE}:latest" "${IMAGE}:${SHORT_SHA}"
 
   build-frontend:
     needs: [set-env]
@@ -74,7 +101,14 @@ jobs:
         run: |
           SHORT_SHA=${GITHUB_SHA:0:7}
           ENV=${{ needs.set-env.outputs.env }}
-          echo "env/${ENV} v$(date +'%Y-%-m-%-d') ${SHORT_SHA}" > frontend/VERSION
+          echo "env/${ENV} ${SHORT_SHA}" > frontend/VERSION
+
+      - name: Set short SHA
+        id: vars
+        run: echo "short_sha=${GITHUB_SHA:0:7}" >> $GITHUB_OUTPUT
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
       - name: Login to Docker Registry
         uses: docker/login-action@v4
@@ -83,20 +117,40 @@ jobs:
           username: ${{ env.REGISTRY_USERNAME }}
           password: ${{ secrets.ARTIFACT_REGISTRY_PRIVATE_KEY }}
 
-      - name: Build and push Frontend image
+      - name: Check existing Frontend image
+        id: image-check
         env:
-          DOCKER_BUILDKIT: 1
+          IMAGE: ${{ env.REGISTRY }}/${{ env.PROJECT_NAME }}/frontend-${{ needs.set-env.outputs.env }}
+          SHORT_SHA: ${{ steps.vars.outputs.short_sha }}
         run: |
-          SHORT_SHA=${GITHUB_SHA:0:7}
-          ENV=${{ needs.set-env.outputs.env }}
-          IMAGE_NAME="${{ env.REGISTRY }}/${{ env.PROJECT_NAME }}/frontend-${ENV}"
+          if docker buildx imagetools inspect "${IMAGE}:${SHORT_SHA}" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
 
-          docker build \
-            -t ${IMAGE_NAME}:latest \
-            -t ${IMAGE_NAME}:${SHORT_SHA} \
-            ./frontend
+      - name: Build and push Frontend image
+        if: steps.image-check.outputs.exists != 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: ./frontend
+          push: true
+          # 关闭 provenance，保持产物为普通镜像 manifest，兼容自建 registry 和 Watchtower
+          provenance: false
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.PROJECT_NAME }}/frontend-${{ needs.set-env.outputs.env }}:latest
+            ${{ env.REGISTRY }}/${{ env.PROJECT_NAME }}/frontend-${{ needs.set-env.outputs.env }}:${{ steps.vars.outputs.short_sha }}
+          cache-from: type=gha,scope=frontend-${{ needs.set-env.outputs.env }}
+          cache-to: type=gha,scope=frontend-${{ needs.set-env.outputs.env }},mode=max
 
-          docker push ${IMAGE_NAME} --all-tags
+      - name: Skip existing Frontend image
+        if: steps.image-check.outputs.exists == 'true'
+        env:
+          IMAGE: ${{ env.REGISTRY }}/${{ env.PROJECT_NAME }}/frontend-${{ needs.set-env.outputs.env }}
+          SHORT_SHA: ${{ steps.vars.outputs.short_sha }}
+        run: |
+          echo "Frontend image for ${SHORT_SHA} already exists; promoting it to latest without rebuilding."
+          docker buildx imagetools create --prefer-index=false --tag "${IMAGE}:latest" "${IMAGE}:${SHORT_SHA}"
 
   notify:
     needs: [build-backend, build-frontend]

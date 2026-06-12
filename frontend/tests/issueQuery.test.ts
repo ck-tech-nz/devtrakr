@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { buildIssueQueryParams, type IssueFilterState } from '../app/utils/issueQuery'
+import { buildIssueQueryParams, buildIssueFilterParams, type IssueFilterState } from '../app/utils/issueQuery'
 
 function base(over: Partial<IssueFilterState> = {}): IssueFilterState {
   return {
@@ -81,5 +81,26 @@ describe('buildIssueQueryParams', () => {
     expect(p.has('priority')).toBe(false)
     expect(p.has('status')).toBe(false)
     expect(p.has('search')).toBe(false)
+  })
+})
+
+describe('buildIssueFilterParams', () => {
+  it('只输出纯筛选条件:不带分页与 exclude_statuses 默认排除(看板按列取数依赖此约定)', () => {
+    const p = buildIssueFilterParams({
+      filterStatus: '进行中',
+      filterAssignee: '7',
+      filterHandlerId: null,
+      filterPriority: 'P1',
+      filterPriorityTagValue: null,
+      filterReporter: null,
+      search: ' bug ',
+    })
+    expect(p.has('page')).toBe(false)
+    expect(p.has('page_size')).toBe(false)
+    expect(p.has('exclude_statuses')).toBe(false)
+    expect(p.get('status')).toBe('进行中')
+    expect(p.get('assignee')).toBe('7')
+    expect(p.get('priority')).toBe('P1')
+    expect(p.get('search')).toBe('bug')
   })
 })

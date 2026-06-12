@@ -7,6 +7,7 @@ from rest_framework.response import Response
 from rest_framework.throttling import UserRateThrottle
 from rest_framework.views import APIView
 from apps.permissions import FullDjangoModelPermissions
+from django.db import transaction
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import SearchFilter, OrderingFilter
 from django.conf import settings as django_settings
@@ -21,13 +22,15 @@ from apps.ai.models import Analysis
 from apps.ai.services import IssueAnalysisService
 from apps.repos.services import GitHubSyncService
 from apps.repos.serializers import GitHubIssueBriefSerializer
-from .models import Issue, IssueStatus, Activity
+from .models import Issue, IssueStatus, Activity, IssueComment
 from .serializers import (
     IssueListSerializer, IssueDetailSerializer,
     IssueCreateUpdateSerializer, BatchUpdateSerializer,
     ActivitySerializer,
     IssueTransferInputSerializer, IssueAssignInputSerializer,
+    IssueCommentSerializer,
 )
+from apps.notifications.services import create_comment_mention_notifications
 from .services import claim_issue, confirm_issue, transfer_issue, assign_issue, InvalidTransition
 
 User = get_user_model()
@@ -41,6 +44,11 @@ class AiWizardThrottle(UserRateThrottle):
 class AiCheckDuplicateThrottle(UserRateThrottle):
     """30/min per user for duplicate check (lighter, single LLM call)."""
     scope = "ai_duplicate_check"
+
+
+class IssueCommentWriteThrottle(UserRateThrottle):
+    """评论写操作(发表/编辑/删除)限频:防脚本刷评论、借 @提及 刷通知。"""
+    scope = "issue_comment_write"
 
 
 def _with_ai_fields(qs):
@@ -67,7 +75,13 @@ def _with_ai_fields(qs):
 
 
 class IssueListCreateView(generics.ListCreateAPIView):
-    queryset = Issue.objects.select_related("created_by", "assignee").prefetch_related("github_issues__repo")
+    # updated_by/manager/helpers 均被列表序列化器逐行读取,不预取会放大为每行 N+1
+    # (看板按列并发分页后该端点请求量倍增,见 useKanbanIssues)
+    queryset = (
+        Issue.objects
+        .select_related("created_by", "assignee", "updated_by", "manager")
+        .prefetch_related("github_issues__repo", "helpers")
+    )
     permission_classes = [IsAuthenticated, FullDjangoModelPermissions]
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     filterset_fields = ["priority", "status", "assignee", "project", "helpers"]
@@ -532,6 +546,93 @@ class IssueAttachmentsView(APIView):
             return Response({"detail": "附件不存在"}, status=404)
         issue.attachments.remove(attachment)
         return Response(status=204)
+
+
+class IssueCommentsView(APIView):
+    """GET: 评论列表（旧→新）。POST: 发表评论。"""
+    permission_classes = [IsAuthenticated]
+
+    def get_throttles(self):
+        # 只限写操作,浏览评论不限频
+        if self.request.method == "POST":
+            return [IssueCommentWriteThrottle()]
+        return []
+
+    def get(self, request, pk):
+        issue = Issue.objects.filter(pk=pk).first()
+        if not issue:
+            return Response({"detail": "问题不存在"}, status=status.HTTP_404_NOT_FOUND)
+        comments = issue.comments.select_related("author")
+        return Response(IssueCommentSerializer(comments, many=True).data)
+
+    @transaction.atomic
+    def post(self, request, pk):
+        issue = Issue.objects.filter(pk=pk).first()
+        if not issue:
+            return Response({"detail": "问题不存在"}, status=status.HTTP_404_NOT_FOUND)
+        serializer = IssueCommentSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        comment = IssueComment.objects.create(
+            issue=issue, author=request.user,
+            content=serializer.validated_data["content"],
+        )
+        Activity.objects.create(user=request.user, issue=issue, action="commented")
+        # bump updated_at 让问题列表/看板反映评论动态;
+        # 必须用 queryset.update 绕过 save() → 不产生 simple_history 快照
+        Issue.objects.filter(pk=issue.pk).update(updated_at=timezone.now())
+        create_comment_mention_notifications(
+            comment=comment, old_content="", new_content=comment.content,
+            actor=request.user,
+        )
+        return Response(
+            IssueCommentSerializer(comment).data, status=status.HTTP_201_CREATED,
+        )
+
+
+class IssueCommentDetailView(APIView):
+    """PATCH: 仅作者可编辑。DELETE: 作者或管理员。"""
+    permission_classes = [IsAuthenticated]
+    throttle_classes = [IssueCommentWriteThrottle]  # PATCH/DELETE 均为写操作
+
+    def _get_comment(self, pk, comment_id):
+        return (
+            IssueComment.objects.select_related("author", "issue")
+            .filter(pk=comment_id, issue_id=pk, issue__is_deleted=False)
+            .first()
+        )
+
+    @transaction.atomic
+    def patch(self, request, pk, comment_id):
+        comment = self._get_comment(pk, comment_id)
+        if not comment:
+            return Response({"detail": "评论不存在"}, status=status.HTTP_404_NOT_FOUND)
+        if comment.author_id != request.user.id:
+            return Response({"detail": "只能编辑自己的评论"}, status=status.HTTP_403_FORBIDDEN)
+        serializer = IssueCommentSerializer(comment, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        new_content = serializer.validated_data.get("content")
+        if new_content is None or new_content == comment.content:
+            # 无实际变更: 不保存、不 bump updated_at、不误标「已编辑」
+            return Response(IssueCommentSerializer(comment).data)
+        old_content = comment.content
+        comment.content = new_content
+        comment.save(update_fields=["content", "updated_at"])
+        # 编辑不写 Activity、不 bump issue.updated_at（既有评论的修订不算新讨论动态）
+        create_comment_mention_notifications(
+            comment=comment, old_content=old_content, new_content=comment.content,
+            actor=request.user,
+        )
+        return Response(IssueCommentSerializer(comment).data)
+
+    def delete(self, request, pk, comment_id):
+        comment = self._get_comment(pk, comment_id)
+        if not comment:
+            return Response({"detail": "评论不存在"}, status=status.HTTP_404_NOT_FOUND)
+        # 作者本人或管理员（_is_manager: superuser / 「管理员」组）可删除
+        if comment.author_id != request.user.id and not _is_manager(request.user):
+            return Response({"detail": "无权删除该评论"}, status=status.HTTP_403_FORBIDDEN)
+        comment.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 FIELD_LABELS = {

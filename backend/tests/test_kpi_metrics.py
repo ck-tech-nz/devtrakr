@@ -280,6 +280,26 @@ class TestWorkloadMetrics:
         assert result["rework_count"] == 0
         assert result["breakdown"] == []
 
+    def test_comment_counts_as_first_response(self):
+        """负责人在 issue 上的首个 Activity 是 commented 时也计入首次响应(metrics.py 注释声明的有意行为)。"""
+        from apps.issues.models import Activity
+
+        user = UserFactory()
+        project = ProjectFactory()
+        base = timezone.make_aware(timezone.datetime(2026, 4, 5, 10, 0))
+
+        issue = IssueFactory(
+            project=project, assignee=user, status="进行中", created_by=user,
+        )
+        issue.created_at = base
+        issue.save(update_fields=["created_at"])
+        act = ActivityFactory(user=user, issue=issue, action="commented")
+        # created_at 是 auto_now_add,改用 queryset.update 回拨到精确时间
+        Activity.objects.filter(pk=act.pk).update(created_at=base + timedelta(hours=2))
+
+        result = compute_workload_metrics(user, date(2026, 4, 1), date(2026, 4, 30))
+        assert result["avg_first_response_hours"] == 2.0
+
     def test_piece_rate_count_tier_at_boundary(self):
         """前 20 个走 ¥100，第 21 个起 ¥160（estimated_hours < 4h 走小型）。"""
         user = UserFactory()

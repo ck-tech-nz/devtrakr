@@ -2,9 +2,8 @@
   <NuxtLink
     :to="`/app/issues/${issue.id}`"
     class="block backdrop-blur-sm border rounded-xl p-3 active:scale-[0.98] transition-transform"
-    :class="issue.priority === 'P0'
-      ? 'bg-red-50 dark:bg-red-950/40 border-red-300 dark:border-red-700 ring-1 ring-red-200 dark:ring-red-800/50'
-      : 'bg-white/70 dark:bg-gray-800/70 border-white/85 dark:border-gray-700/50'"
+    :class="priorityCardClass(issue.priority) || 'bg-white/70 dark:bg-gray-800/70 border-white/85 dark:border-gray-700/50'"
+    :style="priorityCardStyle(issue.priority)"
   >
     <div class="flex items-start justify-between gap-2">
       <p class="text-sm font-medium text-gray-900 dark:text-gray-100 line-clamp-2 flex-1">
@@ -12,7 +11,10 @@
       </p>
       <div class="flex items-center gap-1 flex-shrink-0">
         <UBadge v-if="issue.source" color="info" variant="subtle" size="xs">外部</UBadge>
-        <UBadge :color="priorityColor(issue.priority)" variant="subtle" size="xs">
+        <UBadge
+          :color="priorityColor(issue.priority)" variant="subtle" size="xs"
+          :class="priorityBadgeClass(issue.priority)" :style="priorityBadgeStyle(issue.priority)"
+        >
           {{ priorityLabel(issue.priority) }}
         </UBadge>
       </div>
