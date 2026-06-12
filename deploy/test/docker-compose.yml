@@ -16,7 +16,7 @@ services:
       - "traefik.http.services.devtrakr-backend.loadbalancer.server.port=8000"
     command: >
       sh -c "uv run --no-sync python manage.py migrate --noinput &&
-             uv run --no-sync python manage.py sync_page_perms 2>/dev/null || true &&
+             { uv run --no-sync python manage.py sync_page_perms 2>/dev/null || true; } &&
              uv run --no-sync python manage.py runserver 0.0.0.0:8000"
 
   frontend:
