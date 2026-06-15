@@ -10,7 +10,7 @@ from .models import Repo, GitHubIssue, GitAuthorAlias
 from .serializers import RepoSerializer, GitHubIssueBriefSerializer, GitHubIssueDetailSerializer, GitAuthorAliasSerializer
 from .insights import DeveloperInsightsService
 from concurrent.futures import ThreadPoolExecutor
-from .services import GitHubSyncService, RepoCloneService
+from .services import GitHubSyncService, RepoCloneService, GitHubPreviewService, parse_github_ref
 
 _clone_executor = ThreadPoolExecutor(max_workers=2)
 
@@ -226,3 +226,16 @@ class GitAuthorAliasPatchView(APIView):
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return Response(serializer.data)
+
+
+class GitHubPreviewView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        ref = parse_github_ref(request.query_params.get("url", ""))
+        if not ref:
+            return Response({"supported": False})
+        data = GitHubPreviewService().fetch_preview(**ref)
+        if not data:
+            return Response({"supported": False})
+        return Response(data)

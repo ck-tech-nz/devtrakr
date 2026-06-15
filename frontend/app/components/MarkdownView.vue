@@ -1,11 +1,14 @@
 <template>
-  <div class="markdown-view" v-html="html" />
+  <div ref="rootEl" class="markdown-view" v-html="html" />
 </template>
 
 <script setup lang="ts">
 const props = defineProps<{ text?: string }>()
 
 const { md } = useMentionMarkdown()
+
+const rootEl = ref<HTMLElement | null>(null)
+useInlineLinkPreviews(rootEl, () => html.value)
 
 const html = computed(() => {
   if (!props.text) return ''

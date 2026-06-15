@@ -4,11 +4,12 @@ from .views import (
     RepoSyncView, GitHubIssueDetailView,
     RepoCloneView, RepoGitLogView, RepoBranchesView,
     DeveloperInsightsListView, DeveloperInsightsDetailView,
-    SyncCommitsView, GitAuthorAliasPatchView,
+    SyncCommitsView, GitAuthorAliasPatchView, GitHubPreviewView,
 )
 
 urlpatterns = [
     path("", RepoListCreateView.as_view(), name="repo-list"),
+    path("github-preview/", GitHubPreviewView.as_view(), name="github-preview"),
     path("github-issues/", GitHubIssueListView.as_view(), name="github-issue-list"),
     path("github-issues/<int:pk>/", GitHubIssueDetailView.as_view(), name="github-issue-detail"),
     path("<int:pk>/sync/", RepoSyncView.as_view(), name="repo-sync"),

@@ -266,6 +266,7 @@ const renderedHtml = computed(() => {
 // --- .md hover preview ---
 
 const previewRef = ref<HTMLElement | null>(null)
+useInlineLinkPreviews(previewRef, () => renderedHtml.value)
 const mdHover = ref<{ visible: boolean; loading: boolean; content: string; top: number; left: number; url: string; filename: string }>({
   visible: false, loading: false, content: '', top: 0, left: 0, url: '', filename: '',
 })

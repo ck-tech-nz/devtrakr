@@ -58,4 +58,22 @@ describe('useMentionMarkdown 渲染', () => {
     expect(html).not.toContain('<script>')
     expect(html).toContain('#问题-099')
   })
+
+  it('问题提及带 data-issue-id 供悬浮预览取数', () => {
+    const html = md.render('#[#问题-042](issue:42)')
+    expect(html).toContain('data-issue-id="42"')
+    expect(html).toContain('class="mention-issue"')
+  })
+
+  it('外部 URL 链接带 external-link class 与安全 rel/target', () => {
+    const html = md.render('见 https://example.com/docs 说明')
+    expect(html).toContain('class="external-link"')
+    expect(html).toContain('target="_blank"')
+    expect(html).toContain('rel="noopener noreferrer"')
+  })
+
+  it('站内根相对链接不应标记为 external-link', () => {
+    const html = md.render('[详情](/app/issues/3)')
+    expect(html).not.toContain('external-link')
+  })
 })
