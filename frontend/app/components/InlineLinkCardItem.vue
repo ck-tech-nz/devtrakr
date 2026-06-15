@@ -53,7 +53,7 @@ onMounted(() => {
   } else if (m.type === 'github' && m.url) {
     state.type = 'github'; state.githubLoading = true
     fetchGithubPreview(m.url, api)
-      .then((d) => { if (d) { state.github = d; state.githubLoading = false } else { state.type = 'external'; state.url = m.url; state.githubLoading = false } })
+      .then((d) => { if (d) { state.github = d; state.githubLoading = false } else { state.type = 'external'; state.url = m.url ?? null; state.githubLoading = false } })
       .catch(() => { state.type = 'external'; state.url = m.url ?? null; state.githubLoading = false })
   } else if (m.type === 'external' && m.url) {
     state.type = 'external'; state.url = m.url
