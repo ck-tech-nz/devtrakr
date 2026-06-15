@@ -15,7 +15,8 @@ describe('LinkHoverCard (issue)', () => {
   it('renders the issue card fields', async () => {
     const w = await mountSuspended(LinkHoverCard, { props: {
       visible: true, top: 10, left: 10, type: 'issue',
-      issue, issueLoading: false, issueError: false, url: null, iframeFallback: false,
+      issue, issueLoading: false, issueError: false, url: null,
+      github: null, githubLoading: false,
     } })
     expect(document.body.textContent).toContain('登录页报错')
     expect(document.body.textContent).toContain('#问题-007')
@@ -28,7 +29,8 @@ describe('LinkHoverCard (issue)', () => {
   it('shows a loading state', async () => {
     const w = await mountSuspended(LinkHoverCard, { props: {
       visible: true, top: 0, left: 0, type: 'issue',
-      issue: null, issueLoading: true, issueError: false, url: null, iframeFallback: false,
+      issue: null, issueLoading: true, issueError: false, url: null,
+      github: null, githubLoading: false,
     } })
     expect(document.body.textContent).toContain('加载中')
     w.unmount()
@@ -37,7 +39,8 @@ describe('LinkHoverCard (issue)', () => {
   it('shows an error state', async () => {
     const w = await mountSuspended(LinkHoverCard, { props: {
       visible: true, top: 0, left: 0, type: 'issue',
-      issue: null, issueLoading: false, issueError: true, url: null, iframeFallback: false,
+      issue: null, issueLoading: false, issueError: true, url: null,
+      github: null, githubLoading: false,
     } })
     expect(document.body.textContent).toContain('加载失败')
     w.unmount()
@@ -46,7 +49,8 @@ describe('LinkHoverCard (issue)', () => {
   it('renders nothing when not visible', async () => {
     const w = await mountSuspended(LinkHoverCard, { props: {
       visible: false, top: 0, left: 0, type: 'issue',
-      issue, issueLoading: false, issueError: false, url: null, iframeFallback: false,
+      issue, issueLoading: false, issueError: false, url: null,
+      github: null, githubLoading: false,
     } })
     expect(document.body.querySelector('.link-hover-card')).toBeNull()
     w.unmount()
@@ -54,30 +58,48 @@ describe('LinkHoverCard (issue)', () => {
 })
 
 describe('LinkHoverCard (external)', () => {
-  it('renders an iframe with a safe sandbox', async () => {
+  it('renders a domain card with an open-in-new-tab link (no iframe)', async () => {
     const w = await mountSuspended(LinkHoverCard, { props: {
       visible: true, top: 0, left: 0, type: 'external',
       issue: null, issueLoading: false, issueError: false,
-      url: 'https://example.com/docs', iframeFallback: false,
-    } })
-    const iframe = document.body.querySelector('iframe.lhc-iframe') as HTMLIFrameElement
-    expect(iframe).toBeTruthy()
-    expect(iframe.getAttribute('src')).toBe('https://example.com/docs')
-    expect(iframe.getAttribute('sandbox')).toContain('allow-scripts')
-    expect(iframe.getAttribute('sandbox')).not.toContain('allow-top-navigation')
-    expect(iframe.getAttribute('referrerpolicy')).toBe('no-referrer')
-    expect(document.body.textContent).toContain('example.com')
-    w.unmount()
-  })
-
-  it('shows the fallback when framing is blocked', async () => {
-    const w = await mountSuspended(LinkHoverCard, { props: {
-      visible: true, top: 0, left: 0, type: 'external',
-      issue: null, issueLoading: false, issueError: false,
-      url: 'https://blocked.example.com/', iframeFallback: true,
+      github: null, githubLoading: false,
+      url: 'https://example.com/docs',
     } })
     expect(document.body.querySelector('iframe')).toBeNull()
-    expect(document.body.textContent).toContain('不允许内嵌预览')
+    expect(document.body.textContent).toContain('example.com')
+    const open = document.body.querySelector('a.lhc-open') as HTMLAnchorElement
+    expect(open.getAttribute('target')).toBe('_blank')
+    expect(open.getAttribute('rel')).toContain('noopener')
+    w.unmount()
+  })
+})
+
+describe('LinkHoverCard (github)', () => {
+  const pr = {
+    kind: 'pr' as const, number: 42, title: '添加悬停预览', state: 'merged' as const,
+    author_login: 'alice', author_avatar: '', repo_full_name: 'octocat/hello',
+    html_url: 'https://github.com/octocat/hello/pull/42',
+  }
+  it('renders a github PR card with state and author', async () => {
+    const w = await mountSuspended(LinkHoverCard, { props: {
+      visible: true, top: 0, left: 0, type: 'github',
+      issue: null, issueLoading: false, issueError: false,
+      github: pr, githubLoading: false, url: pr.html_url,
+    } })
+    expect(document.body.textContent).toContain('添加悬停预览')
+    expect(document.body.textContent).toContain('#42')
+    expect(document.body.textContent).toContain('octocat/hello')
+    expect(document.body.textContent).toContain('alice')
+    expect(document.body.textContent?.toLowerCase()).toContain('merged')
+    w.unmount()
+  })
+  it('shows a loading state for github', async () => {
+    const w = await mountSuspended(LinkHoverCard, { props: {
+      visible: true, top: 0, left: 0, type: 'github',
+      issue: null, issueLoading: false, issueError: false,
+      github: null, githubLoading: true, url: pr.html_url,
+    } })
+    expect(document.body.textContent).toContain('加载中')
     w.unmount()
   })
 })
