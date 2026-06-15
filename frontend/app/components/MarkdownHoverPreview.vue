@@ -7,43 +7,42 @@
     :issue="state.issue"
     :issue-loading="state.issueLoading"
     :issue-error="state.issueError"
+    :github="state.github"
+    :github-loading="state.githubLoading"
     :url="state.url"
-    :iframe-fallback="state.iframeFallback"
     @enter="cancelHide"
     @leave="scheduleHide"
-    @iframe-load="onIframeLoad"
   />
 </template>
 
 <script setup lang="ts">
 import LinkHoverCard from '~/components/LinkHoverCard.vue'
-import { matchPreviewAnchor, fetchIssuePreview, type IssuePreview } from '~/composables/useLinkPreview'
+import { matchPreviewAnchor, fetchIssuePreview, fetchGithubPreview, type IssuePreview, type GithubPreview } from '~/composables/useLinkPreview'
 
 const props = defineProps<{ container: HTMLElement | null }>()
 const { api } = useApi()
 
 const HOVER_DELAY = 500
 const HIDE_DELAY = 300
-const IFRAME_TIMEOUT = 3000
 
 const state = reactive<{
   visible: boolean; top: number; left: number
-  type: 'issue' | 'external' | null
+  type: 'issue' | 'external' | 'github' | null
   issue: IssuePreview | null; issueLoading: boolean; issueError: boolean
-  url: string | null; iframeFallback: boolean
+  github: GithubPreview | null; githubLoading: boolean
+  url: string | null
 }>({
   visible: false, top: 0, left: 0, type: null,
   issue: null, issueLoading: false, issueError: false,
-  url: null, iframeFallback: false,
+  github: null, githubLoading: false,
+  url: null,
 })
 
 let showTimer: ReturnType<typeof setTimeout> | null = null
 let hideTimer: ReturnType<typeof setTimeout> | null = null
-let iframeTimer: ReturnType<typeof setTimeout> | null = null
 let activeAnchor: HTMLAnchorElement | null = null
 
 function clearShow() { if (showTimer) { clearTimeout(showTimer); showTimer = null } }
-function clearIframeTimer() { if (iframeTimer) { clearTimeout(iframeTimer); iframeTimer = null } }
 function cancelHide() { if (hideTimer) { clearTimeout(hideTimer); hideTimer = null } }
 
 function scheduleHide() {
@@ -52,12 +51,12 @@ function scheduleHide() {
     state.visible = false
     state.type = null
     state.issue = null
+    state.github = null
     state.url = null
     state.issueLoading = false
     state.issueError = false
-    state.iframeFallback = false
+    state.githubLoading = false
     activeAnchor = null
-    clearIframeTimer()
   }, HIDE_DELAY)
 }
 
@@ -79,27 +78,26 @@ function showFor(anchor: HTMLAnchorElement) {
   position(anchor)
   cancelHide()
   if (match.type === 'issue' && match.issueId) {
-    state.type = 'issue'
-    state.url = null
-    state.issue = null
-    state.issueError = false
-    state.issueLoading = true
-    state.visible = true
+    state.type = 'issue'; state.url = null; state.github = null
+    state.issue = null; state.issueError = false; state.issueLoading = true; state.visible = true
     fetchIssuePreview(match.issueId, api)
       .then((data) => { if (activeAnchor === anchor) { state.issue = data; state.issueLoading = false } })
       .catch(() => { if (activeAnchor === anchor) { state.issueError = true; state.issueLoading = false } })
+  } else if (match.type === 'github' && match.url) {
+    state.type = 'github'; state.issue = null; state.github = null
+    state.url = match.url; state.githubLoading = true; state.visible = true
+    fetchGithubPreview(match.url, api)
+      .then((data) => {
+        if (activeAnchor !== anchor) return
+        if (data) { state.github = data; state.githubLoading = false }
+        else { state.type = 'external'; state.githubLoading = false } // 后端不支持 → 域名卡片
+      })
+      .catch(() => { if (activeAnchor === anchor) { state.type = 'external'; state.githubLoading = false } })
   } else if (match.type === 'external' && match.url) {
-    state.type = 'external'
-    state.issue = null
-    state.url = match.url
-    state.iframeFallback = false
-    state.visible = true
-    clearIframeTimer()
-    iframeTimer = setTimeout(() => { if (activeAnchor === anchor) state.iframeFallback = true }, IFRAME_TIMEOUT)
+    state.type = 'external'; state.issue = null; state.github = null
+    state.url = match.url; state.visible = true
   }
 }
-
-function onIframeLoad() { clearIframeTimer() }
 
 function onMouseOver(e: Event) {
   cancelHide()
@@ -136,6 +134,6 @@ watch(() => props.container, (el, prev) => {
 
 onBeforeUnmount(() => {
   if (props.container) detach(props.container)
-  clearShow(); cancelHide(); clearIframeTimer()
+  clearShow(); cancelHide()
 })
 </script>

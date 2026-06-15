@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
 import { flushPromises } from '@vue/test-utils'
 import MarkdownHoverPreview from '../app/components/MarkdownHoverPreview.vue'
-import { clearIssuePreviewCache } from '../app/composables/useLinkPreview'
+import { clearIssuePreviewCache, clearGithubPreviewCache } from '../app/composables/useLinkPreview'
 
 const { apiMock } = vi.hoisted(() => ({ apiMock: vi.fn() }))
 mockNuxtImport('useApi', () => () => ({ api: apiMock }))
@@ -15,7 +15,7 @@ function makeContainer(html: string): HTMLElement {
   return el
 }
 
-beforeEach(() => { apiMock.mockReset(); clearIssuePreviewCache(); document.body.innerHTML = '' })
+beforeEach(() => { apiMock.mockReset(); clearIssuePreviewCache(); clearGithubPreviewCache(); document.body.innerHTML = '' })
 afterEach(() => { vi.useRealTimers() })
 
 describe('MarkdownHoverPreview', () => {
@@ -38,7 +38,7 @@ describe('MarkdownHoverPreview', () => {
     w.unmount()
   })
 
-  it('hovering an external link shows an iframe', async () => {
+  it('hovering a non-github external link shows the domain card (no iframe)', async () => {
     const container = makeContainer('<a class="external-link" href="https://example.com/docs">example</a>')
     const w = await mountSuspended(MarkdownHoverPreview, { props: { container } })
     vi.useFakeTimers()
@@ -46,9 +46,35 @@ describe('MarkdownHoverPreview', () => {
     await vi.advanceTimersByTimeAsync(500)
     vi.useRealTimers()
     await flushPromises()
-    const iframe = document.body.querySelector('iframe.lhc-iframe') as HTMLIFrameElement | null
-    expect(iframe).toBeTruthy()
-    expect(iframe!.getAttribute('src')).toBe('https://example.com/docs')
+    expect(document.body.querySelector('iframe')).toBeNull()
+    expect(document.body.textContent).toContain('example.com')
+    w.unmount()
+  })
+
+  it('hovering a github PR link fetches and shows the github card', async () => {
+    apiMock.mockResolvedValue({ kind: 'pr', number: 42, title: 'PR标题', state: 'open', author_login: 'alice', author_avatar: '', repo_full_name: 'octocat/hello', html_url: 'https://github.com/octocat/hello/pull/42' })
+    const container = makeContainer('<a class="external-link" href="https://github.com/octocat/hello/pull/42">PR</a>')
+    const w = await mountSuspended(MarkdownHoverPreview, { props: { container } })
+    vi.useFakeTimers()
+    container.querySelector('a')!.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }))
+    await vi.advanceTimersByTimeAsync(500)
+    vi.useRealTimers()
+    await flushPromises()
+    expect(apiMock).toHaveBeenCalledWith('/api/repos/github-preview/?url=' + encodeURIComponent('https://github.com/octocat/hello/pull/42'))
+    expect(document.body.textContent).toContain('PR标题')
+    w.unmount()
+  })
+
+  it('github link that backend marks unsupported falls back to the domain card', async () => {
+    apiMock.mockResolvedValue({ supported: false })
+    const container = makeContainer('<a class="external-link" href="https://github.com/octocat/hello/pull/99">PR</a>')
+    const w = await mountSuspended(MarkdownHoverPreview, { props: { container } })
+    vi.useFakeTimers()
+    container.querySelector('a')!.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }))
+    await vi.advanceTimersByTimeAsync(500)
+    vi.useRealTimers()
+    await flushPromises()
+    expect(document.body.textContent).toContain('github.com')
     w.unmount()
   })
 
