@@ -21,19 +21,39 @@ export function useInlineLinkPreviews(containerRef: Ref<HTMLElement | null>, htm
     cleanup()
     const root = containerRef.value
     if (!root) return
-    const anchors = root.querySelectorAll<HTMLAnchorElement>('a.mention-issue, a.external-link')
-    anchors.forEach((a) => {
-      const match = matchPreviewAnchor(a)
-      if (!match) return
+    const anchors = Array.from(root.querySelectorAll<HTMLAnchorElement>('a.mention-issue, a.external-link'))
+      .filter((a) => matchPreviewAnchor(a))
+    if (!anchors.length) return
+
+    const byBlock = new Map<HTMLElement, HTMLAnchorElement[]>()
+    for (const a of anchors) {
       const block = (a.closest(BLOCK_SEL) as HTMLElement | null) ?? a
-      const host = document.createElement('div')
-      host.className = 'inline-link-card-host'
-      block.insertAdjacentElement('afterend', host)
-      const vnode = h(InlineLinkCardItem, { match })
-      if (instance) vnode.appContext = instance.appContext
-      render(vnode, host)
-      hosts.push(host)
-    })
+      const list = byBlock.get(block) ?? []
+      list.push(a)
+      byBlock.set(block, list)
+    }
+
+    for (const [block, blockAnchors] of byBlock) {
+      const blockText = (block.textContent || '').replace(/\s/g, '')
+      const refsText = blockAnchors.map((a) => a.textContent || '').join('').replace(/\s/g, '')
+      if (blockText === refsText) {
+        block.style.display = 'none' // 整块只是引用 → 连块一起隐藏(无空行)
+      } else {
+        blockAnchors.forEach((a) => { a.style.display = 'none' }) // 夹在文字中 → 只隐藏 chip
+      }
+      let insertAfter: Element = block
+      for (const a of blockAnchors) {
+        const match = matchPreviewAnchor(a)!
+        const host = document.createElement('div')
+        host.className = 'inline-link-card-host'
+        insertAfter.insertAdjacentElement('afterend', host)
+        insertAfter = host
+        const vnode = h(InlineLinkCardItem, { match })
+        if (instance) vnode.appContext = instance.appContext
+        render(vnode, host)
+        hosts.push(host)
+      }
+    }
   }
 
   watch([containerRef, htmlGetter], () => nextTick(build), { immediate: true, flush: 'post' })

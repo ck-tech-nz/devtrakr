@@ -29,6 +29,18 @@ describe('useInlineLinkPreviews', () => {
     await flushPromises()
     expect(w.element.querySelector('.link-preview-card')).toBeTruthy()
     expect(w.text()).toContain('内联问题标题')
+    const anchor = w.element.querySelector('a.mention-issue') as HTMLElement
+    expect(anchor.style.display).toBe('none')
+    expect((w.element.querySelector('p') as HTMLElement).style.display).not.toBe('none')
+    w.unmount()
+  })
+
+  it('hides the whole block when it contains only a reference', async () => {
+    apiMock.mockResolvedValue({ id: 7, title: 'T', status: '进行中', priority: 'P1', assignee_name: '', assignee_avatar: '', created_by_name: '', created_at: '', updated_at: '' })
+    const w = await mountSuspended(Harness, { props: { html: '<p><a class="mention-issue" data-issue-id="7" href="/app/issues/7">#问题-007</a></p>' } })
+    await flushPromises(); await flushPromises()
+    expect((w.element.querySelector('p') as HTMLElement).style.display).toBe('none')
+    expect(w.element.querySelector('.link-preview-card')).toBeTruthy()
     w.unmount()
   })
 
