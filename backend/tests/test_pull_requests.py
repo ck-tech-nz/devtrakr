@@ -147,3 +147,37 @@ class TestSyncAllReposTask:
             sync_all_repos()
         mock_instance.sync_repo.assert_called_once()
         mock_instance.sync_pull_requests.assert_called_once()
+
+
+class TestRepoPullRequestList:
+    def test_list_for_repo(self, auth_client):
+        from tests.factories import RepoFactory, PullRequestFactory, IssueFactory
+        repo = RepoFactory()
+        issue = IssueFactory(title="Login bug")
+        PullRequestFactory(repo=repo, number=1, state="merged",
+                           linked_issues=[{"id": issue.id, "ref": f"ISS-{issue.id:03d}", "source": "title"}])
+        PullRequestFactory(repo=repo, number=2, state="open", linked_issues=[])
+        PullRequestFactory()  # other repo
+        response = auth_client.get(f"/api/repos/{repo.id}/pull-requests/")
+        assert response.status_code == 200
+        assert len(response.data) == 2
+        merged = next(p for p in response.data if p["number"] == 1)
+        assert merged["state"] == "merged"
+        assert merged["linked_issues"][0]["title"] == "Login bug"
+        assert merged["linked_issues"][0]["status"] == issue.status
+
+    def test_filter_by_state(self, auth_client):
+        from tests.factories import RepoFactory, PullRequestFactory
+        repo = RepoFactory()
+        PullRequestFactory(repo=repo, number=1, state="merged")
+        PullRequestFactory(repo=repo, number=2, state="open")
+        response = auth_client.get(f"/api/repos/{repo.id}/pull-requests/?state=merged")
+        assert response.status_code == 200
+        assert len(response.data) == 1
+        assert response.data[0]["state"] == "merged"
+
+    def test_unauthenticated(self, api_client):
+        from tests.factories import RepoFactory
+        repo = RepoFactory()
+        response = api_client.get(f"/api/repos/{repo.id}/pull-requests/")
+        assert response.status_code == 401

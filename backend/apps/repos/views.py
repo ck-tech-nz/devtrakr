@@ -6,8 +6,8 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from apps.permissions import FullDjangoModelPermissions
-from .models import Repo, GitHubIssue, GitAuthorAlias
-from .serializers import RepoSerializer, GitHubIssueBriefSerializer, GitHubIssueDetailSerializer, GitAuthorAliasSerializer
+from .models import Repo, GitHubIssue, GitAuthorAlias, PullRequest
+from .serializers import RepoSerializer, GitHubIssueBriefSerializer, GitHubIssueDetailSerializer, GitAuthorAliasSerializer, PullRequestSerializer
 from .insights import DeveloperInsightsService
 from concurrent.futures import ThreadPoolExecutor
 from .services import GitHubSyncService, RepoCloneService, GitHubPreviewService, parse_github_ref
@@ -68,6 +68,23 @@ class GitHubIssueDetailView(generics.RetrieveAPIView):
     queryset = GitHubIssue.objects.select_related("repo")
     serializer_class = GitHubIssueDetailSerializer
     permission_classes = [IsAuthenticated]
+
+
+class RepoPullRequestListView(generics.ListAPIView):
+    serializer_class = PullRequestSerializer
+    permission_classes = [IsAuthenticated]
+    pagination_class = None
+
+    def get_queryset(self):
+        qs = (
+            PullRequest.objects.select_related("repo")
+            .filter(repo_id=self.kwargs["pk"])
+            .order_by("-github_created_at")
+        )
+        state = self.request.query_params.get("state")
+        if state:
+            qs = qs.filter(state=state)
+        return qs
 
 
 class RepoSyncView(APIView):
