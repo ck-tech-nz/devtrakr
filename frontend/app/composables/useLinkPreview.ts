@@ -55,9 +55,9 @@ export function fetchIssuePreview(
       title: String(d.title ?? ''),
       status: String(d.status ?? ''),
       priority: String(d.priority ?? ''),
-      assignee_name: (d.assignee_name as string) ?? null,
-      assignee_avatar: (d.assignee_avatar as string) ?? null,
-      created_by_name: (d.created_by_name as string) ?? null,
+      assignee_name: d.assignee_name != null ? String(d.assignee_name) : null,
+      assignee_avatar: d.assignee_avatar != null ? String(d.assignee_avatar) : null,
+      created_by_name: d.created_by_name != null ? String(d.created_by_name) : null,
       created_at: String(d.created_at ?? ''),
       updated_at: String(d.updated_at ?? ''),
     } satisfies IssuePreview

@@ -33,6 +33,11 @@ describe('matchPreviewAnchor', () => {
   it('returns null for null input', () => {
     expect(matchPreviewAnchor(null)).toBeNull()
   })
+
+  it('returns null for a mention-issue anchor missing data-issue-id', () => {
+    const a = anchor('<a class="mention-issue" href="/app/issues/99">#问题-099</a>')
+    expect(matchPreviewAnchor(a)).toBeNull()
+  })
 })
 
 describe('fetchIssuePreview', () => {
