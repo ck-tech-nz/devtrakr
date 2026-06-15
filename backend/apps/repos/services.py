@@ -41,12 +41,14 @@ class GitHubPreviewService:
     """单条 GitHub PR/issue 取数用于悬停预览卡片(仅调 api.github.com 固定主机,无 SSRF)。"""
     GITHUB_API = "https://api.github.com"
     CACHE_TTL = 300
+    NEG_CACHE_TTL = 60  # 失败/404 负缓存,避免反复打 GitHub(未认证限流 60/h)
+    _MISS = "__miss__"
 
     def fetch_preview(self, owner, repo, kind, number):
         cache_key = f"gh-preview:{owner.lower()}/{repo.lower()}/{kind}/{number}"
         cached = cache.get(cache_key)
         if cached is not None:
-            return cached
+            return None if cached == self._MISS else cached
         api_path = "pulls" if kind == "pull" else "issues"
         token = (
             Repo.objects.filter(full_name__iexact=f"{owner}/{repo}")
@@ -67,8 +69,10 @@ class GitHubPreviewService:
                 timeout=10,
             )
         except requests.RequestException:
+            cache.set(cache_key, self._MISS, self.NEG_CACHE_TTL)
             return None
         if resp.status_code != 200:
+            cache.set(cache_key, self._MISS, self.NEG_CACHE_TTL)
             return None
         item = resp.json()
         if kind == "pull":

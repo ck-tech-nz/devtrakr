@@ -51,4 +51,26 @@ describe('useInlineLinkPreviews', () => {
     expect(w.text()).toContain('example.com')
     w.unmount()
   })
+
+  it('places the card after the list, not as an invalid child of <ul>', async () => {
+    apiMock.mockResolvedValue({ id: 7, title: 'T', status: '进行中', priority: 'P1', assignee_name: '', assignee_avatar: '', created_by_name: '', created_at: '', updated_at: '' })
+    const w = await mountSuspended(Harness, { props: { html: '<ul><li><a class="mention-issue" data-issue-id="7" href="/app/issues/7">#问题-007</a></li></ul>' } })
+    await flushPromises(); await flushPromises()
+    const ul = w.element.querySelector('ul') as HTMLElement
+    expect(ul.querySelector('.link-preview-card')).toBeNull() // 不能塞进 <ul>(非法嵌套)
+    expect((ul.nextElementSibling as HTMLElement)?.querySelector('.link-preview-card')).toBeTruthy() // 紧跟列表之后
+    w.unmount()
+  })
+
+  it('keeps cards in document order for multiple refs in one list', async () => {
+    apiMock.mockResolvedValue({ id: 1, title: 'T', status: '进行中', priority: 'P1', assignee_name: '', assignee_avatar: '', created_by_name: '', created_at: '', updated_at: '' })
+    const w = await mountSuspended(Harness, { props: { html: '<ul><li><a class="mention-issue" data-issue-id="1" href="/app/issues/1">#问题-001</a></li><li><a class="mention-issue" data-issue-id="2" href="/app/issues/2">#问题-002</a></li></ul>' } })
+    await flushPromises(); await flushPromises()
+    const ul = w.element.querySelector('ul') as HTMLElement
+    const first = ul.nextElementSibling as HTMLElement
+    const second = first.nextElementSibling as HTMLElement
+    expect(first.classList.contains('inline-link-card-host')).toBe(true)
+    expect(second.classList.contains('inline-link-card-host')).toBe(true)
+    w.unmount()
+  })
 })
