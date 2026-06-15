@@ -1,0 +1,45 @@
+// @vitest-environment nuxt
+import { describe, it, expect, afterEach } from 'vitest'
+import { mountSuspended } from '@nuxt/test-utils/runtime'
+import LinkHoverCard from '../app/components/LinkHoverCard.vue'
+
+const issue = {
+  id: 7, title: '登录页报错', status: '进行中', priority: 'P1',
+  assignee_name: '张三', assignee_avatar: '', created_by_name: '李四',
+  created_at: '2026-06-10T08:00:00+08:00', updated_at: '2026-06-11T09:00:00+08:00',
+}
+
+afterEach(() => { document.body.innerHTML = '' })
+
+describe('LinkHoverCard (issue)', () => {
+  it('renders the issue card fields', async () => {
+    const w = await mountSuspended(LinkHoverCard, { props: {
+      visible: true, top: 10, left: 10, type: 'issue',
+      issue, issueLoading: false, issueError: false, url: null, iframeFallback: false,
+    } })
+    expect(document.body.textContent).toContain('登录页报错')
+    expect(document.body.textContent).toContain('#问题-007')
+    expect(document.body.textContent).toContain('进行中')
+    expect(document.body.textContent).toContain('高') // P1 标签
+    expect(document.body.textContent).toContain('张三')
+    w.unmount()
+  })
+
+  it('shows a loading state', async () => {
+    const w = await mountSuspended(LinkHoverCard, { props: {
+      visible: true, top: 0, left: 0, type: 'issue',
+      issue: null, issueLoading: true, issueError: false, url: null, iframeFallback: false,
+    } })
+    expect(document.body.textContent).toContain('加载中')
+    w.unmount()
+  })
+
+  it('renders nothing when not visible', async () => {
+    const w = await mountSuspended(LinkHoverCard, { props: {
+      visible: false, top: 0, left: 0, type: 'issue',
+      issue, issueLoading: false, issueError: false, url: null, iframeFallback: false,
+    } })
+    expect(document.body.querySelector('.link-hover-card')).toBeNull()
+    w.unmount()
+  })
+})
