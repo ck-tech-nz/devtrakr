@@ -37,6 +37,51 @@ def parse_github_ref(url):
     }
 
 
+ISS_REF_RE = re.compile(r"\bISS-0*(\d+)\b", re.IGNORECASE)
+
+
+def extract_iss_ids(text):
+    """从文本中提取 ISS-xxx 引用的 issue id(去重,保持首次出现顺序)。"""
+    ids = []
+    for m in ISS_REF_RE.finditer(text or ""):
+        n = int(m.group(1))
+        if n not in ids:
+            ids.append(n)
+    return ids
+
+
+def build_linked_issues(title, body):
+    """解析 PR 标题/正文中的 ISS-xxx,仅保留真实存在(未删除)的 issue。
+
+    标题命中标 source=title,否则 body;返回如
+    [{"id": 42, "ref": "ISS-042", "source": "title"}]。
+    """
+    from apps.issues.models import Issue  # 延迟导入避免循环依赖
+
+    ordered = []
+    seen = set()
+    for n in extract_iss_ids(title):
+        if n not in seen:
+            seen.add(n)
+            ordered.append((n, "title"))
+    for n in extract_iss_ids(body):
+        if n not in seen:
+            seen.add(n)
+            ordered.append((n, "body"))
+    if not ordered:
+        return []
+    existing = set(
+        Issue.objects.filter(
+            pk__in=[n for n, _ in ordered], is_deleted=False
+        ).values_list("pk", flat=True)
+    )
+    return [
+        {"id": n, "ref": f"ISS-{n:03d}", "source": src}
+        for n, src in ordered
+        if n in existing
+    ]
+
+
 class GitHubPreviewService:
     """单条 GitHub PR/issue 取数用于悬停预览卡片(仅调 api.github.com 固定主机,无 SSRF)。"""
     GITHUB_API = "https://api.github.com"
