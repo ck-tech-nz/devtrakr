@@ -39,12 +39,17 @@ def parse_github_ref(url):
 
 ISS_REF_RE = re.compile(r"\bISS-0*(\d+)\b", re.IGNORECASE)
 
+_MAX_ISS_DIGITS = 18  # 超过此位数的数字不可能是真实 issue id,且会撑爆 bigint 主键查询(DataError)
+
 
 def extract_iss_ids(text):
     """从文本中提取 ISS-xxx 引用的 issue id(去重,保持首次出现顺序)。"""
     ids = []
     for m in ISS_REF_RE.finditer(text or ""):
-        n = int(m.group(1))
+        digits = m.group(1)
+        if len(digits) > _MAX_ISS_DIGITS:
+            continue
+        n = int(digits)
         if n not in ids:
             ids.append(n)
     return ids

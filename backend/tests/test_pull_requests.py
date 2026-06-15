@@ -25,6 +25,9 @@ class TestExtractIssIds:
         assert extract_iss_ids("") == []
         assert extract_iss_ids(None) == []
 
+    def test_oversized_digits_ignored(self):
+        assert extract_iss_ids("ISS-" + "9" * 30) == []
+
 
 class TestBuildLinkedIssues:
     def test_links_only_existing(self):
@@ -35,6 +38,9 @@ class TestBuildLinkedIssues:
     def test_drops_nonexistent(self):
         result = build_linked_issues("fix ISS-999999", "")
         assert result == []
+
+    def test_oversized_digits_no_crash(self):
+        assert build_linked_issues("ISS-" + "9" * 30, "") == []
 
     def test_drops_soft_deleted(self):
         issue = IssueFactory(is_deleted=True)
@@ -222,3 +228,57 @@ class TestIssuePullRequests:
     def test_404_for_missing_issue(self, auth_client):
         response = auth_client.get("/api/issues/999999/pull-requests/")
         assert response.status_code == 404
+
+    def test_suggest_resolved_false_when_pr_closed_unmerged(self, auth_client):
+        from tests.factories import RepoFactory, PullRequestFactory, IssueFactory
+        issue = IssueFactory(status="进行中")
+        PullRequestFactory(
+            repo=RepoFactory(), number=1, state="closed",
+            linked_issues=self._link(issue),
+        )
+        response = auth_client.get(f"/api/issues/{issue.id}/pull-requests/")
+        assert response.data["suggest_resolved"] is False
+        assert len(response.data["results"]) == 1
+
+    def test_multiple_prs_suggest_when_any_merged(self, auth_client):
+        from tests.factories import RepoFactory, PullRequestFactory, IssueFactory
+        repo = RepoFactory()
+        issue = IssueFactory(status="进行中")
+        PullRequestFactory(
+            repo=repo, number=1, state="open",
+            linked_issues=self._link(issue),
+        )
+        PullRequestFactory(
+            repo=repo, number=2, state="merged",
+            linked_issues=self._link(issue),
+        )
+        response = auth_client.get(f"/api/issues/{issue.id}/pull-requests/")
+        assert len(response.data["results"]) == 2
+        assert response.data["suggest_resolved"] is True
+
+    @pytest.mark.parametrize(
+        "completed_status", ["已解决", "已发布", "已关闭"]
+    )
+    def test_suggest_resolved_false_for_all_completed_statuses(
+        self, auth_client, completed_status
+    ):
+        from tests.factories import RepoFactory, PullRequestFactory, IssueFactory
+        issue = IssueFactory(status=completed_status)
+        PullRequestFactory(
+            repo=RepoFactory(), number=1, state="merged",
+            linked_issues=self._link(issue),
+        )
+        response = auth_client.get(f"/api/issues/{issue.id}/pull-requests/")
+        assert response.data["suggest_resolved"] is False
+
+    def test_unauthenticated(self, api_client):
+        from tests.factories import IssueFactory
+        issue = IssueFactory()
+        response = api_client.get(f"/api/issues/{issue.id}/pull-requests/")
+        assert response.status_code == 401
+
+    def test_forbidden_without_view_permission(self, regular_client):
+        from tests.factories import IssueFactory
+        issue = IssueFactory()
+        response = regular_client.get(f"/api/issues/{issue.id}/pull-requests/")
+        assert response.status_code == 403
