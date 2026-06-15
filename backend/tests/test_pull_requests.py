@@ -134,3 +134,16 @@ class TestSyncPullRequests:
             mock_get.side_effect = [_page([self._pr_payload(3, f"wip ISS-{issue.id}")]), _page([])]
             svc.sync_pull_requests(repo)
         assert PullRequest.objects.get(repo=repo, number=3).linked_issues[0]["id"] == issue.id
+
+
+class TestSyncAllReposTask:
+    def test_task_syncs_issues_and_prs(self):
+        from apps.repos.tasks import sync_all_repos
+        from tests.factories import RepoFactory
+        RepoFactory(github_token="ghp_x")
+        with patch("apps.repos.tasks.GitHubSyncService") as MockService:
+            mock_instance = MagicMock()
+            MockService.return_value = mock_instance
+            sync_all_repos()
+        mock_instance.sync_repo.assert_called_once()
+        mock_instance.sync_pull_requests.assert_called_once()

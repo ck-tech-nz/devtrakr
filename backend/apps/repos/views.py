@@ -89,7 +89,9 @@ class RepoSyncView(APIView):
                 {"detail": "仓库不存在"}, status=status.HTTP_404_NOT_FOUND
             )
         try:
-            GitHubSyncService().sync_repo(repo)
+            service = GitHubSyncService()
+            service.sync_repo(repo)
+            service.sync_pull_requests(repo)
             repo = Repo.objects.annotate(
                 open_issues_count=Count(
                     "github_issues", filter=Q(github_issues__state="open")

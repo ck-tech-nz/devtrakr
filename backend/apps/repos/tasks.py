@@ -20,9 +20,11 @@ def pull_all_repos():
 
 @shared_task(ignore_result=False)
 def sync_all_repos():
-    """Sync GitHub issues for all repos with tokens."""
+    """Sync GitHub issues and pull requests for all repos with tokens."""
+    service = GitHubSyncService()
     for repo in Repo.objects.exclude(github_token=""):
         try:
-            GitHubSyncService().sync_repo(repo)
+            service.sync_repo(repo)
+            service.sync_pull_requests(repo)
         except Exception as e:
             logger.error("Failed to sync repo %s: %s", repo.full_name, e)
