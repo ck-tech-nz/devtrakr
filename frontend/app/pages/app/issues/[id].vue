@@ -520,6 +520,43 @@
           </div>
         </div>
 
+        <div v-if="linkedPRs.length" class="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 p-5 space-y-3">
+          <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100">关联 PR</h3>
+
+          <!-- 建议已解决:仅在有合并 PR 且未完成时显示 -->
+          <div v-if="suggestResolved" class="flex items-center justify-between gap-2 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-900 rounded-lg px-3 py-2">
+            <span class="text-xs text-emerald-700 dark:text-emerald-300">关联 PR 已合并 · 建议标记为已解决</span>
+            <UButton
+              v-if="can('issues.change_issue')"
+              size="xs"
+              color="success"
+              variant="soft"
+              @click="acceptResolveSuggestion"
+            >
+              采纳建议
+            </UButton>
+          </div>
+
+          <div class="space-y-2">
+            <a
+              v-for="pr in linkedPRs"
+              :key="pr.id"
+              :href="pr.html_url"
+              target="_blank"
+              class="flex items-center justify-between bg-gray-50 dark:bg-gray-800 rounded-lg px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+            >
+              <div class="min-w-0 flex-1">
+                <div class="flex items-center space-x-2">
+                  <UBadge :color="prStateColor(pr.state)" variant="subtle" size="xs">{{ pr.state }}</UBadge>
+                  <span class="text-xs text-gray-400 dark:text-gray-500">{{ pr.repo_full_name }}#{{ pr.number }}</span>
+                </div>
+                <p class="text-sm text-gray-900 dark:text-gray-100 truncate mt-0.5">{{ pr.title }}</p>
+              </div>
+              <UIcon name="i-heroicons-arrow-top-right-on-square" class="w-4 h-4 text-gray-400 shrink-0" />
+            </a>
+          </div>
+        </div>
+
         <!-- 外部来源 — 仅当真正来自第三方接口且带有元数据时才显示 (ai_wizard 内部生成不算) -->
         <div v-if="hasExternalSource" class="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 p-5 space-y-3">
           <button class="flex items-center justify-between w-full" @click="showSourceMeta = !showSourceMeta">
@@ -1034,6 +1071,8 @@ const filteredLabelNames = computed(() => {
 const repos = ref<any[]>([])
 const projects = ref<any[]>([])
 const allGHIssues = ref<any[]>([])
+const linkedPRs = ref<PullRequestRow[]>([])
+const suggestResolved = ref(false)
 const descriptionEditor = ref<{ setMode: (m: 'edit' | 'preview') => void } | null>(null)
 
 const isNewIssue = computed(() => !issue.value?.description && !issue.value?.title)
@@ -1478,6 +1517,25 @@ async function fetchGHIssues() {
   allGHIssues.value = await api<any[]>('/api/repos/github-issues/').catch(() => []) || []
 }
 
+async function fetchLinkedPRs() {
+  if (!issue.value?.id) return
+  try {
+    const res = await api<{ results: PullRequestRow[]; suggest_resolved: boolean }>(
+      `/api/issues/${issue.value.id}/pull-requests/`
+    )
+    linkedPRs.value = res.results || []
+    suggestResolved.value = !!res.suggest_resolved
+  } catch (e) {
+    console.error('Failed to load linked PRs:', e)
+  }
+}
+
+// 采纳建议:走与状态胶囊相同的 PATCH 路径,完成后刷新 PR 区
+async function acceptResolveSuggestion() {
+  await autoSave('status', '已解决')
+  await fetchLinkedPRs()
+}
+
 onMounted(async () => {
   const [issueData, usersData, settingsData, reposData, projectsData] = await Promise.all([
     api<any>(`/api/issues/${route.params.id}/`).catch(() => null),
@@ -1497,6 +1555,7 @@ onMounted(async () => {
   loading.value = false
   // 异步加载 GitHub Issues 列表（用于关联弹窗）
   fetchGHIssues()
+  fetchLinkedPRs()
   // 检查是否有正在运行的 AI 分析，恢复轮询
   checkRunningAnalysis()
   fetchAnalyses()
