@@ -100,11 +100,12 @@ function showFor(anchor: HTMLAnchorElement) {
 }
 
 function onMouseOver(e: Event) {
-  cancelHide()
   const target = e.target as HTMLElement
   const anchor = (target.closest?.('a') as HTMLAnchorElement | null) ?? null
   if (!anchor || !matchPreviewAnchor(anchor)) return
-  if (anchor === activeAnchor && state.visible) { cancelHide(); return }
+  // 命中可预览锚点才取消待隐藏:悬停普通文字时不应取消,否则卡片永不消失
+  cancelHide()
+  if (anchor === activeAnchor && state.visible) return
   activeAnchor = anchor
   clearShow()
   showTimer = setTimeout(() => showFor(anchor), HOVER_DELAY)

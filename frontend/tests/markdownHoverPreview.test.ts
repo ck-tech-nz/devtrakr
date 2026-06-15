@@ -105,4 +105,25 @@ describe('MarkdownHoverPreview', () => {
     expect(document.body.textContent).not.toContain('加载中')
     w.unmount()
   })
+
+  it('dismisses the card when the pointer moves from the anchor to non-anchor content', async () => {
+    apiMock.mockResolvedValue({ id: 7, title: '登录页报错', status: '进行中', priority: 'P1', assignee_name: '张三', assignee_avatar: '', created_by_name: '李四', created_at: '2026-06-10T08:00:00+08:00', updated_at: '2026-06-11T09:00:00+08:00' })
+    const container = makeContainer('<a class="mention-issue" data-issue-id="7" href="/app/issues/7">#问题-007</a><span class="plain">普通文字</span>')
+    const w = await mountSuspended(MarkdownHoverPreview, { props: { container } })
+    const anchor = container.querySelector('a')!
+    const plain = container.querySelector('span.plain')!
+    vi.useFakeTimers()
+    anchor.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }))
+    await vi.advanceTimersByTimeAsync(500)
+    await flushPromises()
+    expect(document.body.textContent).toContain('登录页报错')
+    // 移出锚点 → 落到同容器内的普通文字
+    anchor.dispatchEvent(new MouseEvent('mouseout', { bubbles: true, relatedTarget: plain }))
+    plain.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }))
+    await vi.advanceTimersByTimeAsync(300)
+    vi.useRealTimers()
+    await flushPromises()
+    expect(document.body.querySelector('.link-hover-card')).toBeNull()
+    w.unmount()
+  })
 })
