@@ -18,6 +18,9 @@
       "runtimeArgs": ["nuxt", "dev", "--host", "0.0.0.0"],
       "cwd": "${workspaceFolder}/frontend",
       "console": "integratedTerminal",
+      "env": {
+        "TMPDIR": "/tmp"
+      },
       "serverReadyAction": {
         "pattern": "Local:\\s+http://[^:]+:(\\d+)",
         "uriFormat": "http://localhost:%s",
