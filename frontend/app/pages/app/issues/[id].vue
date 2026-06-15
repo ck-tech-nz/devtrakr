@@ -118,9 +118,6 @@
                 </template>
               </div>
             </div>
-            <!-- 注:AI 结果用本地 renderMarkdown 渲染,不带 mention-issue/external-link 标记,
-                 故此处悬停预览目前为惰性空操作;若改用 useMentionMarkdown 的共享渲染器即自动生效 -->
-            <MarkdownHoverPreview :container="aiResultRef" />
           </div>
           <p v-else-if="!aiAnalyzing && issue.repo && issueRepo?.clone_status === 'cloned'" class="text-sm text-gray-400 dark:text-gray-500">暂无分析记录</p>
         </div>
