@@ -66,3 +66,71 @@ class TestPullRequestModel:
         pr = PullRequestFactory(number=1)
         with pytest.raises(IntegrityError):
             PullRequestFactory(repo=pr.repo, number=1)
+
+
+from unittest.mock import patch, MagicMock
+
+
+def _page(items):
+    resp = MagicMock()
+    resp.json.return_value = items
+    resp.raise_for_status.return_value = None
+    return resp
+
+
+class TestSyncPullRequests:
+    def _pr_payload(self, number, title, body="", merged_at=None, state="open"):
+        return {
+            "number": number, "title": title, "body": body,
+            "state": state, "merged_at": merged_at, "closed_at": None,
+            "base": {"ref": "main"}, "head": {"ref": "feat/x"},
+            "user": {"login": "octocat", "avatar_url": "http://x/a.png"},
+            "html_url": f"https://github.com/org/r/pull/{number}",
+            "created_at": "2026-06-01T00:00:00Z", "updated_at": "2026-06-02T00:00:00Z",
+        }
+
+    def test_creates_prs_and_links_issue(self):
+        from apps.repos.models import PullRequest
+        from apps.repos.services import GitHubSyncService
+        from tests.factories import RepoFactory, IssueFactory
+        repo = RepoFactory(github_token="ghp_x")
+        issue = IssueFactory()
+        with patch("apps.repos.services.requests.get") as mock_get:
+            mock_get.side_effect = [
+                _page([self._pr_payload(1, f"fix ISS-{issue.id}")]),
+                _page([]),
+            ]
+            GitHubSyncService().sync_pull_requests(repo)
+        pr = PullRequest.objects.get(repo=repo, number=1)
+        assert pr.linked_issues == [{"id": issue.id, "ref": f"ISS-{issue.id:03d}", "source": "title"}]
+        assert pr.state == "open"
+        assert pr.base_branch == "main"
+
+    def test_merged_state_derived_from_merged_at(self):
+        from apps.repos.models import PullRequest
+        from apps.repos.services import GitHubSyncService
+        from tests.factories import RepoFactory
+        repo = RepoFactory(github_token="ghp_x")
+        with patch("apps.repos.services.requests.get") as mock_get:
+            mock_get.side_effect = [
+                _page([self._pr_payload(2, "done", merged_at="2026-06-03T00:00:00Z", state="closed")]),
+                _page([]),
+            ]
+            GitHubSyncService().sync_pull_requests(repo)
+        assert PullRequest.objects.get(repo=repo, number=2).state == "merged"
+
+    def test_resync_recomputes_links(self):
+        from apps.repos.models import PullRequest
+        from apps.repos.services import GitHubSyncService
+        from tests.factories import RepoFactory, IssueFactory
+        repo = RepoFactory(github_token="ghp_x")
+        issue = IssueFactory()
+        svc = GitHubSyncService()
+        with patch("apps.repos.services.requests.get") as mock_get:
+            mock_get.side_effect = [_page([self._pr_payload(3, "wip")]), _page([])]
+            svc.sync_pull_requests(repo)
+        assert PullRequest.objects.get(repo=repo, number=3).linked_issues == []
+        with patch("apps.repos.services.requests.get") as mock_get:
+            mock_get.side_effect = [_page([self._pr_payload(3, f"wip ISS-{issue.id}")]), _page([])]
+            svc.sync_pull_requests(repo)
+        assert PullRequest.objects.get(repo=repo, number=3).linked_issues[0]["id"] == issue.id

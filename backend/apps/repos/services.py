@@ -14,7 +14,7 @@ from django.core.cache import cache
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 
-from .models import Repo, GitHubIssue, Commit, GitAuthorAlias
+from .models import Repo, GitHubIssue, Commit, GitAuthorAlias, PullRequest
 
 logger = logging.getLogger(__name__)
 
@@ -186,6 +186,53 @@ class GitHubSyncService:
             page += 1
         repo.last_synced_at = timezone.now()
         repo.save(update_fields=["last_synced_at"])
+
+    def sync_pull_requests(self, repo: Repo) -> None:
+        headers = self._headers(repo)
+        page = 1
+        while True:
+            response = requests.get(
+                f"{self.GITHUB_API}/repos/{repo.full_name}/pulls",
+                headers=headers,
+                params={"state": "all", "per_page": self.PER_PAGE, "page": page},
+                timeout=30,
+            )
+            response.raise_for_status()
+            items = response.json()
+            if not items:
+                break
+            for item in items:
+                merged_at = parse_datetime(item["merged_at"]) if item.get("merged_at") else None
+                if merged_at:
+                    state = PullRequest.STATE_MERGED
+                else:
+                    state = item.get("state") or PullRequest.STATE_OPEN
+                user = item.get("user") or {}
+                base = item.get("base") or {}
+                head = item.get("head") or {}
+                PullRequest.objects.update_or_create(
+                    repo=repo,
+                    number=item["number"],
+                    defaults={
+                        "title": item.get("title") or "",
+                        "body": item.get("body") or "",
+                        "state": state,
+                        "merged_at": merged_at,
+                        "closed_at": parse_datetime(item["closed_at"]) if item.get("closed_at") else None,
+                        "base_branch": base.get("ref") or "",
+                        "head_branch": head.get("ref") or "",
+                        "author_login": user.get("login") or "",
+                        "author_avatar": user.get("avatar_url") or "",
+                        "html_url": item.get("html_url") or "",
+                        "github_created_at": parse_datetime(item["created_at"]),
+                        "github_updated_at": parse_datetime(item["updated_at"]),
+                        "synced_at": timezone.now(),
+                        "linked_issues": build_linked_issues(
+                            item.get("title") or "", item.get("body") or ""
+                        ),
+                    },
+                )
+            page += 1
 
     def _headers(self, repo: Repo) -> dict:
         return {
