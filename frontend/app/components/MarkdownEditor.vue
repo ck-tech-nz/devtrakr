@@ -110,6 +110,7 @@
       <div v-else class="markdown-body md-hover-body" v-html="mdHover.content" />
     </div>
   </Teleport>
+  <MarkdownHoverPreview :container="previewRef" />
 </template>
 
 <script setup lang="ts">
