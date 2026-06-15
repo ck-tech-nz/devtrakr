@@ -1073,3 +1073,31 @@ class IssueCheckDuplicateView(APIView):
             description=data["description"],
         )
         return Response({"candidates": candidates})
+
+
+class IssuePullRequestsView(APIView):
+    """反查关联到该 Issue 的 PR,并给出是否建议标记为已解决。"""
+    permission_classes = [IsAuthenticated, FullDjangoModelPermissions]
+    queryset = Issue.objects.none()
+
+    def get(self, request, pk):
+        from apps.repos.models import PullRequest
+        from apps.repos.serializers import PullRequestSerializer
+        try:
+            issue = Issue.objects.get(pk=pk, is_deleted=False)
+        except Issue.DoesNotExist:
+            return Response({"detail": "问题不存在"}, status=status.HTTP_404_NOT_FOUND)
+        prs = (
+            PullRequest.objects.filter(linked_issues__contains=[{"id": issue.id}])
+            .select_related("repo")
+            .order_by("-github_created_at")
+        )
+        completed = ("已解决", "已发布", "已关闭")
+        suggest_resolved = (
+            issue.status not in completed
+            and prs.filter(state=PullRequest.STATE_MERGED).exists()
+        )
+        return Response({
+            "results": PullRequestSerializer(prs, many=True).data,
+            "suggest_resolved": suggest_resolved,
+        })
