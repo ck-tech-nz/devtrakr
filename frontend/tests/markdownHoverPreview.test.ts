@@ -51,4 +51,32 @@ describe('MarkdownHoverPreview', () => {
     expect(iframe!.getAttribute('src')).toBe('https://example.com/docs')
     w.unmount()
   })
+
+  it('moving from one issue mention to another keeps the card and swaps content (no stuck loading)', async () => {
+    apiMock.mockImplementation((url: string) => {
+      if (url === '/api/issues/7/') return Promise.resolve({ id: 7, title: '问题A', status: '进行中', priority: 'P1', assignee_name: '张三', assignee_avatar: '', created_by_name: '李四', created_at: '2026-06-10T08:00:00+08:00', updated_at: '2026-06-11T09:00:00+08:00' })
+      if (url === '/api/issues/8/') return Promise.resolve({ id: 8, title: '问题B', status: '进行中', priority: 'P1', assignee_name: '李四', assignee_avatar: '', created_by_name: '张三', created_at: '2026-06-10T08:00:00+08:00', updated_at: '2026-06-11T09:00:00+08:00' })
+      return Promise.resolve({})
+    })
+    const container = makeContainer(
+      '<a class="mention-issue" data-issue-id="7" href="/app/issues/7">#问题-007</a>' +
+      '<a class="mention-issue" data-issue-id="8" href="/app/issues/8">#问题-008</a>'
+    )
+    const w = await mountSuspended(MarkdownHoverPreview, { props: { container } })
+    const [a, b] = Array.from(container.querySelectorAll('a'))
+    vi.useFakeTimers()
+    a!.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }))
+    await vi.advanceTimersByTimeAsync(500)
+    await flushPromises()
+    expect(document.body.textContent).toContain('问题A')
+    // move A -> B directly while the card is visible
+    a!.dispatchEvent(new MouseEvent('mouseout', { bubbles: true, relatedTarget: b }))
+    b!.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }))
+    await vi.advanceTimersByTimeAsync(500)
+    vi.useRealTimers()
+    await flushPromises()
+    expect(document.body.textContent).toContain('问题B')
+    expect(document.body.textContent).not.toContain('加载中')
+    w.unmount()
+  })
 })

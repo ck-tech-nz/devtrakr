@@ -102,6 +102,7 @@ function showFor(anchor: HTMLAnchorElement) {
 function onIframeLoad() { clearIframeTimer() }
 
 function onMouseOver(e: Event) {
+  cancelHide()
   const target = e.target as HTMLElement
   const anchor = (target.closest?.('a') as HTMLAnchorElement | null) ?? null
   if (!anchor || !matchPreviewAnchor(anchor)) return
