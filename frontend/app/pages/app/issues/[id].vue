@@ -98,7 +98,7 @@
           <div v-if="latestAnalysis" class="space-y-2">
             <div class="rounded-lg border text-sm"
               :class="latestAnalysis.status === 'failed' ? 'border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20' : 'border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-900/20'">
-              <div class="px-3 py-2">
+              <div class="px-3 py-2 max-h-[480px] overflow-y-auto">
                 <div class="flex items-center justify-between text-xs mb-1">
                   <div class="flex items-center gap-1" :class="latestAnalysis.status === 'failed' ? 'text-red-600 dark:text-red-400' : 'text-blue-600 dark:text-blue-400'">
                     <UIcon name="i-heroicons-cpu-chip" class="w-3 h-3" />
@@ -113,7 +113,7 @@
                 <template v-else-if="latestAnalysis.results">
                   <div v-for="(content, field) in latestAnalysis.results" :key="field" class="mt-1">
                     <div class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ fieldLabel(field as string) }}</div>
-                    <div class="markdown-body text-sm mt-0.5 text-gray-700 dark:text-gray-300 max-h-[840px] overflow-y-auto" v-html="renderMarkdown(content as string)"></div>
+                    <div class="markdown-body text-sm mt-0.5 text-gray-700 dark:text-gray-300" v-html="renderMarkdown(content as string)"></div>
                   </div>
                 </template>
               </div>
