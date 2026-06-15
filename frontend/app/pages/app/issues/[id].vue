@@ -98,7 +98,7 @@
           <div v-if="latestAnalysis" class="space-y-2">
             <div class="rounded-lg border text-sm"
               :class="latestAnalysis.status === 'failed' ? 'border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20' : 'border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-900/20'">
-              <div ref="aiResultRef" class="px-3 py-2 max-h-[480px] overflow-y-auto">
+              <div class="px-3 py-2 max-h-[480px] overflow-y-auto">
                 <div class="flex items-center justify-between text-xs mb-1">
                   <div class="flex items-center gap-1" :class="latestAnalysis.status === 'failed' ? 'text-red-600 dark:text-red-400' : 'text-blue-600 dark:text-blue-400'">
                     <UIcon name="i-heroicons-cpu-chip" class="w-3 h-3" />
@@ -913,7 +913,6 @@ const showDeleteConfirm = ref(false)
 const deleting = ref(false)
 let pollTimer: ReturnType<typeof setInterval> | null = null
 const analyses = ref<any[]>([])
-const aiResultRef = ref<HTMLElement | null>(null)
 
 async function fetchAnalyses() {
   if (!issue.value?.id) return
