@@ -40,7 +40,7 @@ describe('InlineLinkCardItem', () => {
     await flushPromises()
     vi.useFakeTimers()
     await w.find('.link-preview-card').trigger('mouseenter')
-    await vi.advanceTimersByTimeAsync(500)
+    await vi.advanceTimersByTimeAsync(1000)
     vi.useRealTimers()
     await flushPromises()
     const iframe = document.body.querySelector('iframe.ilc-iframe') as HTMLIFrameElement | null

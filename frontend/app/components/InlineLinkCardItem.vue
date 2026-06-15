@@ -61,6 +61,7 @@ onMounted(() => {
 })
 
 // 仅站内问题卡片悬停 → iframe 预览
+const IFRAME_HOVER_DELAY = 1000 // 悬停卡片多久后弹出 iframe(更长,避免误触)
 const iframe = reactive({ visible: false, top: 0, left: 0 })
 let showTimer: ReturnType<typeof setTimeout> | null = null
 let hideTimer: ReturnType<typeof setTimeout> | null = null
@@ -83,7 +84,7 @@ function onEnter(e: MouseEvent) {
     iframe.top = below ? rect.bottom + window.scrollY + 4 : Math.max(8 + window.scrollY, rect.top + window.scrollY - h - 4)
     iframe.left = Math.max(window.scrollX + 8, Math.min(rect.left + window.scrollX, window.scrollX + window.innerWidth - w - 16))
     iframe.visible = true
-  }, 500)
+  }, IFRAME_HOVER_DELAY)
 }
 function onLeave() {
   if (showTimer) { clearTimeout(showTimer); showTimer = null }
