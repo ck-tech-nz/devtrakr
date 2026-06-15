@@ -53,6 +53,9 @@ function scheduleHide() {
     state.type = null
     state.issue = null
     state.url = null
+    state.issueLoading = false
+    state.issueError = false
+    state.iframeFallback = false
     activeAnchor = null
     clearIframeTimer()
   }, HIDE_DELAY)
