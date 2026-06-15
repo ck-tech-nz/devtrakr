@@ -49,3 +49,20 @@ class TestBuildLinkedIssues:
         issue = IssueFactory()
         result = build_linked_issues("no ref", f"closes ISS-{issue.id}")
         assert result == [{"id": issue.id, "ref": f"ISS-{issue.id:03d}", "source": "body"}]
+
+
+class TestPullRequestModel:
+    def test_create_and_str(self):
+        from apps.repos.models import PullRequest
+        from tests.factories import PullRequestFactory
+        pr = PullRequestFactory(number=7, title="Fix login")
+        assert str(pr) == "#7 Fix login"
+        assert pr.state in ("open", "closed", "merged")
+        assert PullRequest.objects.count() == 1
+
+    def test_unique_repo_number(self):
+        from django.db import IntegrityError
+        from tests.factories import PullRequestFactory
+        pr = PullRequestFactory(number=1)
+        with pytest.raises(IntegrityError):
+            PullRequestFactory(repo=pr.repo, number=1)
