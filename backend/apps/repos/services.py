@@ -10,12 +10,86 @@ import tempfile
 import requests
 from django.conf import settings as django_settings
 from django.contrib.auth import get_user_model
+from django.core.cache import cache
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 
 from .models import Repo, GitHubIssue, Commit, GitAuthorAlias
 
 logger = logging.getLogger(__name__)
+
+GITHUB_REF_RE = re.compile(
+    r"^https?://github\.com/([\w.-]+)/([\w.-]+)/(pull|issues)/(\d+)(?:[/?#].*)?$",
+    re.IGNORECASE,
+)
+
+
+def parse_github_ref(url):
+    """解析 GitHub PR/issue 链接 → {owner, repo, kind, number};非法返回 None。"""
+    m = GITHUB_REF_RE.match(url or "")
+    if not m:
+        return None
+    return {
+        "owner": m.group(1),
+        "repo": m.group(2),
+        "kind": m.group(3).lower(),
+        "number": int(m.group(4)),
+    }
+
+
+class GitHubPreviewService:
+    """单条 GitHub PR/issue 取数用于悬停预览卡片(仅调 api.github.com 固定主机,无 SSRF)。"""
+    GITHUB_API = "https://api.github.com"
+    CACHE_TTL = 300
+
+    def fetch_preview(self, owner, repo, kind, number):
+        cache_key = f"gh-preview:{owner}/{repo}/{kind}/{number}"
+        cached = cache.get(cache_key)
+        if cached is not None:
+            return cached
+        api_path = "pulls" if kind == "pull" else "issues"
+        token = (
+            Repo.objects.filter(full_name=f"{owner}/{repo}")
+            .exclude(github_token="")
+            .values_list("github_token", flat=True)
+            .first()
+        )
+        headers = {
+            "Accept": "application/vnd.github+json",
+            "X-GitHub-Api-Version": "2022-11-28",
+        }
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
+        try:
+            resp = requests.get(
+                f"{self.GITHUB_API}/repos/{owner}/{repo}/{api_path}/{number}",
+                headers=headers,
+                timeout=10,
+            )
+        except requests.RequestException:
+            return None
+        if resp.status_code != 200:
+            return None
+        item = resp.json()
+        if kind == "pull":
+            state = "merged" if item.get("merged") else item.get("state", "open")
+            norm_kind = "pr"
+        else:
+            state = item.get("state", "open")
+            norm_kind = "issue"
+        user = item.get("user") or {}
+        data = {
+            "kind": norm_kind,
+            "number": number,
+            "title": item.get("title") or "",
+            "state": state,
+            "author_login": user.get("login") or "",
+            "author_avatar": user.get("avatar_url") or "",
+            "repo_full_name": f"{owner}/{repo}",
+            "html_url": item.get("html_url") or "",
+        }
+        cache.set(cache_key, data, self.CACHE_TTL)
+        return data
 
 
 class GitHubSyncService:
