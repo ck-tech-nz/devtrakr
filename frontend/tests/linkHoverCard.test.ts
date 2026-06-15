@@ -23,6 +23,8 @@ describe('LinkHoverCard (issue)', () => {
     expect(document.body.textContent).toContain('进行中')
     expect(document.body.textContent).toContain('高') // P1 标签
     expect(document.body.textContent).toContain('张三')
+    // assignee_avatar 为空 → 显示姓名首字母兜底
+    expect(document.body.querySelector('.lhc-avatar-fallback')?.textContent).toBe('张')
     w.unmount()
   })
 
@@ -91,6 +93,8 @@ describe('LinkHoverCard (github)', () => {
     expect(document.body.textContent).toContain('octocat/hello')
     expect(document.body.textContent).toContain('alice')
     expect(document.body.textContent?.toLowerCase()).toContain('merged')
+    // author_avatar 为空 → 显示作者名首字母兜底
+    expect(document.body.querySelector('.lhc-avatar-fallback')?.textContent).toBe('a')
     w.unmount()
   })
   it('shows a loading state for github', async () => {

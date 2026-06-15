@@ -22,7 +22,8 @@
             <span class="lhc-pill" :style="{ background: prioColor, color: '#fff' }">{{ prioText }}</span>
           </div>
           <div class="lhc-foot">
-            <img v-if="issue.assignee_avatar" class="lhc-avatar" :src="issue.assignee_avatar" alt="">
+            <img v-if="issueAvatarUrl" class="lhc-avatar" :src="issueAvatarUrl" alt="">
+            <span v-else class="lhc-avatar lhc-avatar-fallback">{{ (issue.assignee_name || '?').slice(0, 1) }}</span>
             <span class="lhc-assignee">{{ issue.assignee_name || '未分配' }}</span>
             <span class="lhc-time">{{ timeText }}</span>
           </div>
@@ -42,6 +43,7 @@
           </div>
           <div class="lhc-foot">
             <img v-if="github.author_avatar" class="lhc-avatar" :src="github.author_avatar" alt="">
+            <span v-else class="lhc-avatar lhc-avatar-fallback">{{ (github.author_login || '?').slice(0, 1) }}</span>
             <span class="lhc-assignee">{{ github.author_login }}</span>
             <span class="lhc-time">{{ github.repo_full_name }}</span>
           </div>
@@ -77,6 +79,9 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{ enter: []; leave: [] }>()
+
+const { resolveAvatarUrl } = useAvatars()
+const issueAvatarUrl = computed(() => (props.issue?.assignee_avatar ? resolveAvatarUrl(props.issue.assignee_avatar) : ''))
 
 const statusColor = computed(() => (props.issue ? statusMainColor(props.issue.status) : '#9ca3af'))
 const statusText = computed(() => (props.issue ? statusLabel(props.issue.status) : ''))
@@ -137,6 +142,11 @@ function goIssue() {
 .lhc-pill { padding: 0.1em 0.5em; border-radius: 999px; font-size: 0.72rem; font-weight: 600; }
 .lhc-foot { display: flex; gap: 0.4rem; align-items: center; color: #6b7280; font-size: 0.75rem; }
 .lhc-avatar { width: 1.1rem; height: 1.1rem; border-radius: 999px; object-fit: cover; }
+.lhc-avatar-fallback {
+  display: inline-flex; align-items: center; justify-content: center;
+  background: #e5e7eb; color: #4b5563; font-size: 0.7rem; font-weight: 600;
+}
+:root.dark .lhc-avatar-fallback { background: #374151; color: #d1d5db; }
 .lhc-time { margin-left: auto; }
 .lhc-urlbar { display: flex; align-items: center; gap: 0.5rem; padding: 0.4rem 0.6rem; }
 :root.dark .lhc-urlbar { border-color: #374151; background: #111827; }
