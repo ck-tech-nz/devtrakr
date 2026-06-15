@@ -34,6 +34,15 @@ describe('LinkHoverCard (issue)', () => {
     w.unmount()
   })
 
+  it('shows an error state', async () => {
+    const w = await mountSuspended(LinkHoverCard, { props: {
+      visible: true, top: 0, left: 0, type: 'issue',
+      issue: null, issueLoading: false, issueError: true, url: null, iframeFallback: false,
+    } })
+    expect(document.body.textContent).toContain('加载失败')
+    w.unmount()
+  })
+
   it('renders nothing when not visible', async () => {
     const w = await mountSuspended(LinkHoverCard, { props: {
       visible: false, top: 0, left: 0, type: 'issue',

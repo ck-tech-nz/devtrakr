@@ -1,7 +1,7 @@
 <template>
   <Teleport to="body">
     <div
-      v-if="visible"
+      v-if="visible && type"
       class="link-hover-card"
       :class="`is-${type}`"
       :style="{ top: top + 'px', left: left + 'px' }"
@@ -39,10 +39,14 @@
           <img v-if="faviconUrl" class="lhc-favicon" :src="faviconUrl" alt="">
           <span>该站点不允许内嵌预览</span>
         </div>
+        <!-- allow-same-origin 在此安全:外链经 matchPreviewAnchor 保证跨源,
+             框架无法访问父页面源资源;allow-scripts 是实时预览所必需。
+             刻意不含 allow-top-navigation,防止被嵌页面劫持顶层标签。 -->
         <iframe
           v-else
           class="lhc-iframe"
           :src="url || ''"
+          :title="`外部预览: ${host || url || ''}`"
           sandbox="allow-scripts allow-same-origin allow-popups"
           referrerpolicy="no-referrer"
           @load="emit('iframe-load')"
