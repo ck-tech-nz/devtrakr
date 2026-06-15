@@ -43,13 +43,13 @@ class GitHubPreviewService:
     CACHE_TTL = 300
 
     def fetch_preview(self, owner, repo, kind, number):
-        cache_key = f"gh-preview:{owner}/{repo}/{kind}/{number}"
+        cache_key = f"gh-preview:{owner.lower()}/{repo.lower()}/{kind}/{number}"
         cached = cache.get(cache_key)
         if cached is not None:
             return cached
         api_path = "pulls" if kind == "pull" else "issues"
         token = (
-            Repo.objects.filter(full_name=f"{owner}/{repo}")
+            Repo.objects.filter(full_name__iexact=f"{owner}/{repo}")
             .exclude(github_token="")
             .values_list("github_token", flat=True)
             .first()

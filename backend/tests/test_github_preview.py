@@ -47,6 +47,17 @@ def test_fetch_preview_pr_merged_uses_repo_token():
 
 
 @pytest.mark.django_db
+def test_fetch_preview_token_lookup_is_case_insensitive():
+    RepoFactory(full_name="octocat/hello", github_token="ghp_x")
+    payload = {"number": 1, "title": "T", "state": "open", "html_url": "u",
+               "user": {"login": "a", "avatar_url": "av"}}
+    with patch("apps.repos.services.requests.get") as mg:
+        mg.return_value = MagicMock(status_code=200, json=lambda: payload)
+        GitHubPreviewService().fetch_preview("OctoCat", "Hello", "issues", 1)
+    assert mg.call_args.kwargs["headers"].get("Authorization") == "Bearer ghp_x"
+
+
+@pytest.mark.django_db
 def test_fetch_preview_issue_open_unauthenticated():
     payload = {"number": 7, "title": "Bug", "state": "open", "html_url": "u",
                "user": {"login": "bob", "avatar_url": "av"}}
