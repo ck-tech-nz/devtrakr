@@ -547,7 +547,7 @@
             >
               <div class="min-w-0 flex-1">
                 <div class="flex items-center space-x-2">
-                  <UBadge :color="prStateColor(pr.state)" variant="subtle" size="xs">{{ pr.state }}</UBadge>
+                  <UBadge :color="prStateColor(pr.state)" variant="subtle" size="xs">{{ prStateLabel(pr.state) }}</UBadge>
                   <span class="text-xs text-gray-400 dark:text-gray-500">{{ pr.repo_full_name }}#{{ pr.number }}</span>
                 </div>
                 <p class="text-sm text-gray-900 dark:text-gray-100 truncate mt-0.5">{{ pr.title }}</p>

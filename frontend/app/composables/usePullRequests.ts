@@ -32,3 +32,11 @@ export function prStateColor(state: string): 'warning' | 'secondary' | 'neutral'
   if (state === 'merged') return 'secondary'
   return 'neutral'
 }
+
+// PR 状态中文标签
+export function prStateLabel(state: string): string {
+  if (state === 'open') return '开放'
+  if (state === 'merged') return '已合并'
+  if (state === 'closed') return '已关闭'
+  return state
+}

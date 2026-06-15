@@ -42,7 +42,7 @@
           :loading="syncing"
           @click="handleSync"
         >
-          同步 Issues
+          同步
         </UButton>
         <UButton
           icon="i-heroicons-information-circle"
@@ -221,7 +221,7 @@
                 <a :href="row.original.html_url" target="_blank" class="font-mono text-xs text-primary-500 hover:underline">#{{ row.original.number }}</a>
               </template>
               <template #state-cell="{ row }">
-                <UBadge :color="prStateColor(row.original.state)" variant="subtle" size="xs">{{ row.original.state }}</UBadge>
+                <UBadge :color="prStateColor(row.original.state)" variant="subtle" size="xs">{{ prStateLabel(row.original.state) }}</UBadge>
               </template>
               <template #linked_issues-cell="{ row }">
                 <div class="flex flex-wrap gap-1">
