@@ -28,6 +28,26 @@
           </div>
         </a>
       </template>
+
+      <!-- 外部 URL -->
+      <template v-else-if="type === 'external'">
+        <div class="lhc-urlbar">
+          <span class="lhc-host" :title="url || ''">{{ host }}</span>
+          <a class="lhc-open" :href="url || '#'" target="_blank" rel="noopener noreferrer">在新标签打开 ↗</a>
+        </div>
+        <div v-if="iframeFallback" class="lhc-fallback">
+          <img v-if="faviconUrl" class="lhc-favicon" :src="faviconUrl" alt="">
+          <span>该站点不允许内嵌预览</span>
+        </div>
+        <iframe
+          v-else
+          class="lhc-iframe"
+          :src="url || ''"
+          sandbox="allow-scripts allow-same-origin allow-popups"
+          referrerpolicy="no-referrer"
+          @load="emit('iframe-load')"
+        />
+      </template>
     </div>
   </Teleport>
 </template>
@@ -54,6 +74,8 @@ const statusText = computed(() => (props.issue ? statusLabel(props.issue.status)
 const prioColor = computed(() => (props.issue && priorityBadgeStyle(props.issue.priority)?.['--prio']) || '#9ca3af')
 const prioText = computed(() => (props.issue ? priorityLabel(props.issue.priority) : ''))
 const timeText = computed(() => (props.issue ? formatDate(props.issue.updated_at || props.issue.created_at) : ''))
+const host = computed(() => { try { return new URL(props.url || '').host } catch { return props.url || '' } })
+const faviconUrl = computed(() => { try { const u = new URL(props.url || ''); return `${u.origin}/favicon.ico` } catch { return '' } })
 
 function formatDate(iso: string): string {
   if (!iso) return ''
@@ -97,4 +119,13 @@ function goIssue() {
 .lhc-foot { display: flex; gap: 0.4rem; align-items: center; color: #6b7280; font-size: 0.75rem; }
 .lhc-avatar { width: 1.1rem; height: 1.1rem; border-radius: 999px; object-fit: cover; }
 .lhc-time { margin-left: auto; }
+.is-external { width: 480px; }
+.lhc-urlbar { display: flex; align-items: center; gap: 0.5rem; padding: 0.4rem 0.6rem; border-bottom: 1px solid #e5e7eb; background: #f9fafb; }
+:root.dark .lhc-urlbar { border-color: #374151; background: #111827; }
+.lhc-host { font-size: 0.75rem; color: #6b7280; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lhc-open { margin-left: auto; flex-shrink: 0; font-size: 0.72rem; color: #2563eb; text-decoration: none; }
+:root.dark .lhc-open { color: #60a5fa; }
+.lhc-iframe { display: block; width: 100%; height: 320px; border: 0; background: #fff; }
+.lhc-fallback { display: flex; align-items: center; gap: 0.5rem; padding: 1rem; color: #6b7280; }
+.lhc-favicon { width: 1.1rem; height: 1.1rem; }
 </style>

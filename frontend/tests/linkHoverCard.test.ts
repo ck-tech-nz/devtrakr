@@ -43,3 +43,32 @@ describe('LinkHoverCard (issue)', () => {
     w.unmount()
   })
 })
+
+describe('LinkHoverCard (external)', () => {
+  it('renders an iframe with a safe sandbox', async () => {
+    const w = await mountSuspended(LinkHoverCard, { props: {
+      visible: true, top: 0, left: 0, type: 'external',
+      issue: null, issueLoading: false, issueError: false,
+      url: 'https://example.com/docs', iframeFallback: false,
+    } })
+    const iframe = document.body.querySelector('iframe.lhc-iframe') as HTMLIFrameElement
+    expect(iframe).toBeTruthy()
+    expect(iframe.getAttribute('src')).toBe('https://example.com/docs')
+    expect(iframe.getAttribute('sandbox')).toContain('allow-scripts')
+    expect(iframe.getAttribute('sandbox')).not.toContain('allow-top-navigation')
+    expect(iframe.getAttribute('referrerpolicy')).toBe('no-referrer')
+    expect(document.body.textContent).toContain('example.com')
+    w.unmount()
+  })
+
+  it('shows the fallback when framing is blocked', async () => {
+    const w = await mountSuspended(LinkHoverCard, { props: {
+      visible: true, top: 0, left: 0, type: 'external',
+      issue: null, issueLoading: false, issueError: false,
+      url: 'https://blocked.example.com/', iframeFallback: true,
+    } })
+    expect(document.body.querySelector('iframe')).toBeNull()
+    expect(document.body.textContent).toContain('不允许内嵌预览')
+    w.unmount()
+  })
+})
