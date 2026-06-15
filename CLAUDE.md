@@ -39,6 +39,13 @@ npm run build                              # Production build
 npx nuxi typecheck                         # Type check
 ```
 
+### Browser test account
+
+For browser-driven testing (`/qa`, `/browse`), log in with the seeded local/test account:
+
+- Username: `bot`
+- Password: `password123`
+
 ### Docker
 
 ```bash

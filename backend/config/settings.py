@@ -246,6 +246,11 @@ UNFOLD = {
                         "icon": "label",
                         "link": reverse_lazy("admin:repos_githubissue_changelist"),
                     },
+                    {
+                        "title": "Pull Requests",
+                        "icon": "merge",
+                        "link": reverse_lazy("admin:repos_pullrequest_changelist"),
+                    },
                 ],
             },
             {

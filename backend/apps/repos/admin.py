@@ -1,6 +1,6 @@
 from django.contrib import admin
 from unfold.admin import ModelAdmin
-from .models import Repo, GitHubIssue, Commit, GitAuthorAlias
+from .models import Repo, GitHubIssue, Commit, GitAuthorAlias, PullRequest
 
 
 @admin.register(Repo)
@@ -46,3 +46,15 @@ class GitAuthorAliasAdmin(ModelAdmin):
     list_filter = ("repo",)
     search_fields = ("author_name", "author_email")
     autocomplete_fields = ("user",)
+
+
+@admin.register(PullRequest)
+class PullRequestAdmin(ModelAdmin):
+    list_display = ("repo", "number", "title", "state", "author_login", "github_created_at")
+    list_filter = ("state", "repo")
+    search_fields = ("title", "author_login")
+    readonly_fields = (
+        "repo", "number", "title", "body", "state", "merged_at", "closed_at",
+        "base_branch", "head_branch", "author_login", "author_avatar", "html_url",
+        "github_created_at", "github_updated_at", "synced_at", "linked_issues",
+    )
