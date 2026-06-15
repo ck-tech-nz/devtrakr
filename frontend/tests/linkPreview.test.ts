@@ -2,6 +2,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { matchPreviewAnchor } from '../app/composables/useLinkPreview'
 import { fetchIssuePreview, clearIssuePreviewCache } from '../app/composables/useLinkPreview'
+import { fetchGithubPreview, clearGithubPreviewCache } from '../app/composables/useLinkPreview'
 
 function anchor(html: string): HTMLAnchorElement {
   const d = document.createElement('div')
@@ -69,5 +70,42 @@ describe('fetchIssuePreview', () => {
     const r = await fetchIssuePreview('7', fetcher)
     expect(fetcher).toHaveBeenCalledTimes(2)
     expect(r.id).toBe(7)
+  })
+})
+
+describe('matchPreviewAnchor github', () => {
+  function anchorEl(html: string): HTMLAnchorElement {
+    const d = document.createElement('div'); d.innerHTML = html; return d.querySelector('a')!
+  }
+  it('classifies a github PR link as github', () => {
+    const a = anchorEl('<a class="external-link" href="https://github.com/octocat/hello/pull/42">PR</a>')
+    expect(matchPreviewAnchor(a)).toEqual({ type: 'github', url: 'https://github.com/octocat/hello/pull/42' })
+  })
+  it('classifies a github issue link as github', () => {
+    const a = anchorEl('<a class="external-link" href="https://github.com/octocat/hello/issues/7">x</a>')
+    expect(matchPreviewAnchor(a)).toEqual({ type: 'github', url: 'https://github.com/octocat/hello/issues/7' })
+  })
+  it('a non-PR github link stays external', () => {
+    const a = anchorEl('<a class="external-link" href="https://github.com/octocat/hello">repo</a>')
+    expect(matchPreviewAnchor(a)).toEqual({ type: 'external', url: 'https://github.com/octocat/hello' })
+  })
+})
+
+describe('fetchGithubPreview', () => {
+  beforeEach(() => clearGithubPreviewCache())
+  it('maps the endpoint payload', async () => {
+    const fetcher = vi.fn().mockResolvedValue({ kind: 'pr', number: 42, title: 'T', state: 'merged', author_login: 'a', author_avatar: 'av', repo_full_name: 'o/r', html_url: 'u' })
+    const r = await fetchGithubPreview('https://github.com/o/r/pull/42', fetcher)
+    expect(fetcher).toHaveBeenCalledWith('/api/repos/github-preview/?url=' + encodeURIComponent('https://github.com/o/r/pull/42'))
+    expect(r).toMatchObject({ kind: 'pr', number: 42, state: 'merged' })
+  })
+  it('returns null when backend says unsupported', async () => {
+    const fetcher = vi.fn().mockResolvedValue({ supported: false })
+    expect(await fetchGithubPreview('https://github.com/o/r/pull/1', fetcher)).toBeNull()
+  })
+  it('caches by url', async () => {
+    const fetcher = vi.fn().mockResolvedValue({ kind: 'pr', number: 1, title: '', state: 'open', author_login: '', author_avatar: '', repo_full_name: '', html_url: '' })
+    await fetchGithubPreview('u1', fetcher); await fetchGithubPreview('u1', fetcher)
+    expect(fetcher).toHaveBeenCalledTimes(1)
   })
 })
