@@ -33,6 +33,10 @@ function getFileCategory(href: string | undefined): string | null {
   return FILE_EXT_CATEGORY[ext] ?? null
 }
 
+function isExternalHttpLink(href: string | undefined): boolean {
+  return !!href && /^https?:\/\//i.test(href)
+}
+
 function fileCardPlugin(md: MarkdownIt) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const defaultLinkOpen: any = md.renderer.rules.link_open
@@ -49,6 +53,11 @@ function fileCardPlugin(md: MarkdownIt) {
     const href = attrPair ? attrPair[1] : undefined
     const category = getFileCategory(href)
     if (!category) {
+      if (isExternalHttpLink(href)) {
+        token.attrJoin('class', 'external-link')
+        token.attrSet('target', '_blank')
+        token.attrSet('rel', 'noopener noreferrer')
+      }
       return defaultLinkOpen(tokens, idx, options, env, self)
     }
     // Use the link text (filename) as the download attribute value so the
@@ -131,7 +140,7 @@ function mentionPlugin(md: MarkdownIt) {
     const id = tokens[idx]?.meta?.id as string | undefined
     if (!id) return ''
     const label = `#问题-${String(id).padStart(3, '0')}`
-    return `<a href="/app/issues/${id}" class="mention-issue">${label}</a>`
+    return `<a href="/app/issues/${id}" class="mention-issue" data-issue-id="${id}">${label}</a>`
   }
 }
 
