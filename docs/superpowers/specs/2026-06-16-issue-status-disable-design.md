@@ -28,11 +28,16 @@ edit the raw JSON directly as a power-user escape hatch.
    status update, the detail-page status chips, and kanban columns. Existing issues
    retain their status and display it normally (label + color still resolve, because
    the disabled status stays in the config list — it is only flagged, not removed).
-2. **Locked set** — statuses the system assigns *programmatically* (never by manual
-   pick) cannot be disabled: `待分配` (initial status of every new issue,
-   `services.create_issue`), `待确认` (assign/transfer targets), `进行中`
-   (claim/confirm targets). The remaining four (`未计划 / 已解决 / 已发布 / 已关闭`) are
-   only ever set by a user, so they are disable-able.
+2. **Locked set** — any status a code path assigns *outside the status picker* cannot
+   be disabled, otherwise an issue can land in a UI-invisible status. From an exhaustive
+   grep of `issue.status = …` / `status=…` assignments: `待分配` (initial status of
+   every new issue — `services.create_issue` and `uptime.create_incident`), `待确认`
+   (assign/transfer/confirm targets), `进行中` (claim/confirm targets), `已解决`
+   (`uptime.fire_recovery` auto-resolves an incident issue when a monitor recovers — a
+   fully automatic Celery path), and `已关闭` (`IssueCloseWithGitHubView` close action).
+   The only two statuses **no** code path ever assigns are `未计划` and `已发布`, so those
+   are the sole disable-able statuses. (Revised after code review — the original spec
+   listed only the first three and missed the uptime/close paths.)
 3. **Kanban orphans** — a disabled status's column is never shown, even if historical
    issues still have that status. Those issues remain visible in the list view; they
    simply do not appear on the board.
@@ -60,12 +65,14 @@ Each issue-status object gains an optional boolean `disabled`:
 Add to `apps/issues/models.py`, next to `IssueStatus`:
 
 ```python
-# 系统自动赋值的状态(新建初始 + 自动流转目标),不可在站点设置中禁用,
-# 否则 Issue 会被流转进一个 UI 不可见的状态,形成"看不到的工单"
+# 由「状态选择器以外的代码路径」赋值的状态,不可在站点设置中禁用,
+# 否则 Issue 会被置入一个 UI 不可见的状态,形成"看不到的工单"
 SYSTEM_ASSIGNED_STATUSES = (
-    IssueStatus.UNASSIGNED,           # create_issue 初始状态
-    IssueStatus.PENDING_CONFIRMATION, # assign / transfer 目标
-    IssueStatus.IN_PROGRESS,          # claim / confirm 目标
+    IssueStatus.UNASSIGNED.value,            # create_issue / uptime 建单初始状态
+    IssueStatus.PENDING_CONFIRMATION.value,  # assign / transfer / confirm 目标
+    IssueStatus.IN_PROGRESS.value,           # claim / confirm 目标
+    IssueStatus.RESOLVED.value,              # uptime fire_recovery 监控恢复自动置为已解决
+    IssueStatus.CLOSED.value,                # IssueCloseWithGitHubView 关闭动作
 )
 ```
 
@@ -109,9 +116,13 @@ verify no import cycle — if one exists, import lazily inside `clean()` / admin
     stay in raw.
   - while in raw, on textarea `input`: try parse; if a valid array, `items = parsed;
     sync()` (live), clear error, normal border; if invalid, red border + inline error
-    and **do not** update the hidden input. The hidden input therefore always holds the
-    last valid JSON; submitting with invalid text in the box saves the last valid state
-    (the inline error makes this visible). Document this behavior in a code comment.
+    and **do not** update the hidden input.
+  - **submit guard**: a `submit` listener on the enclosing admin form
+    (`hidden.form`) calls `preventDefault()` when `mode === 'raw'` and the textarea
+    JSON is invalid, surfacing the error and focusing the textarea. This prevents the
+    silent-data-loss footgun where an invalid raw edit would otherwise let the form
+    save the last-valid hidden value while the admin believes their edits were saved.
+    (Added after code review.)
 - The `禁用` checkbox column renders only when `allow_disable` is true, so the
   `priorities` widget instance is visually unchanged.
 

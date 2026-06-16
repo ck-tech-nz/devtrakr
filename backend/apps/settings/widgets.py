@@ -54,21 +54,22 @@ class ColorOptionListWidget(Widget):
                 items.append(item)
             else:
                 items.append({"value": p, "label": p, "background": ""})
-        # 模板把这段 JSON 以 |safe 注入 <script>,必须转义 HTML 敏感字符防止
+        # 模板把这些 JSON 以 |safe 注入 <script>,必须转义 HTML 敏感字符防止
         # 存储值里的 </script> 突破脚本块(同 Django json_script 的处理)
-        context["widget"]["items_json"] = (
-            json.dumps(items, ensure_ascii=False)
-            .replace("<", "\\u003c")
-            .replace(">", "\\u003e")
-            .replace("&", "\\u0026")
-        )
+        def _script_safe(data):
+            return (
+                json.dumps(data, ensure_ascii=False)
+                .replace("<", "\\u003c")
+                .replace(">", "\\u003e")
+                .replace("&", "\\u0026")
+            )
+
+        context["widget"]["items_json"] = _script_safe(items)
         context["widget"]["hint"] = self.hint
         context["widget"]["value_placeholder"] = self.value_placeholder
         context["widget"]["label_placeholder"] = self.label_placeholder
         context["widget"]["allow_disable"] = self.allow_disable
-        context["widget"]["locked_values_json"] = json.dumps(
-            self.locked_values, ensure_ascii=False
-        )
+        context["widget"]["locked_values_json"] = _script_safe(self.locked_values)
         return context
 
     def value_from_datadict(self, data, files, name):

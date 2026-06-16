@@ -20,13 +20,15 @@ class IssueStatus(models.TextChoices):
     CLOSED = '已关闭', '已关闭'
 
 
-# 系统自动赋值的状态(新建初始 + 自动流转目标),不可在站点设置中禁用——
-# 否则工单会被流转进一个 UI 不可见的状态,形成"看不到的工单"。
-# 参见 apps/issues/services.py:create_issue / claim / confirm / assign / transfer。
+# 由「状态选择器以外的代码路径」赋值的状态,不可在站点设置中禁用——否则工单会被
+# 置入一个 UI 不可见的状态(无法选择/筛选/看板展示),形成"看不到的工单"。
+# 仅「未计划 / 已发布」从不被任何代码路径赋值,因此只有这两个可被禁用。
 SYSTEM_ASSIGNED_STATUSES = (
-    IssueStatus.UNASSIGNED.value,           # create_issue 初始状态
-    IssueStatus.PENDING_CONFIRMATION.value,  # assign / transfer 目标
+    IssueStatus.UNASSIGNED.value,            # create_issue / uptime 建单初始状态
+    IssueStatus.PENDING_CONFIRMATION.value,  # assign / transfer / confirm 目标
     IssueStatus.IN_PROGRESS.value,           # claim / confirm 目标
+    IssueStatus.RESOLVED.value,              # uptime fire_recovery 监控恢复自动置为已解决
+    IssueStatus.CLOSED.value,                # IssueCloseWithGitHubView 关闭动作
 )
 
 

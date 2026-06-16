@@ -50,14 +50,16 @@ class TestSiteSettingsClean:
     def test_clean_passes_when_all_enabled(self, site_settings):
         site_settings.clean()  # 默认全启用,不应抛错
 
-    def test_clean_allows_disabling_non_locked_status(self, site_settings):
-        # 已发布 仅由用户手动设置,可禁用
-        self._set_disabled(site_settings, "已发布", True)
+    @pytest.mark.parametrize("status", ["未计划", "已发布"])
+    def test_clean_allows_disabling_non_locked_status(self, site_settings, status):
+        # 未计划 / 已发布 是仅有的两个不被任何代码路径赋值的状态,可禁用
+        self._set_disabled(site_settings, status, True)
         site_settings.clean()
 
-    @pytest.mark.parametrize("locked", ["待分配", "待确认", "进行中"])
+    @pytest.mark.parametrize("locked", ["待分配", "待确认", "进行中", "已解决", "已关闭"])
     def test_clean_rejects_disabling_locked_status(self, site_settings, locked):
-        # 待分配(新建初始)/待确认/进行中(自动流转目标)不可禁用
+        # 待分配(新建初始)/待确认/进行中(自动流转目标)/已解决(uptime 自动恢复)/
+        # 已关闭(关闭动作)均由代码路径赋值,禁用会产生 UI 不可见的工单
         self._set_disabled(site_settings, locked, True)
         with pytest.raises(ValidationError):
             site_settings.clean()

@@ -188,18 +188,30 @@
     if (mode === 'rich') enterRaw(); else enterRich();
   });
 
-  // raw 模式下实时校验:合法则回写隐藏 input;非法则红框提示且不写入(提交将保留上次合法内容)
+  // raw 模式下实时校验:合法则回写隐藏 input;非法则红框提示且不写入隐藏 input
   raw.addEventListener('input', function() {
     var parsed = parseRaw();
     if (parsed === null) {
       raw.classList.add('border-red-500');
-      showError('JSON 格式错误,提交将保留上一次合法内容');
+      showError('JSON 格式错误,请修正后再保存');
     } else {
       raw.classList.remove('border-red-500');
       clearError();
       items = parsed; sync();
     }
   });
+
+  // 拦截提交:raw 模式且 JSON 非法时阻止保存,否则会静默丢弃本次编辑(隐藏 input 仍是旧值)
+  if (hidden.form) {
+    hidden.form.addEventListener('submit', function(e) {
+      if (mode === 'raw' && parseRaw() === null) {
+        e.preventDefault();
+        raw.classList.add('border-red-500');
+        showError('JSON 格式错误,无法保存,请修正后重试');
+        raw.focus();
+      }
+    });
+  }
 
   render();
   sync();
