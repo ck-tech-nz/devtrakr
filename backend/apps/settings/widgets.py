@@ -73,13 +73,11 @@ class ColorOptionListWidget(Widget):
         return context
 
     def value_from_datadict(self, data, files, name):
-        raw = data.get(name)
-        if raw:
-            try:
-                return json.loads(raw)
-            except (json.JSONDecodeError, TypeError):
-                return raw
-        return []
+        # 返回原始 JSON 字符串交给 forms.JSONField 解析(to_python),而非在此预解析:
+        # 预解析成对象后,表单校验失败重渲染时 forms.JSONField.bound_data 会对其再次
+        # json.loads,非字符串会抛 TypeError 让 admin 页 500(站点设置 clean() 拒绝
+        # 禁用锁定状态时正是这条路径)。空/缺失回退 "[]" 保持「无数据=空列表」语义。
+        return data.get(name) or "[]"
 
 
 class JsonReadonlyToggleWidget(Widget):
@@ -102,10 +100,7 @@ class JsonReadonlyToggleWidget(Widget):
         return context
 
     def value_from_datadict(self, data, files, name):
-        raw = data.get(name)
-        if raw:
-            try:
-                return json.loads(raw)
-            except (json.JSONDecodeError, TypeError):
-                return raw
-        return {}
+        # 同 ColorOptionListWidget:返回原始 JSON 字符串交给 forms.JSONField 解析,
+        # 不可预解析为对象——否则表单校验失败重渲染时 bound_data 对其 json.loads 崩溃。
+        # 空/缺失回退 "{}" 保持「无数据=空对象」语义(labels 是对象)。
+        return data.get(name) or "{}"

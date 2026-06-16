@@ -207,6 +207,21 @@ Admin (manual):
 - The raw-JSON toggle round-trips items, blocks toggle-back on invalid JSON, and the
   `priorities` widget shows the toggle but no `禁用` column.
 
+## Browser-test findings (post-implementation)
+
+Local browser testing surfaced a latent crash that the new `clean()` exposed: both
+`ColorOptionListWidget` and `JsonReadonlyToggleWidget` had `value_from_datadict` return
+a **parsed** object. On a valid save that is harmless (`forms.JSONField.to_python`
+accepts list/dict), but when the form re-renders after **any** validation error,
+`forms.JSONField.bound_data` calls `json.loads()` on the widget's value — and
+`json.loads(<dict/list>)` raises `TypeError` → Django 500. Before this feature no
+validation could fail on these fields, so the path was never hit; the disable-locked-
+status guard is the first. Fix: both widgets now return the **raw JSON string**
+(`data.get(name) or "[]"` / `"{}"`), restoring `forms.JSONField`'s widget contract.
+Covered by `test_value_from_datadict_*` (incl. a `bound_data` compatibility test that
+reproduces the exact crash). Verified end-to-end in the browser: disabling a locked
+status via raw JSON now renders the clean error "流程关键状态不可禁用:进行中" (HTTP 200).
+
 ## Out of Scope
 
 - `disabled` for priorities or labels.

@@ -139,17 +139,56 @@ class TestColorOptionListWidget:
         assert "disabled" not in items[0]
         assert ctx["widget"]["allow_disable"] is False
 
-    def test_value_from_datadict_round_trip(self):
-        """隐藏 input 提交的 JSON 应解析回 Python 列表;非法 JSON 原样返回交给表单校验;缺失返回 []。"""
+    def test_value_from_datadict_returns_raw_string(self):
+        """返回原始 JSON 字符串(交给 forms.JSONField 解析);缺失/空回退为 "[]"。
+        不可返回已解析对象:否则 forms.JSONField.bound_data 在校验失败重渲染时
+        会对非字符串再次 json.loads 抛 TypeError(见下方 bound_data 兼容性测试)。"""
         from apps.settings.widgets import ColorOptionListWidget
 
         widget = ColorOptionListWidget()
         raw = '[{"value": "P0", "label": "紧急", "background": "#ef4444"}]'
-        assert widget.value_from_datadict({"priorities": raw}, {}, "priorities") == [
-            {"value": "P0", "label": "紧急", "background": "#ef4444"}
-        ]
+        assert widget.value_from_datadict({"priorities": raw}, {}, "priorities") == raw
         assert widget.value_from_datadict({"priorities": "{broken"}, {}, "priorities") == "{broken"
-        assert widget.value_from_datadict({}, {}, "priorities") == []
+        assert widget.value_from_datadict({}, {}, "priorities") == "[]"
+
+    def test_value_from_datadict_compatible_with_jsonfield_bound_data(self):
+        """复现并防回归:admin 表单校验失败重渲染时,forms.JSONField.bound_data 会对
+        widget.value_from_datadict 的返回值 json.loads。返回已解析对象会 TypeError 崩溃
+        (站点设置 clean() 拒绝禁用锁定状态时正是走这条重渲染路径)。"""
+        from django import forms
+        from apps.settings.widgets import ColorOptionListWidget
+
+        widget = ColorOptionListWidget(allow_disable=True)
+        raw = '[{"value": "进行中", "label": "进行中", "background": "#3b82f6", "disabled": true}]'
+        submitted = widget.value_from_datadict({"issue_statuses": raw}, {}, "issue_statuses")
+        # 重渲染路径——不应抛 TypeError
+        result = forms.JSONField().bound_data(submitted, None)
+        assert result == [
+            {"value": "进行中", "label": "进行中", "background": "#3b82f6", "disabled": True}
+        ]
+
+
+class TestJsonReadonlyToggleWidget:
+    """labels 字段用此 widget;与 ColorOptionListWidget 同理,必须返回原始字符串,
+    否则站点设置表单(任一字段)校验失败重渲染时,labels 的 bound_data 会先崩溃。"""
+
+    def test_value_from_datadict_returns_raw_string(self):
+        from apps.settings.widgets import JsonReadonlyToggleWidget
+
+        widget = JsonReadonlyToggleWidget()
+        raw = '{"前端": {"foreground": "#fff", "background": "#000", "description": "x"}}'
+        assert widget.value_from_datadict({"labels": raw}, {}, "labels") == raw
+        assert widget.value_from_datadict({}, {}, "labels") == "{}"
+
+    def test_value_from_datadict_compatible_with_jsonfield_bound_data(self):
+        from django import forms
+        from apps.settings.widgets import JsonReadonlyToggleWidget
+
+        widget = JsonReadonlyToggleWidget()
+        raw = '{"前端": {"foreground": "#fff", "background": "#000", "description": "x"}}'
+        submitted = widget.value_from_datadict({"labels": raw}, {}, "labels")
+        result = forms.JSONField().bound_data(submitted, None)
+        assert result == {"前端": {"foreground": "#fff", "background": "#000", "description": "x"}}
 
 
 class TestSiteSettingsAPI:
