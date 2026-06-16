@@ -57,7 +57,8 @@ async function handleLogin() {
     await fetchMe()
     await navigateTo('/app/home')
   } catch (e: any) {
-    error.value = '用户名或密码错误'
+    // 后端重启/尚未就绪时返回 502/503/504(或完全不可达),不应误报为凭证错误
+    error.value = isServiceUnavailable(e) ? SERVICE_BUSY_MESSAGE : '用户名或密码错误'
   } finally {
     loading.value = false
   }

@@ -107,6 +107,11 @@ async function handleRegister() {
     })
     await navigateTo('/login?registered=1')
   } catch (e: any) {
+    // 后端重启/尚未就绪时返回 502/503/504(或完全不可达),提示服务繁忙而非注册失败
+    if (isServiceUnavailable(e)) {
+      fieldErrors.value = { _global: SERVICE_BUSY_MESSAGE }
+      return
+    }
     const data = e?.data || e?.response?._data
     if (data && typeof data === 'object' && !Array.isArray(data)) {
       const errors: Record<string, string> = {}
