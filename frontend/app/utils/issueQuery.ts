@@ -3,7 +3,11 @@
 // 筛选栏下拉(filterAssignee/filterPriority)。
 
 export interface IssueReporterFilter {
-  type: 'reporter' | 'created_by'
+  // 'reporter'              — 按 reporter 自由文本精确匹配(点击非空提出人单元格)
+  // 'created_by'            — 按创建人 id 精确匹配(保留)
+  // 'reporter_display_user' — 按「列里显示的提出人」匹配:reporter 文本==该用户显示名,
+  //                            或 reporter 为空且 created_by==该用户(提出人下拉 / 只看我提出的)
+  type: 'reporter' | 'created_by' | 'reporter_display_user'
   value: string
 }
 

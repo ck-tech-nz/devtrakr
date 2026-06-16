@@ -83,7 +83,12 @@ class UserChoicesView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        users = User.objects.filter(is_active=True, is_bot=False).order_by("name")
+        users = User.objects.filter(is_active=True, is_bot=False)
+        # 可选按用户组筛选(如负责人下拉仅取「开发者」组成员)
+        group = request.query_params.get("group")
+        if group:
+            users = users.filter(groups__name=group).distinct()
+        users = users.order_by("name")
         data = [{"id": u.id, "name": u.name or u.username} for u in users]
         return Response(data)
 

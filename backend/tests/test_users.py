@@ -1,7 +1,29 @@
 import pytest
-from tests.factories import UserFactory
+from tests.factories import UserFactory, GroupFactory
 
 pytestmark = pytest.mark.django_db
+
+
+class TestUserChoices:
+    def test_choices_returns_active_non_bot(self, auth_client):
+        UserFactory(name="开发A")
+        UserFactory(name="机器人", is_bot=True)
+        response = auth_client.get("/api/users/choices/")
+        assert response.status_code == 200
+        names = {u["name"] for u in response.data}
+        assert "开发A" in names
+        assert "机器人" not in names
+
+    def test_choices_filter_by_group(self, auth_client):
+        # 负责人下拉按用户组筛选:?group=开发者 仅返回该组成员
+        dev_group = GroupFactory(name="开发者")
+        dev = UserFactory(name="开发A")
+        dev.groups.add(dev_group)
+        UserFactory(name="非开发B")  # 不在开发者组
+        response = auth_client.get("/api/users/choices/?group=开发者")
+        assert response.status_code == 200
+        names = {u["name"] for u in response.data}
+        assert names == {"开发A"}
 
 
 class TestUserList:

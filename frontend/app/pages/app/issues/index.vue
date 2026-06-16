@@ -23,6 +23,18 @@
           </UButton>
           <USelect :model-value="filterAssignee" :items="filterAssigneeOptions" class="w-28" value-key="value" placeholder="负责人" @update:model-value="(v: string) => filterAssignee = v === '_all' ? '' : v" />
         </UButtonGroup>
+        <!-- 「只看我提出的」与「提出人」同属提出人筛选(按创建人 created_by),合并为一个连体按钮组 -->
+        <UButtonGroup size="sm">
+          <UButton
+            icon="i-heroicons-user-circle"
+            :variant="onlyMineReported ? 'solid' : 'outline'"
+            :color="onlyMineReported ? 'primary' : 'neutral'"
+            @click="onlyMineReported = !onlyMineReported"
+          >
+            只看我提出的
+          </UButton>
+          <USelect :model-value="filterReporterUser" :items="filterReporterOptions" class="w-28" value-key="value" placeholder="提出人" @update:model-value="(v: string) => setReporterUser(v)" />
+        </UButtonGroup>
         <PrioritySlider v-model="filterPriority" />
         <div class="relative">
           <USelect v-model="filterStatus" :items="filterStatusOptions" size="sm" class="w-28" value-key="value" placeholder="状态" />
@@ -443,12 +455,13 @@ function openAssign(issue: any) {
   assignDialog.value = { open: true, issueId: issue.id, projectId: issue.project }
 }
 
-// 点击提出人：有 reporter 文本则按文本筛选，否则回退到创建人(created_by)
+// 点击提出人：有 reporter 文本则按该文本精确筛选；为空时列回退显示创建人,
+// 按「显示的提出人=该创建人」筛选(reporter_display_user),与下拉/按钮同一口径
 function filterByReporter(issue: any) {
   if (issue.reporter) {
     filterReporter.value = { type: 'reporter', value: issue.reporter, label: issue.reporter }
   } else if (issue.created_by) {
-    filterReporter.value = { type: 'created_by', value: String(issue.created_by), label: issue.created_by_name || '创建人' }
+    filterReporter.value = { type: 'reporter_display_user', value: String(issue.created_by), label: issue.created_by_name || '创建人' }
   }
 }
 
@@ -501,14 +514,17 @@ const filterAssignee = ref<string>(typeof route.query.assignee === 'string' ? ro
 const filterPriority = ref<string>(typeof route.query.priority === 'string' ? route.query.priority : '')
 const filterStatus = ref<string>(typeof route.query.status === 'string' ? route.query.status : '')
 const searchQuery = ref<string>(typeof route.query.search === 'string' ? route.query.search : '')
-// 提出人筛选：reporter 为自由文本时按文本精确匹配；为空时回退到创建人(created_by)
-const filterReporter = ref<{ type: 'reporter' | 'created_by'; value: string; label: string } | null>(null)
+// 提出人筛选：点击非空 reporter 按文本匹配(type 'reporter');下拉/按钮/空 reporter 行
+// 按「显示的提出人=某用户」匹配(type 'reporter_display_user',含 reporter 空回退创建人)
+const filterReporter = ref<{ type: 'reporter' | 'created_by' | 'reporter_display_user'; value: string; label: string } | null>(null)
 // 处理人筛选：点击状态徽章触发，按 assignee 筛选，以独立标签展示
 const filterHandler = ref<{ id: string; label: string } | null>(null)
 // 优先级筛选：点击优先级徽章触发，以独立标签展示
 const filterPriorityTag = ref<{ value: string; label: string } | null>(null)
 // 「只看我的」：等价于 assignee=当前用户;与负责人下拉互斥
 const onlyMine = ref(false)
+// 「只看我提出的」：等价于 created_by=当前用户;与提出人下拉互斥
+const onlyMineReported = ref(false)
 
 const rowSelection = ref<Record<string, boolean>>({})
 const showBatchDeleteConfirm = ref(false)
@@ -519,6 +535,8 @@ const issues = ref<any[]>([])
 const analyzingIssueIds = ref<Set<number>>(new Set())
 const totalCount = ref(0)
 const users = ref<any[]>([])
+// 负责人候选:仅「开发者」用户组成员(提出人/求助等仍用完整 users)
+const developers = ref<any[]>([])
 const labelOptions = ref<string[]>([])
 const projects = ref<any[]>([])
 const repos = ref<any[]>([])
@@ -677,13 +695,32 @@ const projectOptions = computed(() => projects.value.map(p => ({ label: p.name, 
 const createPriorityOptions = computed(() => priorityItems.value.map(p => ({ label: `${p.value} ${p.label}`, value: p.value })))
 // 状态选项 label 走站点配置(statusLabel),value 是流转逻辑依赖的固定值
 const createStatusOptions = computed(() => ISSUE_STATUS_OPTIONS.map(o => ({ value: o.value, label: statusLabel(o.value) })))
-const createAssigneeOptions = computed(() => [{ label: '无', value: '_none' }, ...users.value.map(u => ({ label: u.name || u.username, value: String(u.id) }))])
+const createAssigneeOptions = computed(() => [{ label: '无', value: '_none' }, ...developers.value.map(u => ({ label: u.name || u.username, value: String(u.id) }))])
 
 // 首项「全部负责人」用于清除负责人筛选；SelectItem 不允许空字符串 value，用 '_all' 哨兵在模板里映射回 ''
+// 负责人候选限「开发者」组(developers)
 const filterAssigneeOptions = computed(() => [
   { label: '全部负责人', value: '_all' },
+  ...developers.value.map(u => ({ label: u.name || u.username, value: String(u.id) })),
+])
+
+// 提出人下拉：按「列里显示的提出人=某用户」筛选(reporter_display_user),选项与负责人同源(系统用户)
+const filterReporterOptions = computed(() => [
+  { label: '全部提出人', value: '_all' },
   ...users.value.map(u => ({ label: u.name || u.username, value: String(u.id) })),
 ])
+// 下拉回显：仅当按「显示的提出人=某用户」筛选时回填;reporter 文本筛选(点击非空单元格)时留空占位
+const filterReporterUser = computed(() =>
+  filterReporter.value?.type === 'reporter_display_user' ? filterReporter.value.value : '',
+)
+function setReporterUser(v: string) {
+  if (!v || v === '_all') {
+    filterReporter.value = null
+    return
+  }
+  const u = users.value.find(x => String(x.id) === v)
+  filterReporter.value = { type: 'reporter_display_user', value: v, label: u?.name || u?.username || '提出人' }
+}
 const filterStatusOptions = computed(() => ISSUE_STATUS_OPTIONS.map(o => ({ value: o.value, label: statusLabel(o.value) })))
 
 function closeCreateModal() {
@@ -966,7 +1003,7 @@ async function handleBatchDelete() {
   }
 }
 
-const batchAssignItems = computed(() => [users.value.map(u => ({
+const batchAssignItems = computed(() => [developers.value.map(u => ({
   label: u.name || u.username,
   onSelect: () => batchUpdate('assign', String(u.id)),
 }))])
@@ -1015,6 +1052,24 @@ watch(onlyMine, (on) => {
     filterAssignee.value = ''
   }
 })
+// 「只看我提出的」⇄ 提出人(显示的提出人=我) 双向同步
+watch(onlyMineReported, (on) => {
+  if (on) {
+    filterReporter.value = {
+      type: 'reporter_display_user',
+      value: String(selfUserId.value),
+      label: user.value?.name || user.value?.username || '我',
+    }
+  } else if (filterReporter.value?.type === 'reporter_display_user' && filterReporter.value.value === String(selfUserId.value)) {
+    filterReporter.value = null
+  }
+})
+// 提出人筛选不再指向「显示的提出人=我」时(下拉选了他人/清空/点击了 reporter 文本),取消按钮高亮
+watch(filterReporter, (v) => {
+  if (!(v?.type === 'reporter_display_user' && v.value === String(selfUserId.value))) {
+    onlyMineReported.value = false
+  }
+})
 // 从优先级下拉框选值时清除优先级标签（互斥）
 watch(filterPriority, (v) => {
   if (v) filterPriorityTag.value = null
@@ -1042,14 +1097,16 @@ onUnmounted(() => {
 
 onMounted(async () => {
   loadTitleColWidth()
-  const [, usersData, settingsData, projectsData, reposData] = await Promise.all([
+  const [, usersData, developersData, settingsData, projectsData, reposData] = await Promise.all([
     fetchIssues(),
     api<any[]>('/api/users/choices/').catch(() => []),
+    api<any[]>(`/api/users/choices/?group=${encodeURIComponent('开发者')}`).catch(() => []),
     api<any>('/api/settings/').catch(() => ({ labels: [] })),
     api<any>('/api/projects/').catch(() => ({ results: [] })),
     api<any>('/api/repos/').catch(() => ({ results: [] })),
   ])
   users.value = usersData || []
+  developers.value = developersData || []
   const rawLabels = settingsData?.labels || {}
   labelOptions.value = typeof rawLabels === 'object' && !Array.isArray(rawLabels) ? Object.keys(rawLabels) : rawLabels
   setPrioritiesFromSettings(settingsData?.priorities)

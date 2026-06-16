@@ -272,16 +272,6 @@
                 </div>
                 <UInput v-model="form.actual_hours" type="number" placeholder="小时" />
               </div>
-              <div v-if="issue.settlement" class="text-sm">
-                <span class="text-gray-400 dark:text-gray-500">结算</span>
-                <p class="text-gray-900 dark:text-gray-100 mt-0.5">
-                  <span class="font-medium text-emerald-600 dark:text-emerald-400">¥{{ issue.settlement.price }}</span>
-                  <span class="text-xs text-gray-500 ml-2">{{ issue.settlement.size }}</span>
-                </p>
-                <p class="text-[11px] text-gray-400 mt-0.5">
-                  {{ issue.settlement.settled_at?.slice(0, 10) }} 锁定 · 后续配置变更不影响此单
-                </p>
-              </div>
             </div>
             <!-- 右列: 预计完成日历 -->
             <div class="form-row">
@@ -997,6 +987,8 @@ onUnmounted(() => {
   if (savedFieldTimer) clearTimeout(savedFieldTimer)
 })
 const users = ref<any[]>([])
+// 负责人候选:仅「开发者」用户组成员(求助/@提及等仍用完整 users)
+const developers = ref<any[]>([])
 const labelItems = ref<Record<string, { foreground: string; background: string; description: string }>>({})
 
 const showLabelPicker = ref(false)
@@ -1245,10 +1237,20 @@ const statusItems = computed(() => configuredStatuses.value.map((s) => {
   const cssColor = statusMainColor(s.value)
   return { ...s, cssColor, textOn: chipTextOn(cssColor) }
 }))
-const assigneeItems = computed(() => [
-  { label: '无', value: '_none' },
-  ...users.value.map(u => ({ label: u.name || u.username, value: String(u.id) })),
-])
+const assigneeItems = computed(() => {
+  const items = [
+    { label: '无', value: '_none' },
+    ...developers.value.map(u => ({ label: u.name || u.username, value: String(u.id) })),
+  ]
+  // 当前负责人若不在开发者组(历史数据),仍保留其选项以正常回显已保存值
+  const current = form.value.assignee
+  if (current && current !== '_none' && !items.some(i => i.value === current)) {
+    const u = users.value.find(x => String(x.id) === current)
+    items.push({ label: u ? (u.name || u.username) : current, value: current })
+  }
+  return items
+})
+// 求助(协助人)不受开发者限制,仍可选全部用户
 const helperItems = computed(() =>
   users.value.map(u => ({ label: u.name || u.username, value: String(u.id) }))
 )
@@ -1537,15 +1539,17 @@ async function acceptResolveSuggestion() {
 }
 
 onMounted(async () => {
-  const [issueData, usersData, settingsData, reposData, projectsData] = await Promise.all([
+  const [issueData, usersData, developersData, settingsData, reposData, projectsData] = await Promise.all([
     api<any>(`/api/issues/${route.params.id}/`).catch(() => null),
     api<any[]>('/api/users/choices/').catch(() => []),
+    api<any[]>(`/api/users/choices/?group=${encodeURIComponent('开发者')}`).catch(() => []),
     api<any>('/api/settings/').catch(() => ({ labels: [] })),
     api<any[]>('/api/repos/').catch(() => []),
     api<any>('/api/projects/').catch(() => ({ results: [] })),
   ])
   issue.value = issueData
   users.value = usersData || []
+  developers.value = developersData || []
   labelItems.value = settingsData?.labels || {}
   setPrioritiesFromSettings(settingsData?.priorities)
   setStatusesFromSettings(settingsData?.issue_statuses)

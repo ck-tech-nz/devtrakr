@@ -22,6 +22,8 @@ const { api } = useApi()
 const { transfer } = useIssueActions()
 
 const members = ref<ProjectMember[]>([])
+// 负责人候选限「开发者」用户组:取开发者 id 集合与项目成员取交集
+const devIds = ref<Set<number>>(new Set())
 const selectedUserId = ref<number | undefined>(undefined)
 const reason = ref('')
 const submitting = ref(false)
@@ -29,8 +31,12 @@ const error = ref('')
 
 async function loadMembers() {
   try {
-    const data = await api<ProjectMember[]>(`/api/projects/${props.projectId}/members/`)
+    const [data, devData] = await Promise.all([
+      api<ProjectMember[]>(`/api/projects/${props.projectId}/members/`),
+      api<{ id: number; name: string }[]>(`/api/users/choices/?group=${encodeURIComponent('开发者')}`).catch(() => []),
+    ])
     members.value = data.filter(m => m.user_id !== props.selfUserId)
+    devIds.value = new Set((devData || []).map(d => d.id))
   } catch (e) {
     error.value = '加载成员失败'
   }
@@ -65,10 +71,12 @@ async function onSubmit() {
 }
 
 const userOptions = computed(() =>
-  members.value.map(m => ({
-    label: m.role ? `${m.user_name} · ${m.role}` : m.user_name,
-    value: m.user_id,
-  })),
+  members.value
+    .filter(m => devIds.value.has(m.user_id))
+    .map(m => ({
+      label: m.role ? `${m.user_name} · ${m.role}` : m.user_name,
+      value: m.user_id,
+    })),
 )
 </script>
 

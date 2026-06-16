@@ -30,6 +30,29 @@ class TestIssueList:
         response = auth_client.get(f"/api/issues/?assignee={user.id}")
         assert response.data["count"] == 1
 
+    def test_filter_by_reporter_display_user(self, auth_client, site_settings):
+        # 「只看我提出的」/提出人下拉:按「列里显示的提出人」筛选——
+        # 与列展示逻辑 (reporter || created_by_name) 对齐:
+        # reporter 文本==该用户显示名,或 reporter 为空且 created_by==该用户(列回退创建人)。
+        u = UserFactory(name="凯歌")
+        other = UserFactory(name="阿明")
+        match_text = IssueFactory(reporter="凯歌", created_by=u)            # 显示=凯歌 ✓
+        match_fallback = IssueFactory(reporter="", created_by=u)            # 显示=凯歌(回退) ✓
+        IssueFactory(reporter="KOB", created_by=u)                          # 显示=KOB ✗(虽由 u 创建)
+        IssueFactory(reporter="", created_by=other)                         # 显示=阿明 ✗
+        response = auth_client.get(f"/api/issues/?reporter_display_user={u.id}")
+        ids = {i["id"] for i in response.data["results"]}
+        assert ids == {match_text.id, match_fallback.id}
+
+    def test_reporter_display_user_falls_back_to_username(self, auth_client, site_settings):
+        # 用户无 name 时显示名回退到 username,匹配逻辑保持一致
+        u = UserFactory(name="", username="kob_user")
+        hit_fallback = IssueFactory(reporter="", created_by=u)              # 显示=kob_user(回退)
+        hit_text = IssueFactory(reporter="kob_user", created_by=UserFactory())  # 显示=kob_user(文本)
+        response = auth_client.get(f"/api/issues/?reporter_display_user={u.id}")
+        ids = {i["id"] for i in response.data["results"]}
+        assert ids == {hit_fallback.id, hit_text.id}
+
     def test_list_includes_assignee_avatar(self, auth_client, site_settings):
         user = UserFactory(avatar="rubber-duck")
         IssueFactory(assignee=user)

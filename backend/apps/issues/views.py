@@ -14,7 +14,7 @@ from django.conf import settings as django_settings
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from django.utils import timezone
-from django.db.models import Count, Avg, Case, F, IntegerField, Subquery, OuterRef, Value, TextField, When
+from django.db.models import Count, Avg, Case, F, IntegerField, Q, Subquery, OuterRef, Value, TextField, When
 from django.db.models.fields.json import KeyTextTransform
 from django.db.models.functions import TruncDate, Coalesce
 from apps.repos.models import Repo, GitHubIssue
@@ -119,6 +119,21 @@ class IssueListCreateView(generics.ListCreateAPIView):
         created_by = self.request.query_params.get("created_by")
         if created_by:
             qs = qs.filter(created_by_id=created_by)
+        # 「按显示的提出人」筛选(提出人下拉 / 只看我提出的):与列展示逻辑
+        # (reporter || created_by_name) 对齐——reporter 文本==该用户显示名,
+        # 或 reporter 为空且 created_by==该用户(列回退创建人)。显示名取 name or username,
+        # 与序列化器 get_created_by_name 一致。
+        reporter_display_user = self.request.query_params.get("reporter_display_user")
+        if reporter_display_user:
+            User = get_user_model()
+            u = User.objects.filter(id=reporter_display_user).first()
+            if u:
+                display_name = u.name or u.username
+                qs = qs.filter(
+                    Q(reporter=display_name) | Q(reporter="", created_by_id=u.id)
+                )
+            else:
+                qs = qs.none()
         exclude_statuses = self.request.query_params.get("exclude_statuses")
         if exclude_statuses:
             qs = qs.exclude(status__in=exclude_statuses.split(","))

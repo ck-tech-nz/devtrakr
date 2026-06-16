@@ -68,6 +68,12 @@ describe('buildIssueQueryParams', () => {
     const asCreatedBy = buildIssueQueryParams(base({ filterReporter: { type: 'created_by', value: '42' } }))
     expect(asCreatedBy.get('created_by')).toBe('42')
     expect(asCreatedBy.has('reporter')).toBe(false)
+
+    // 「按显示的提出人」轴(只看我提出的 / 提出人下拉):映射到 reporter_display_user
+    const asDisplay = buildIssueQueryParams(base({ filterReporter: { type: 'reporter_display_user', value: '1' } }))
+    expect(asDisplay.get('reporter_display_user')).toBe('1')
+    expect(asDisplay.has('reporter')).toBe(false)
+    expect(asDisplay.has('created_by')).toBe(false)
   })
 
   it('trims search and omits it when blank', () => {
