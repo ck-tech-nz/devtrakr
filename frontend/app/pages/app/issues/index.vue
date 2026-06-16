@@ -693,8 +693,8 @@ const projectRepoOptions = computed(() => projectRepos.value.map(r => ({ label: 
 
 const projectOptions = computed(() => projects.value.map(p => ({ label: p.name, value: String(p.id) })))
 const createPriorityOptions = computed(() => priorityItems.value.map(p => ({ label: `${p.value} ${p.label}`, value: p.value })))
-// 状态选项 label 走站点配置(statusLabel),value 是流转逻辑依赖的固定值
-const createStatusOptions = computed(() => ISSUE_STATUS_OPTIONS.map(o => ({ value: o.value, label: statusLabel(o.value) })))
+// 状态选项 label 走站点配置(statusLabel),value 是流转逻辑依赖的固定值;隐藏被禁用的状态
+const createStatusOptions = computed(() => ISSUE_STATUS_OPTIONS.filter(o => !isStatusDisabled(o.value)).map(o => ({ value: o.value, label: statusLabel(o.value) })))
 const createAssigneeOptions = computed(() => [{ label: '无', value: '_none' }, ...developers.value.map(u => ({ label: u.name || u.username, value: String(u.id) }))])
 
 // 首项「全部负责人」用于清除负责人筛选；SelectItem 不允许空字符串 value，用 '_all' 哨兵在模板里映射回 ''
@@ -721,7 +721,7 @@ function setReporterUser(v: string) {
   const u = users.value.find(x => String(x.id) === v)
   filterReporter.value = { type: 'reporter_display_user', value: v, label: u?.name || u?.username || '提出人' }
 }
-const filterStatusOptions = computed(() => ISSUE_STATUS_OPTIONS.map(o => ({ value: o.value, label: statusLabel(o.value) })))
+const filterStatusOptions = computed(() => ISSUE_STATUS_OPTIONS.filter(o => !isStatusDisabled(o.value)).map(o => ({ value: o.value, label: statusLabel(o.value) })))
 
 function closeCreateModal() {
   onCreateModalUpdate(false)
@@ -814,9 +814,10 @@ const kanban = useKanbanIssues((status, pageNum) => {
   return p
 })
 
-const kanbanStatusKeys = computed(() => showCompleted.value
+// 被禁用的状态整列不显示(已有该状态的工单仅在列表视图可见)
+const kanbanStatusKeys = computed(() => (showCompleted.value
   ? [...KANBAN_COMPLETED_LEFT, ...KANBAN_DEFAULT_COLUMNS, ...KANBAN_COMPLETED_RIGHT]
-  : KANBAN_DEFAULT_COLUMNS)
+  : KANBAN_DEFAULT_COLUMNS).filter(key => !isStatusDisabled(key)))
 
 const kanbanColumns = computed(() => kanbanStatusKeys.value.map((key) => {
   const col = kanban.columns.value[key]
@@ -1097,20 +1098,21 @@ onUnmounted(() => {
 
 onMounted(async () => {
   loadTitleColWidth()
-  const [, usersData, developersData, settingsData, projectsData, reposData] = await Promise.all([
+  // 站点设置先行:看板初次 reset 依赖 kanbanStatusKeys,必须先拿到状态禁用配置才能排除被禁用的列
+  const settingsData = await api<any>('/api/settings/').catch(() => ({ labels: [] }))
+  const rawLabels = settingsData?.labels || {}
+  labelOptions.value = typeof rawLabels === 'object' && !Array.isArray(rawLabels) ? Object.keys(rawLabels) : rawLabels
+  setPrioritiesFromSettings(settingsData?.priorities)
+  setStatusesFromSettings(settingsData?.issue_statuses)
+  const [, usersData, developersData, projectsData, reposData] = await Promise.all([
     fetchIssues(),
     api<any[]>('/api/users/choices/').catch(() => []),
     api<any[]>(`/api/users/choices/?group=${encodeURIComponent('开发者')}`).catch(() => []),
-    api<any>('/api/settings/').catch(() => ({ labels: [] })),
     api<any>('/api/projects/').catch(() => ({ results: [] })),
     api<any>('/api/repos/').catch(() => ({ results: [] })),
   ])
   users.value = usersData || []
   developers.value = developersData || []
-  const rawLabels = settingsData?.labels || {}
-  labelOptions.value = typeof rawLabels === 'object' && !Array.isArray(rawLabels) ? Object.keys(rawLabels) : rawLabels
-  setPrioritiesFromSettings(settingsData?.priorities)
-  setStatusesFromSettings(settingsData?.issue_statuses)
   projects.value = projectsData?.results || projectsData || []
   repos.value = reposData?.results || reposData || []
   // Check AI analysis status for issues with repos

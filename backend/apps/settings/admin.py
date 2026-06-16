@@ -15,10 +15,14 @@ class SiteSettingsAdmin(ModelAdmin, SingletonModelAdmin):
                 label_placeholder="显示名 (如 紧急)",
             )
         elif db_field.name == "issue_statuses":
+            from apps.issues.models import SYSTEM_ASSIGNED_STATUSES
+
             kwargs["widget"] = ColorOptionListWidget(
-                hint="主色用于前端状态胶囊与看板列圆点。状态流转逻辑依赖「值」，档位固定，仅可改显示名/颜色/顺序。",
+                hint="主色用于前端状态胶囊与看板列圆点。状态流转逻辑依赖「值」，档位固定，仅可改显示名/颜色/顺序。勾选「禁用」后该状态在前端各选择/展示入口隐藏（已有该状态的工单仍正常显示）；流程关键状态不可禁用。",
                 value_placeholder="值 (如 进行中)",
                 label_placeholder="显示名",
+                allow_disable=True,
+                locked_values=SYSTEM_ASSIGNED_STATUSES,
             )
         elif db_field.name == "labels":
             kwargs["widget"] = JsonReadonlyToggleWidget()

@@ -20,11 +20,15 @@ class ColorOptionListWidget(Widget):
     template_name = "widgets/color_option_list.html"
 
     def __init__(self, *, hint="",
-                 value_placeholder="值", label_placeholder="显示名", attrs=None):
+                 value_placeholder="值", label_placeholder="显示名",
+                 allow_disable=False, locked_values=(), attrs=None):
         super().__init__(attrs)
         self.hint = hint
         self.value_placeholder = value_placeholder
         self.label_placeholder = label_placeholder
+        # allow_disable: 是否渲染「禁用」复选框列;locked_values: 不可禁用(复选框置灰)的 value
+        self.allow_disable = allow_disable
+        self.locked_values = list(locked_values)
 
     def get_context(self, name, value, attrs):
         context = super().get_context(name, value, attrs)
@@ -39,11 +43,15 @@ class ColorOptionListWidget(Widget):
         items = []
         for p in value:
             if isinstance(p, dict):
-                items.append({
+                item = {
                     "value": p.get("value", ""),
                     "label": p.get("label", p.get("value", "")),
                     "background": p.get("background", ""),
-                })
+                }
+                # 仅在启用禁用功能时保留 disabled,否则渲染时丢失会让禁用态归零
+                if self.allow_disable:
+                    item["disabled"] = bool(p.get("disabled", False))
+                items.append(item)
             else:
                 items.append({"value": p, "label": p, "background": ""})
         # 模板把这段 JSON 以 |safe 注入 <script>,必须转义 HTML 敏感字符防止
@@ -57,6 +65,10 @@ class ColorOptionListWidget(Widget):
         context["widget"]["hint"] = self.hint
         context["widget"]["value_placeholder"] = self.value_placeholder
         context["widget"]["label_placeholder"] = self.label_placeholder
+        context["widget"]["allow_disable"] = self.allow_disable
+        context["widget"]["locked_values_json"] = json.dumps(
+            self.locked_values, ensure_ascii=False
+        )
         return context
 
     def value_from_datadict(self, data, files, name):

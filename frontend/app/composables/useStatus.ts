@@ -2,6 +2,7 @@ export interface StatusItem {
   value: string
   label: string
   background: string // 该状态主色(hex),'' = 无底色
+  disabled?: boolean // true = 管理员禁用,在各选择/展示入口隐藏(已有该状态的工单仍显示)
 }
 
 // 静态默认,与后端 default_issue_statuses 一致;站点设置加载后由 setStatusesFromSettings 覆盖
@@ -38,6 +39,7 @@ export function setStatusesFromSettings(raw: unknown) {
         value: String(s.value),
         label: String(s.label || s.value),
         background: typeof s.background === 'string' ? s.background : '',
+        disabled: Boolean(s.disabled),
       })
     }
   }
@@ -50,6 +52,11 @@ function find(s: string): StatusItem | undefined {
 
 export function statusLabel(s: string): string {
   return find(s)?.label ?? s
+}
+
+// 该状态是否被管理员禁用(缺省/未知状态视为未禁用)。各选择/展示入口据此隐藏。
+export function isStatusDisabled(s: string): boolean {
+  return find(s)?.disabled === true
 }
 
 // 状态主色(hex):详情页状态胶囊/看板列圆点用;主色只认安全 hex,否则兜底灰

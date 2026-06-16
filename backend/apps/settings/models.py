@@ -2,6 +2,7 @@ import secrets
 import string
 
 from django.conf import settings as django_settings
+from django.core.exceptions import ValidationError
 from django.db import models
 from solo.models import SingletonModel
 
@@ -44,15 +45,16 @@ def default_priorities():
 
 def default_issue_statuses():
     # background 是该状态主色(前端据此渲染状态胶囊/看板列圆点),空串表示无底色。
-    # 注意:状态流转逻辑(issues services/serializers)硬编码这些 value,admin 只应改 label/颜色
+    # disabled=True 表示该状态在前端各「选择/展示」入口隐藏(已有该状态的工单仍正常显示)。
+    # 注意:状态流转逻辑(issues services/serializers)硬编码这些 value,admin 只应改 label/颜色/禁用
     return [
-        {"value": "未计划", "label": "未计划", "background": "#8b5cf6"},
-        {"value": "待分配", "label": "待分配", "background": "#f59e0b"},
-        {"value": "待确认", "label": "待确认", "background": "#eab308"},
-        {"value": "进行中", "label": "进行中", "background": "#3b82f6"},
-        {"value": "已解决", "label": "已解决", "background": "#10b981"},
-        {"value": "已发布", "label": "已发布", "background": "#14b8a6"},
-        {"value": "已关闭", "label": "已关闭", "background": "#6b7280"},
+        {"value": "未计划", "label": "未计划", "background": "#8b5cf6", "disabled": False},
+        {"value": "待分配", "label": "待分配", "background": "#f59e0b", "disabled": False},
+        {"value": "待确认", "label": "待确认", "background": "#eab308", "disabled": False},
+        {"value": "进行中", "label": "进行中", "background": "#3b82f6", "disabled": False},
+        {"value": "已解决", "label": "已解决", "background": "#10b981", "disabled": False},
+        {"value": "已发布", "label": "已发布", "background": "#14b8a6", "disabled": False},
+        {"value": "已关闭", "label": "已关闭", "background": "#6b7280", "disabled": False},
     ]
 
 
@@ -92,6 +94,23 @@ class SiteSettings(SingletonModel):
 
     def __str__(self):
         return "系统设置"
+
+    def clean(self):
+        super().clean()
+        # 兜底:系统自动赋值的「流程关键状态」不可被禁用(UI 已置灰,raw JSON 编辑可绕过)
+        from apps.issues.models import SYSTEM_ASSIGNED_STATUSES
+
+        locked_disabled = [
+            s.get("value")
+            for s in (self.issue_statuses or [])
+            if isinstance(s, dict)
+            and s.get("disabled")
+            and s.get("value") in SYSTEM_ASSIGNED_STATUSES
+        ]
+        if locked_disabled:
+            raise ValidationError(
+                {"issue_statuses": f"流程关键状态不可禁用:{'、'.join(locked_disabled)}"}
+            )
 
 
 class DatabaseBackup(models.Model):
