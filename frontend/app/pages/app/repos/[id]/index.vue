@@ -42,7 +42,7 @@
           :loading="syncing"
           @click="handleSync"
         >
-          同步 Issues
+          同步
         </UButton>
         <UButton
           icon="i-heroicons-information-circle"
@@ -204,6 +204,41 @@
               {{ row.original.github_created_at?.slice(0, 10) || '-' }}
             </template>
           </UTable>
+        </div>
+      </template>
+
+      <template #pull-requests>
+        <div class="mt-4">
+          <div v-if="prsLoading" class="flex items-center justify-center py-10">
+            <div class="text-sm text-gray-400 dark:text-gray-500">加载 PR 中...</div>
+          </div>
+          <div v-else-if="!pullRequests.length" class="flex items-center justify-center py-10">
+            <div class="text-sm text-gray-400 dark:text-gray-500">暂无 PR,点击上方「同步」拉取</div>
+          </div>
+          <div v-else class="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 overflow-hidden">
+            <UTable :data="pullRequests" :columns="prColumns" :ui="{ th: 'text-xs', td: 'text-sm' }">
+              <template #number-cell="{ row }">
+                <a :href="row.original.html_url" target="_blank" class="font-mono text-xs text-primary-500 hover:underline">#{{ row.original.number }}</a>
+              </template>
+              <template #state-cell="{ row }">
+                <UBadge :color="prStateColor(row.original.state)" variant="subtle" size="xs">{{ prStateLabel(row.original.state) }}</UBadge>
+              </template>
+              <template #linked_issues-cell="{ row }">
+                <div class="flex flex-wrap gap-1">
+                  <NuxtLink
+                    v-for="li in row.original.linked_issues"
+                    :key="li.id"
+                    :to="`/app/issues/${li.id}`"
+                    class="text-xs text-primary-500 hover:underline"
+                  >{{ li.ref }}</NuxtLink>
+                  <span v-if="!row.original.linked_issues.length" class="text-xs text-gray-400">-</span>
+                </div>
+              </template>
+              <template #github_updated_at-cell="{ row }">
+                {{ row.original.github_updated_at?.slice(0, 16)?.replace('T', ' ') || '-' }}
+              </template>
+            </UTable>
+          </div>
         </div>
       </template>
 
@@ -461,6 +496,10 @@ const activeTab = ref('issues')
 const gitLog = ref<any[]>([])
 const gitLogLoading = ref(false)
 
+// Pull Requests state
+const pullRequests = ref<PullRequestRow[]>([])
+const prsLoading = ref(false)
+
 // Developer insights state
 const insightsData = ref<any>(null)
 const insightsLoading = ref(false)
@@ -480,6 +519,7 @@ let pollTimer: ReturnType<typeof setTimeout> | null = null
 
 const tabItems = [
   { label: 'Issues', slot: 'issues', value: 'issues' },
+  { label: 'Pull Requests', slot: 'pull-requests', value: 'pull-requests' },
   { label: '提交记录', slot: 'git-log', value: 'git-log' },
   { label: '开发者洞察', slot: 'insights', value: 'insights' },
 ]
@@ -498,6 +538,14 @@ const gitLogColumns = [
   { accessorKey: 'author', header: '作者' },
   { accessorKey: 'date', header: '日期' },
   { accessorKey: 'message', header: '提交信息' },
+]
+
+const prColumns = [
+  { accessorKey: 'number', header: '#' },
+  { accessorKey: 'title', header: '标题' },
+  { accessorKey: 'state', header: '状态' },
+  { accessorKey: 'linked_issues', header: '关联 Issue' },
+  { accessorKey: 'github_updated_at', header: '更新时间' },
 ]
 
 const cloneStatusColor = computed(() => {
@@ -582,6 +630,17 @@ async function fetchBranches() {
     }
   } catch (e) {
     console.error('Failed to load branches:', e)
+  }
+}
+
+async function fetchPullRequests() {
+  prsLoading.value = true
+  try {
+    pullRequests.value = await api<PullRequestRow[]>(`/api/repos/${route.params.id}/pull-requests/`)
+  } catch (e) {
+    console.error('Failed to load pull requests:', e)
+  } finally {
+    prsLoading.value = false
   }
 }
 
@@ -688,6 +747,7 @@ async function handleSync() {
     const data = await api<any>(`/api/repos/${route.params.id}/sync/`, { method: 'POST' })
     repo.value = data
     await fetchIssues()
+    await fetchPullRequests()
     toast.add({ title: `已同步 ${ghIssues.value.length} 条 Issue`, color: 'success' })
   } catch (e: any) {
     console.error('Sync failed:', e)
@@ -753,6 +813,9 @@ async function pollRepoStatus() {
 
 // Fetch git log when switching to git-log tab; fetch insights when switching to insights tab
 watch(activeTab, (val) => {
+  if (val === 'pull-requests' && !pullRequests.value.length) {
+    fetchPullRequests()
+  }
   if (val === 'git-log' && repo.value?.clone_status === 'cloned' && !gitLog.value.length) {
     fetchGitLog()
   }

@@ -30,3 +30,5 @@ staticfiles/
 .backups/
 db-backup.yml
 tmp/
+
+.vscode/launch.json

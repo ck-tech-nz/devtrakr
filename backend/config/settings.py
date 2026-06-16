@@ -26,6 +26,7 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
+    "django.contrib.postgres",
     # Third party
     "rest_framework",
     "django_filters",
@@ -244,6 +245,11 @@ UNFOLD = {
                         "title": "GitHub Issues",
                         "icon": "label",
                         "link": reverse_lazy("admin:repos_githubissue_changelist"),
+                    },
+                    {
+                        "title": "Pull Requests",
+                        "icon": "merge",
+                        "link": reverse_lazy("admin:repos_pullrequest_changelist"),
                     },
                 ],
             },

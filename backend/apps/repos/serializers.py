@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Repo, GitHubIssue, GitAuthorAlias
+from .models import Repo, GitHubIssue, GitAuthorAlias, PullRequest
 
 
 class GitHubIssueBriefSerializer(serializers.ModelSerializer):
@@ -53,3 +53,41 @@ class RepoSerializer(serializers.ModelSerializer):
             "clone_status", "clone_error", "current_branch", "cloned_at",
         ]
         read_only_fields = ["id", "connected_at", "last_synced_at", "clone_status", "clone_error", "current_branch", "cloned_at"]
+
+
+class PullRequestSerializer(serializers.ModelSerializer):
+    repo_full_name = serializers.CharField(source="repo.full_name", read_only=True)
+    linked_issues = serializers.SerializerMethodField()
+
+    class Meta:
+        model = PullRequest
+        fields = [
+            "id", "repo", "repo_full_name", "number", "title", "state",
+            "merged_at", "closed_at", "base_branch", "head_branch",
+            "author_login", "author_avatar", "html_url",
+            "github_created_at", "github_updated_at", "linked_issues",
+        ]
+        read_only_fields = fields
+
+    def get_linked_issues(self, obj):
+        from apps.issues.models import Issue
+        refs = obj.linked_issues or []
+        ids = [r.get("id") for r in refs if r.get("id") is not None]
+        if not ids:
+            return []
+        issues = {
+            i.id: i
+            for i in Issue.objects.filter(pk__in=ids).only("id", "title", "status")
+        }
+        result = []
+        for r in refs:
+            issue = issues.get(r.get("id"))
+            if issue:
+                result.append({
+                    "id": issue.id,
+                    "title": issue.title,
+                    "status": issue.status,
+                    "ref": r.get("ref"),
+                    "source": r.get("source"),
+                })
+        return result

@@ -5,7 +5,7 @@ from django.contrib.auth.models import Group
 from apps.settings.models import SiteSettings, default_issue_statuses, default_priorities
 from apps.projects.models import Project, ProjectMember
 from apps.issues.models import Issue, Activity, IssueComment
-from apps.repos.models import Repo, GitHubIssue, Commit, GitAuthorAlias
+from apps.repos.models import Repo, GitHubIssue, Commit, GitAuthorAlias, PullRequest
 from apps.ai.models import LLMConfig, Prompt, Analysis
 from apps.tools.models import Attachment
 from apps.uptime.models import UptimeMonitor, UptimeCheck
@@ -136,6 +136,25 @@ class GitHubIssueFactory(factory.django.DjangoModelFactory):
     github_created_at = factory.LazyFunction(tz.now)
     github_updated_at = factory.LazyFunction(tz.now)
     synced_at = factory.LazyFunction(tz.now)
+
+
+class PullRequestFactory(factory.django.DjangoModelFactory):
+    class Meta:
+        model = PullRequest
+
+    repo = factory.SubFactory(RepoFactory)
+    number = factory.Sequence(lambda n: n + 1)
+    title = factory.LazyFunction(lambda: fake.sentence())
+    body = factory.LazyFunction(lambda: fake.paragraph())
+    state = "open"
+    base_branch = "main"
+    head_branch = factory.Sequence(lambda n: f"feat/branch-{n}")
+    author_login = factory.LazyFunction(lambda: fake.user_name())
+    html_url = factory.LazyAttribute(lambda o: f"https://github.com/{o.repo.full_name}/pull/{o.number}")
+    github_created_at = factory.LazyFunction(tz.now)
+    github_updated_at = factory.LazyFunction(tz.now)
+    synced_at = factory.LazyFunction(tz.now)
+    linked_issues = factory.LazyFunction(list)
 
 
 class CommitFactory(factory.django.DjangoModelFactory):

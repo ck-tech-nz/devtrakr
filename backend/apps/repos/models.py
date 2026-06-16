@@ -2,6 +2,7 @@ import os
 import re
 
 from django.conf import settings as django_settings
+from django.contrib.postgres.indexes import GinIndex
 from django.db import models
 
 
@@ -114,3 +115,41 @@ class GitAuthorAlias(models.Model):
     def __str__(self):
         label = self.user.name if self.user else "未关联"
         return f"{self.author_name} <{self.author_email}> → {label}"
+
+
+class PullRequest(models.Model):
+    STATE_OPEN = "open"
+    STATE_CLOSED = "closed"
+    STATE_MERGED = "merged"
+    STATE_CHOICES = [
+        (STATE_OPEN, "开放"),
+        (STATE_CLOSED, "已关闭"),
+        (STATE_MERGED, "已合并"),
+    ]
+
+    repo = models.ForeignKey(Repo, on_delete=models.CASCADE, related_name="pull_requests")
+    number = models.PositiveIntegerField(verbose_name="PR 编号")
+    title = models.CharField(max_length=500, verbose_name="标题")
+    body = models.TextField(blank=True, verbose_name="内容")
+    state = models.CharField(max_length=20, choices=STATE_CHOICES, verbose_name="状态")
+    merged_at = models.DateTimeField(null=True, blank=True, verbose_name="合并时间")
+    closed_at = models.DateTimeField(null=True, blank=True, verbose_name="关闭时间")
+    base_branch = models.CharField(max_length=255, blank=True, verbose_name="目标分支")
+    head_branch = models.CharField(max_length=255, blank=True, verbose_name="源分支")
+    author_login = models.CharField(max_length=200, blank=True, verbose_name="作者")
+    author_avatar = models.CharField(max_length=500, blank=True, verbose_name="作者头像")
+    html_url = models.CharField(max_length=500, blank=True, verbose_name="链接")
+    github_created_at = models.DateTimeField(verbose_name="GitHub 创建时间")
+    github_updated_at = models.DateTimeField(verbose_name="GitHub 更新时间")
+    synced_at = models.DateTimeField(verbose_name="同步时间")
+    linked_issues = models.JSONField(default=list, blank=True, verbose_name="关联 Issue")
+
+    class Meta:
+        verbose_name = "Pull Request"
+        verbose_name_plural = "Pull Requests"
+        unique_together = ("repo", "number")
+        ordering = ["-github_created_at"]
+        indexes = [GinIndex(fields=["linked_issues"], name="pr_linked_issues_gin")]
+
+    def __str__(self):
+        return f"#{self.number} {self.title}"

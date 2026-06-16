@@ -14,7 +14,7 @@ from django.core.cache import cache
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 
-from .models import Repo, GitHubIssue, Commit, GitAuthorAlias
+from .models import Repo, GitHubIssue, Commit, GitAuthorAlias, PullRequest
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +35,56 @@ def parse_github_ref(url):
         "kind": m.group(3).lower(),
         "number": int(m.group(4)),
     }
+
+
+ISS_REF_RE = re.compile(r"\bISS-0*(\d+)\b", re.IGNORECASE)
+
+_MAX_ISS_DIGITS = 18  # 超过此位数的数字不可能是真实 issue id,且会撑爆 bigint 主键查询(DataError)
+
+
+def extract_iss_ids(text):
+    """从文本中提取 ISS-xxx 引用的 issue id(去重,保持首次出现顺序)。"""
+    ids = []
+    for m in ISS_REF_RE.finditer(text or ""):
+        digits = m.group(1)
+        if len(digits) > _MAX_ISS_DIGITS:
+            continue
+        n = int(digits)
+        if n not in ids:
+            ids.append(n)
+    return ids
+
+
+def build_linked_issues(title, body):
+    """解析 PR 标题/正文中的 ISS-xxx,仅保留真实存在(未删除)的 issue。
+
+    标题命中标 source=title,否则 body;返回如
+    [{"id": 42, "ref": "ISS-042", "source": "title"}]。
+    """
+    from apps.issues.models import Issue  # 延迟导入避免循环依赖
+
+    ordered = []
+    seen = set()
+    for n in extract_iss_ids(title):
+        if n not in seen:
+            seen.add(n)
+            ordered.append((n, "title"))
+    for n in extract_iss_ids(body):
+        if n not in seen:
+            seen.add(n)
+            ordered.append((n, "body"))
+    if not ordered:
+        return []
+    existing = set(
+        Issue.objects.filter(
+            pk__in=[n for n, _ in ordered], is_deleted=False
+        ).values_list("pk", flat=True)
+    )
+    return [
+        {"id": n, "ref": f"ISS-{n:03d}", "source": src}
+        for n, src in ordered
+        if n in existing
+    ]
 
 
 class GitHubPreviewService:
@@ -141,6 +191,53 @@ class GitHubSyncService:
             page += 1
         repo.last_synced_at = timezone.now()
         repo.save(update_fields=["last_synced_at"])
+
+    def sync_pull_requests(self, repo: Repo) -> None:
+        headers = self._headers(repo)
+        page = 1
+        while True:
+            response = requests.get(
+                f"{self.GITHUB_API}/repos/{repo.full_name}/pulls",
+                headers=headers,
+                params={"state": "all", "per_page": self.PER_PAGE, "page": page},
+                timeout=30,
+            )
+            response.raise_for_status()
+            items = response.json()
+            if not items:
+                break
+            for item in items:
+                merged_at = parse_datetime(item["merged_at"]) if item.get("merged_at") else None
+                if merged_at:
+                    state = PullRequest.STATE_MERGED
+                else:
+                    state = item.get("state") or PullRequest.STATE_OPEN
+                user = item.get("user") or {}
+                base = item.get("base") or {}
+                head = item.get("head") or {}
+                PullRequest.objects.update_or_create(
+                    repo=repo,
+                    number=item["number"],
+                    defaults={
+                        "title": item.get("title") or "",
+                        "body": item.get("body") or "",
+                        "state": state,
+                        "merged_at": merged_at,
+                        "closed_at": parse_datetime(item["closed_at"]) if item.get("closed_at") else None,
+                        "base_branch": base.get("ref") or "",
+                        "head_branch": head.get("ref") or "",
+                        "author_login": user.get("login") or "",
+                        "author_avatar": user.get("avatar_url") or "",
+                        "html_url": item.get("html_url") or "",
+                        "github_created_at": parse_datetime(item["created_at"]),
+                        "github_updated_at": parse_datetime(item["updated_at"]),
+                        "synced_at": timezone.now(),
+                        "linked_issues": build_linked_issues(
+                            item.get("title") or "", item.get("body") or ""
+                        ),
+                    },
+                )
+            page += 1
 
     def _headers(self, repo: Repo) -> dict:
         return {

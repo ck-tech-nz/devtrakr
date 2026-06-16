@@ -8,6 +8,7 @@ from .views import (
     IssueRelatedView,
     IssueClaimView, IssueConfirmView, IssueTransferView, IssueAssignView,
     IssueCommentsView, IssueCommentDetailView,
+    IssuePullRequestsView,
 )
 
 urlpatterns = [
@@ -18,6 +19,7 @@ urlpatterns = [
     path("ai-draft/chat/", IssueAiChatView.as_view(), name="issue-ai-draft-chat"),
     path("batch-update/", BatchUpdateView.as_view(), name="issue-batch-update"),
     path("<int:pk>/", IssueDetailView.as_view(), name="issue-detail"),
+    path("<int:pk>/pull-requests/", IssuePullRequestsView.as_view(), name="issue-pull-requests"),
     path("<int:pk>/attachments/", IssueAttachmentsView.as_view(), name="issue-attachments"),
     path("<int:pk>/comments/", IssueCommentsView.as_view(), name="issue-comments"),
     path(

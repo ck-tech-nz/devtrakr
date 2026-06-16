@@ -83,6 +83,15 @@ class TestRepoSync:
         mock_instance.sync_repo.assert_called_once()
         assert response.data["id"] == repo.id
 
+    def test_sync_triggers_pull_requests(self, auth_client):
+        repo = RepoFactory(github_token="ghp_test123")
+        with patch("apps.repos.views.GitHubSyncService") as MockService:
+            mock_instance = MagicMock()
+            MockService.return_value = mock_instance
+            response = auth_client.post(f"/api/repos/{repo.id}/sync/")
+        assert response.status_code == 200
+        mock_instance.sync_pull_requests.assert_called_once()
+
     def test_sync_returns_502_on_github_failure(self, auth_client):
         repo = RepoFactory(github_token="ghp_test123")
         with patch("apps.repos.views.GitHubSyncService") as MockService:
