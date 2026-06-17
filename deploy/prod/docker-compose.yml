@@ -9,6 +9,7 @@ services:
       - ./.gitconfig-proxy:/root/.gitconfig:ro
       - repo_data:/data/repos
       - ./backups:/data/backups
+      - ./ssh:/root/.ssh:ro
     networks:
       - db-network
       - traefik-network
@@ -52,6 +53,8 @@ services:
     volumes:
       - ./.gitconfig-proxy:/root/.gitconfig:ro
       - repo_data:/data/repos
+      - ./backups:/data/backups
+      - ./ssh:/root/.ssh:ro
     networks:
       - db-network
     labels:

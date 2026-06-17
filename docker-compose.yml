@@ -39,6 +39,7 @@ services:
       - REPO_CLONE_DIR=/data/repos
     volumes:
       - repo_data:/data/repos
+      - backups:/data/backups
     command: uv run --no-sync celery -A config worker -l info
     depends_on:
       - backend
