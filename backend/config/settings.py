@@ -178,6 +178,9 @@ CELERY_TASK_SERIALIZER = "json"
 CELERY_RESULT_SERIALIZER = "json"
 CELERY_TIMEZONE = TIME_ZONE
 CELERY_BEAT_SCHEDULER = "django_celery_beat.schedulers:DatabaseScheduler"
+# Celery 事件上报:供 Kanchi 等监控工具消费(按环境通过 .env 开启,默认关闭)
+CELERY_WORKER_SEND_TASK_EVENTS = os.environ.get("CELERY_WORKER_SEND_TASK_EVENTS", "False").lower() in ("true", "1")
+CELERY_TASK_SEND_SENT_EVENT = os.environ.get("CELERY_TASK_SEND_SENT_EVENT", "False").lower() in ("true", "1")
 
 # Uptime monitoring
 UPTIME_TICK_SECONDS = 60
