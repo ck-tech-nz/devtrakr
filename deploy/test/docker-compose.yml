@@ -81,6 +81,8 @@ services:
     environment:
       CELERY_BROKER_URL: redis://redis:6379/0
       DATABASE_URL: sqlite:////data/kanchi.db
+      # 与 worker 事件时间对齐,消除 worker "last seen" 负值(-28801s ≈ 8h 时区偏移)
+      TZ: Asia/Shanghai
       # 浏览器直连地址(内网),必须与你访问面板所用的地址/端口一致
       NUXT_PUBLIC_API_URL: http://172.16.1.177:8765
       NUXT_PUBLIC_WS_URL: ws://172.16.1.177:8765/ws
