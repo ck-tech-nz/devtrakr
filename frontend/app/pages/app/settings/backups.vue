@@ -66,8 +66,17 @@ async function runBackup(t: BackupTarget) {
 async function toggleRecords(t: BackupTarget) {
   if (expandedId.value === t.id) { expandedId.value = null; return }
   expandedId.value = t.id
-  const res = await api<any>(`/api/backups/backups/?target=${t.id}`)
+  const res = await api<any>(`/api/backups/backups/?target=${t.id}&page_size=200`)
   recordsByTarget.value[t.id] = res.results ?? res
+}
+
+// 刷新:重新拉取目标列表,并刷新当前展开目标的记录(异步备份完成后用)
+async function refresh() {
+  await fetchTargets()
+  if (expandedId.value) {
+    const res = await api<any>(`/api/backups/backups/?target=${expandedId.value}&page_size=200`)
+    recordsByTarget.value[expandedId.value] = res.results ?? res
+  }
 }
 
 async function downloadBackup(row: BackupRecord) {
@@ -91,7 +100,7 @@ async function deleteBackup(row: BackupRecord) {
     await api(`/api/backups/backups/${row.id}/`, { method: 'DELETE' })
     toast.add({ title: '已删除', color: 'success' })
     if (expandedId.value) {
-      const res = await api<any>(`/api/backups/backups/?target=${expandedId.value}`)
+      const res = await api<any>(`/api/backups/backups/?target=${expandedId.value}&page_size=200`)
       recordsByTarget.value[expandedId.value] = res.results ?? res
     }
   } catch { toast.add({ title: '删除失败', color: 'error' }) }
@@ -102,7 +111,17 @@ onMounted(fetchTargets)
 
 <template>
   <div class="p-6 space-y-6">
-    <h1 class="text-lg font-semibold">数据库备份</h1>
+    <div class="flex items-center gap-2">
+      <h1 class="text-lg font-semibold">数据库备份</h1>
+      <UButton
+        variant="ghost"
+        icon="i-heroicons-arrow-path"
+        :loading="loading"
+        @click="refresh"
+      >
+        刷新
+      </UButton>
+    </div>
 
     <!-- 站点级 -->
     <section class="space-y-2">

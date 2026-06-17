@@ -98,7 +98,7 @@ const connectionSummary = computed(() => {
         <UButton
           size="xs"
           variant="outline"
-          icon="i-heroicons-arrow-down-tray"
+          icon="i-heroicons-play"
           :loading="running"
           @click="emit('run')"
         >
