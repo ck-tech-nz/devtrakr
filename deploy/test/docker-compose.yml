@@ -5,6 +5,9 @@ services:
     container_name: devtrakr
     env_file:
       - .env
+    volumes:
+      - ./backups:/data/backups
+      - ./ssh:/root/.ssh:ro
     networks:
       - db-network
       - traefik-network
@@ -43,6 +46,9 @@ services:
     container_name: devtrakr-celery-worker-test
     env_file:
       - .env
+    volumes:
+      - ./backups:/data/backups
+      - ./ssh:/root/.ssh:ro
     networks:
       - db-network
     command: uv run --no-sync celery -A config worker -l info
