@@ -1233,10 +1233,13 @@ const priorityItems = computed(() => configuredPriorities.value.slice().reverse(
 }))
 // 状态列表与主色来自站点设置(useStatus),statusMainColor 已做安全 hex 校验与兜底
 const configuredStatuses = useStatusItems()
-const statusItems = computed(() => configuredStatuses.value.map((s) => {
-  const cssColor = statusMainColor(s.value)
-  return { ...s, cssColor, textOn: chipTextOn(cssColor) }
-}))
+// 隐藏被禁用的状态;但工单当前状态若恰为被禁用状态(历史数据),仍保留该胶囊以正常回显并高亮
+const statusItems = computed(() => configuredStatuses.value
+  .filter(s => !s.disabled || s.value === issue.value?.status)
+  .map((s) => {
+    const cssColor = statusMainColor(s.value)
+    return { ...s, cssColor, textOn: chipTextOn(cssColor) }
+  }))
 const assigneeItems = computed(() => {
   const items = [
     { label: '无', value: '_none' },

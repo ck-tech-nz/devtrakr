@@ -143,6 +143,14 @@
                 列表
               </button>
             </div>
+            <!-- 看板列显示/隐藏编辑器:置于行尾,仅看板视图显示 -->
+            <KanbanColumnEditor
+              v-if="viewMode === 'kanban'"
+              size="xs"
+              :statuses="kanbanEditorStatuses"
+              :hidden="settings.project_kanban_hidden"
+              @update:hidden="(v: string[]) => updateSettings('project_kanban_hidden', v)"
+            />
           </div>
         </div>
 
@@ -275,6 +283,7 @@
 <script setup lang="ts">
 import { ISSUE_STATUS_OPTIONS, KANBAN_DEFAULT_COLUMNS, KANBAN_COMPLETED_LEFT, KANBAN_COMPLETED_RIGHT } from '~/constants/issueStatus'
 import StatusCell from '~/components/issue/StatusCell.vue'
+import KanbanColumnEditor from '~/components/issue/KanbanColumnEditor.vue'
 import TransferDialog from '~/components/issue/TransferDialog.vue'
 import AssignDialog from '~/components/issue/AssignDialog.vue'
 
@@ -328,10 +337,10 @@ const filterStatus = ref('_all')
 const filterAssignee = ref('_all')
 
 const priorityOptions = [{ label: '全部', value: '_all' }, { label: 'P0', value: 'P0' }, { label: 'P1', value: 'P1' }, { label: 'P2', value: 'P2' }, { label: 'P3', value: 'P3' }]
-// 状态选项 label 走站点配置(statusLabel),value 是流转逻辑依赖的固定值
+// 状态选项 label 走站点配置(statusLabel),value 是流转逻辑依赖的固定值;隐藏被禁用的状态
 const statusOptions = computed(() => [
   { label: '全部', value: '_all' },
-  ...ISSUE_STATUS_OPTIONS.map(o => ({ value: o.value, label: statusLabel(o.value) })),
+  ...ISSUE_STATUS_OPTIONS.filter(o => !isStatusDisabled(o.value)).map(o => ({ value: o.value, label: statusLabel(o.value) })),
 ])
 const assigneeOptions = computed(() => [{ label: '全部', value: '_all' }, ...users.value.map(u => ({ label: u.name || u.username, value: String(u.id) }))])
 
@@ -380,10 +389,20 @@ async function onStatusChange({ issueId, newStatus }: { issueId: number, newStat
   }
 }
 
+// 看板候选列(完整顺序),排除管理员禁用的状态 —— 供列编辑器选择显隐
+const kanbanCandidateKeys = computed(() =>
+  [...KANBAN_COMPLETED_LEFT, ...KANBAN_DEFAULT_COLUMNS, ...KANBAN_COMPLETED_RIGHT]
+    .filter(key => !isStatusDisabled(key)))
+// 列编辑器选项:候选状态 + 显示名/主色
+const kanbanEditorStatuses = computed(() => kanbanCandidateKeys.value.map(key => ({
+  value: key,
+  label: statusLabel(key),
+  color: statusMainColor(key),
+})))
+
 const kanbanColumns = computed(() => {
-  const baseKeys = KANBAN_DEFAULT_COLUMNS
-  // Always include all columns for the project view (no showCompleted toggle here)
-  const keys = [...KANBAN_COMPLETED_LEFT, ...baseKeys, ...KANBAN_COMPLETED_RIGHT]
+  // 候选列去掉用户隐藏的(管理员禁用的已在候选阶段排除);项目页看板为客户端过滤,无需重拉
+  const keys = kanbanCandidateKeys.value.filter(key => !settings.value.project_kanban_hidden.includes(key))
   return keys.map(key => ({
     key,
     label: statusLabel(key),

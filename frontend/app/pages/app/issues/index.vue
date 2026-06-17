@@ -6,7 +6,8 @@
       <h1 class="text-xl md:text-2xl font-semibold text-gray-900 dark:text-gray-100">问题跟踪</h1>
       <div class="flex items-center justify-between md:justify-end gap-3">
         <!-- 筛选控件:常驻显示,不自动隐藏 -->
-        <label class="flex items-center gap-1.5 cursor-pointer select-none">
+        <!-- 「查看全部」控制列表视图是否含已完成工单;看板视图改用「列编辑器」按状态列显隐 -->
+        <label v-if="viewMode === 'table'" class="flex items-center gap-1.5 cursor-pointer select-none">
           <span class="text-sm text-gray-500 dark:text-gray-400">查看全部</span>
           <USwitch v-model="showCompleted" size="lg" />
         </label>
@@ -95,6 +96,13 @@
         <UButton icon="i-heroicons-plus" size="sm" @click="openCreateModal">
           <span class="hidden md:inline">新建问题</span>
         </UButton>
+        <!-- 看板列显示/隐藏编辑器:置于工具栏行尾,仅看板视图显示 -->
+        <KanbanColumnEditor
+          v-if="viewMode === 'kanban'"
+          :statuses="kanbanEditorStatuses"
+          :hidden="settings.issues_kanban_hidden"
+          @update:hidden="(v: string[]) => updateSettings('issues_kanban_hidden', v)"
+        />
       </div>
     </div>
 
@@ -410,6 +418,7 @@
 <script setup lang="ts">
 import { ISSUE_STATUS, ISSUE_STATUS_OPTIONS, KANBAN_DEFAULT_COLUMNS, KANBAN_COMPLETED_LEFT, KANBAN_COMPLETED_RIGHT, statusColor as statusColorFn } from '~/constants/issueStatus'
 import StatusCell from '~/components/issue/StatusCell.vue'
+import KanbanColumnEditor from '~/components/issue/KanbanColumnEditor.vue'
 import TransferDialog from '~/components/issue/TransferDialog.vue'
 import AssignDialog from '~/components/issue/AssignDialog.vue'
 import { buildIssueQueryParams, buildIssueFilterParams } from '~/utils/issueQuery'
@@ -693,8 +702,8 @@ const projectRepoOptions = computed(() => projectRepos.value.map(r => ({ label: 
 
 const projectOptions = computed(() => projects.value.map(p => ({ label: p.name, value: String(p.id) })))
 const createPriorityOptions = computed(() => priorityItems.value.map(p => ({ label: `${p.value} ${p.label}`, value: p.value })))
-// 状态选项 label 走站点配置(statusLabel),value 是流转逻辑依赖的固定值
-const createStatusOptions = computed(() => ISSUE_STATUS_OPTIONS.map(o => ({ value: o.value, label: statusLabel(o.value) })))
+// 状态选项 label 走站点配置(statusLabel),value 是流转逻辑依赖的固定值;隐藏被禁用的状态
+const createStatusOptions = computed(() => ISSUE_STATUS_OPTIONS.filter(o => !isStatusDisabled(o.value)).map(o => ({ value: o.value, label: statusLabel(o.value) })))
 const createAssigneeOptions = computed(() => [{ label: '无', value: '_none' }, ...developers.value.map(u => ({ label: u.name || u.username, value: String(u.id) }))])
 
 // 首项「全部负责人」用于清除负责人筛选；SelectItem 不允许空字符串 value，用 '_all' 哨兵在模板里映射回 ''
@@ -721,7 +730,7 @@ function setReporterUser(v: string) {
   const u = users.value.find(x => String(x.id) === v)
   filterReporter.value = { type: 'reporter_display_user', value: v, label: u?.name || u?.username || '提出人' }
 }
-const filterStatusOptions = computed(() => ISSUE_STATUS_OPTIONS.map(o => ({ value: o.value, label: statusLabel(o.value) })))
+const filterStatusOptions = computed(() => ISSUE_STATUS_OPTIONS.filter(o => !isStatusDisabled(o.value)).map(o => ({ value: o.value, label: statusLabel(o.value) })))
 
 function closeCreateModal() {
   onCreateModalUpdate(false)
@@ -814,9 +823,19 @@ const kanban = useKanbanIssues((status, pageNum) => {
   return p
 })
 
-const kanbanStatusKeys = computed(() => showCompleted.value
-  ? [...KANBAN_COMPLETED_LEFT, ...KANBAN_DEFAULT_COLUMNS, ...KANBAN_COMPLETED_RIGHT]
-  : KANBAN_DEFAULT_COLUMNS)
+// 看板候选列(完整顺序),排除管理员禁用的状态 —— 供列编辑器选择显隐
+const kanbanCandidateKeys = computed(() =>
+  [...KANBAN_COMPLETED_LEFT, ...KANBAN_DEFAULT_COLUMNS, ...KANBAN_COMPLETED_RIGHT]
+    .filter(key => !isStatusDisabled(key)))
+// 列编辑器选项:候选状态 + 显示名/主色
+const kanbanEditorStatuses = computed(() => kanbanCandidateKeys.value.map(key => ({
+  value: key,
+  label: statusLabel(key),
+  color: statusMainColor(key),
+})))
+// 实际渲染的看板列 = 候选列去掉用户隐藏的(被禁用的已在候选阶段排除;隐藏的列不拉取)
+const kanbanStatusKeys = computed(() =>
+  kanbanCandidateKeys.value.filter(key => !settings.value.issues_kanban_hidden.includes(key)))
 
 const kanbanColumns = computed(() => kanbanStatusKeys.value.map((key) => {
   const col = kanban.columns.value[key]
@@ -1039,6 +1058,11 @@ watch(showCompleted, (v) => {
   fetchIssues()
 })
 
+// 列编辑器改动后,看板模式需重新拉取可见列(新显示的列需要取数;隐藏的列自动不再渲染)
+watch(() => settings.value.issues_kanban_hidden, () => {
+  if (viewMode.value === 'kanban') fetchIssues()
+})
+
 // 从负责人下拉框选值时清除处理人标签（两者都按 assignee 筛选，互斥）
 watch(filterAssignee, (v) => {
   if (v) filterHandler.value = null
@@ -1097,20 +1121,21 @@ onUnmounted(() => {
 
 onMounted(async () => {
   loadTitleColWidth()
-  const [, usersData, developersData, settingsData, projectsData, reposData] = await Promise.all([
+  // 站点设置先行:看板初次 reset 依赖 kanbanStatusKeys,必须先拿到状态禁用配置才能排除被禁用的列
+  const settingsData = await api<any>('/api/settings/').catch(() => ({ labels: [] }))
+  const rawLabels = settingsData?.labels || {}
+  labelOptions.value = typeof rawLabels === 'object' && !Array.isArray(rawLabels) ? Object.keys(rawLabels) : rawLabels
+  setPrioritiesFromSettings(settingsData?.priorities)
+  setStatusesFromSettings(settingsData?.issue_statuses)
+  const [, usersData, developersData, projectsData, reposData] = await Promise.all([
     fetchIssues(),
     api<any[]>('/api/users/choices/').catch(() => []),
     api<any[]>(`/api/users/choices/?group=${encodeURIComponent('开发者')}`).catch(() => []),
-    api<any>('/api/settings/').catch(() => ({ labels: [] })),
     api<any>('/api/projects/').catch(() => ({ results: [] })),
     api<any>('/api/repos/').catch(() => ({ results: [] })),
   ])
   users.value = usersData || []
   developers.value = developersData || []
-  const rawLabels = settingsData?.labels || {}
-  labelOptions.value = typeof rawLabels === 'object' && !Array.isArray(rawLabels) ? Object.keys(rawLabels) : rawLabels
-  setPrioritiesFromSettings(settingsData?.priorities)
-  setStatusesFromSettings(settingsData?.issue_statuses)
   projects.value = projectsData?.results || projectsData || []
   repos.value = reposData?.results || reposData || []
   // Check AI analysis status for issues with repos

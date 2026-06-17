@@ -1,18 +1,32 @@
 <div id="plw-{{ widget.name }}" class="mt-1">
   {% if widget.hint %}<p class="text-xs text-gray-400 mb-2">{{ widget.hint }}</p>{% endif %}
+  <div class="flex items-center gap-2 mb-2">
+    <button type="button" id="plw-toggle-{{ widget.name }}"
+      class="px-2 py-1 text-xs rounded-md border border-gray-300 text-gray-500 bg-white hover:bg-gray-50 dark:bg-gray-800 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700">编辑原始 JSON</button>
+    <span id="plw-err-{{ widget.name }}" class="text-xs text-red-500 hidden"></span>
+  </div>
   <div id="plw-rows-{{ widget.name }}" class="flex flex-col gap-2"></div>
+  <textarea id="plw-raw-{{ widget.name }}" rows="12" spellcheck="false"
+    class="hidden w-full px-2 py-1 text-sm font-mono rounded-md border border-gray-300 bg-white text-gray-700 dark:bg-gray-900 dark:border-gray-600 dark:text-gray-300 focus:border-primary-500 focus:ring-primary-500"></textarea>
   <input type="hidden" id="plw-hidden-{{ widget.name }}" name="{{ widget.name }}" />
 </div>
 
 <script>
 (function() {
   var items = {{ widget.items_json|safe }};
+  var allowDisable = {{ widget.allow_disable|yesno:"true,false" }};
+  var lockedValues = {{ widget.locked_values_json|safe }};
   var rowsBox = document.getElementById('plw-rows-{{ widget.name }}');
+  var raw = document.getElementById('plw-raw-{{ widget.name }}');
   var hidden = document.getElementById('plw-hidden-{{ widget.name }}');
+  var toggleBtn = document.getElementById('plw-toggle-{{ widget.name }}');
+  var errBox = document.getElementById('plw-err-{{ widget.name }}');
+  var mode = 'rich';
 
   var INPUT_CLS = 'px-2 py-1 text-sm rounded-md border border-gray-300 bg-white text-gray-700 dark:bg-gray-900 dark:border-gray-600 dark:text-gray-300 focus:border-primary-500 focus:ring-primary-500';
   var BTN_CLS = 'px-1.5 py-1 text-xs rounded-md border border-gray-300 text-gray-500 bg-white hover:bg-gray-50 dark:bg-gray-800 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700';
 
+  // 隐藏 input 始终是提交源:rich 模式由 items 序列化;raw 模式仅在 JSON 合法时回写
   function sync() {
     hidden.value = JSON.stringify(items);
   }
@@ -110,9 +124,92 @@
       row.appendChild(colorWrap);
       row.appendChild(value);
       row.appendChild(label);
+
+      // 「禁用」复选框:被禁用的状态在前端各选择/展示入口隐藏(已有该状态的工单仍显示)。
+      // 流程关键状态(系统自动赋值)置灰不可禁用,raw JSON 编辑可绕过,后端 clean() 兜底。
+      if (allowDisable) {
+        var disLabel = document.createElement('label');
+        var locked = lockedValues.indexOf(item.value) !== -1;
+        disLabel.className = 'flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400 select-none ' + (locked ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer');
+        var dis = document.createElement('input');
+        dis.type = 'checkbox';
+        dis.checked = !!item.disabled;
+        if (locked) {
+          dis.disabled = true;
+          disLabel.title = '流程关键状态不可禁用';
+        } else {
+          dis.addEventListener('change', function() { item.disabled = dis.checked; sync(); });
+        }
+        disLabel.appendChild(dis);
+        disLabel.appendChild(document.createTextNode('禁用'));
+        row.appendChild(disLabel);
+      }
+
       row.appendChild(up);
       row.appendChild(down);
       rowsBox.appendChild(row);
+    });
+  }
+
+  function showError(msg) { errBox.textContent = msg; errBox.classList.remove('hidden'); }
+  function clearError() { errBox.textContent = ''; errBox.classList.add('hidden'); }
+
+  // raw 文本解析为数组则返回,否则 null(非法 JSON / 非数组)
+  function parseRaw() {
+    try {
+      var parsed = JSON.parse(raw.value);
+      return Array.isArray(parsed) ? parsed : null;
+    } catch (e) { return null; }
+  }
+
+  function enterRaw() {
+    raw.value = JSON.stringify(items, null, 2);
+    raw.classList.remove('border-red-500');
+    rowsBox.classList.add('hidden');
+    raw.classList.remove('hidden');
+    toggleBtn.textContent = '返回可视化编辑';
+    mode = 'raw';
+    clearError();
+  }
+
+  function enterRich() {
+    var parsed = parseRaw();
+    if (parsed === null) { showError('JSON 格式错误,无法返回可视化编辑'); return; }
+    items = parsed;
+    raw.classList.add('hidden');
+    rowsBox.classList.remove('hidden');
+    toggleBtn.textContent = '编辑原始 JSON';
+    mode = 'rich';
+    clearError();
+    render(); sync();
+  }
+
+  toggleBtn.addEventListener('click', function() {
+    if (mode === 'rich') enterRaw(); else enterRich();
+  });
+
+  // raw 模式下实时校验:合法则回写隐藏 input;非法则红框提示且不写入隐藏 input
+  raw.addEventListener('input', function() {
+    var parsed = parseRaw();
+    if (parsed === null) {
+      raw.classList.add('border-red-500');
+      showError('JSON 格式错误,请修正后再保存');
+    } else {
+      raw.classList.remove('border-red-500');
+      clearError();
+      items = parsed; sync();
+    }
+  });
+
+  // 拦截提交:raw 模式且 JSON 非法时阻止保存,否则会静默丢弃本次编辑(隐藏 input 仍是旧值)
+  if (hidden.form) {
+    hidden.form.addEventListener('submit', function(e) {
+      if (mode === 'raw' && parseRaw() === null) {
+        e.preventDefault();
+        raw.classList.add('border-red-500');
+        showError('JSON 格式错误,无法保存,请修正后重试');
+        raw.focus();
+      }
     });
   }
 
