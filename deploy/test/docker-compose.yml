@@ -93,6 +93,26 @@ services:
       retries: 3
       start_period: 40s
 
+  # Flower:Celery 实时监控(传统表格 UI)+ flower-i18n-zh 中文补丁(界面右上角中英切换)
+  # 与 Kanchi 并存,读同一个 redis broker;镜像本地构建(./flower-zh);宿主机端口 5555 暴露
+  flower:
+    build: ./flower-zh
+    image: devtrakr/flower-zh:latest
+    container_name: devtrakr-flower-test
+    restart: unless-stopped
+    environment:
+      # 与 worker(Asia/Shanghai)时区对齐,消除 Flower(默认 UTC)的 8 小时 clock drift 告警
+      TZ: Asia/Shanghai
+      # 允许无鉴权访问 REST API(面板本身已无鉴权,内网 LAN,与 Kanchi 一致)
+      FLOWER_UNAUTHENTICATED_API: "true"
+    networks:
+      - db-network
+    ports:
+      - "5555:5555"
+    command: celery --broker=redis://redis:6379/0 flower --address=0.0.0.0 --port=5555 --persistent=True --db=/data/flower
+    volumes:
+      - flower-data:/data
+
 networks:
   db-network:
     name: db-network
@@ -103,3 +123,4 @@ networks:
 
 volumes:
   kanchi-data:
+  flower-data:
