@@ -209,6 +209,12 @@ Building on the 2026-04-03 baseline (ASGI/uvicorn, `postgresql-client` in the ba
   on the host, per Decision 2.
 - **Celery worker** must run the backup task (it already runs `kpi`/`ai`/`repos` tasks); ensure the
   worker container has the SSH client + keys too, since that is where `run_backup` executes.
+- **`known_hosts` must be pre-seeded**: the mounted `./ssh` directory must contain the SSH `config`,
+  the private key file(s), and a pre-seeded `known_hosts` covering every remote host. OpenSSH rejects
+  group- or world-readable private keys (permissions must be `600`). Because the worker runs
+  non-interactively with `BatchMode=yes`, a remote target whose host key is absent from `known_hosts`
+  will fail its first backup immediately with "Host key verification failed" — this error surfaces
+  verbatim in the backup record's `error_message` field.
 - Remote hosts must have `pg_dump` available (directly or inside `docker_container`).
 
 ## Frontend (`/app/settings/backups`, route + nav unchanged)

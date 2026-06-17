@@ -3,6 +3,7 @@ import logging
 import os
 
 from celery import shared_task
+from django.db import transaction
 from django.utils import timezone
 
 from apps.backups.models import BackupTarget, DatabaseBackup
@@ -17,6 +18,7 @@ def prune_old_backups(target) -> None:
         return
     keep_ids = list(
         DatabaseBackup.objects.filter(target=target, status="success")
+        .order_by("-created_at")
         .values_list("id", flat=True)[: target.retention_count]
     )
     old = DatabaseBackup.objects.filter(target=target, status="success").exclude(id__in=keep_ids)
@@ -29,21 +31,25 @@ def prune_old_backups(target) -> None:
 
 @shared_task
 def run_backup(target_id, trigger="scheduled", created_by_id=None):
-    target = BackupTarget.objects.filter(id=target_id, is_active=True).first()
-    if target is None:
-        return None
-    # 同一 target 一次只跑一个
-    if DatabaseBackup.objects.filter(target=target, status="running").exists():
-        logger.warning("backup target %s already running, skip", target_id)
-        return None
+    # 原子锁:select_for_update 防止两个并发任务同时通过 running 检查
+    with transaction.atomic():
+        target = BackupTarget.objects.select_for_update().filter(id=target_id, is_active=True).first()
+        if target is None:
+            return None
+        # 同一 target 一次只跑一个
+        if DatabaseBackup.objects.filter(target=target, status="running").exists():
+            logger.warning("backup target %s already running, skip", target_id)
+            return None
 
-    timestamp = timezone.now().strftime("%Y%m%d_%H%M%S")
-    filename = f"{target.db_name}_{timestamp}.dump"
+        timestamp = timezone.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"{target.db_name}_{timestamp}.dump"
+        backup = DatabaseBackup.objects.create(
+            target=target, filename=filename, status="running",
+            trigger=trigger, created_by_id=created_by_id,
+        )
+
+    # filepath 和实际 dump 在锁外执行,不持有行锁
     filepath = os.path.join(get_backup_dir(), filename)
-    backup = DatabaseBackup.objects.create(
-        target=target, filename=filename, status="running",
-        trigger=trigger, created_by_id=created_by_id,
-    )
 
     try:
         success, size, err = dump_database(target, filepath)

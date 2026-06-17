@@ -54,7 +54,7 @@ def build_remote_dump_cmd(target) -> str:
 
 
 def build_ssh_argv(target, remote_cmd: str) -> list:
-    argv = ["ssh"]
+    argv = ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10"]
     if target.ssh_port:
         argv += ["-p", str(target.ssh_port)]
     host = f"{target.ssh_user}@{target.ssh_host}" if target.ssh_user else target.ssh_host

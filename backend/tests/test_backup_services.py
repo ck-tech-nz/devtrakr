@@ -47,3 +47,4 @@ def test_build_ssh_argv_with_user_and_port():
     assert "-p" in argv and "2222" in argv
     assert "ubuntu@prod1" in argv
     assert argv[-1] == "pg_dump -Fc app"
+    assert "BatchMode=yes" in argv
