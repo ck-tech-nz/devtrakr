@@ -45,6 +45,7 @@ INSTALLED_APPS = [
     "apps.notifications",
     "apps.kpi",
     "apps.uptime",
+    "apps.backups",
     # Packages
     "page_perms",
 ]
