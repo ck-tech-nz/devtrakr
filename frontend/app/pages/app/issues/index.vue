@@ -6,10 +6,17 @@
       <h1 class="text-xl md:text-2xl font-semibold text-gray-900 dark:text-gray-100">问题跟踪</h1>
       <div class="flex items-center justify-between md:justify-end gap-3">
         <!-- 筛选控件:常驻显示,不自动隐藏 -->
-        <label class="flex items-center gap-1.5 cursor-pointer select-none">
+        <!-- 「查看全部」控制列表视图是否含已完成工单;看板视图改用「列编辑器」按状态列显隐 -->
+        <label v-if="viewMode === 'table'" class="flex items-center gap-1.5 cursor-pointer select-none">
           <span class="text-sm text-gray-500 dark:text-gray-400">查看全部</span>
           <USwitch v-model="showCompleted" size="lg" />
         </label>
+        <KanbanColumnEditor
+          v-else
+          :statuses="kanbanEditorStatuses"
+          :hidden="settings.issues_kanban_hidden"
+          @update:hidden="(v: string[]) => updateSettings('issues_kanban_hidden', v)"
+        />
         <UInput v-model="searchQuery" placeholder="搜索标题或编号" icon="i-heroicons-magnifying-glass" size="sm" class="w-44" />
         <!-- 「只看我的」与「负责人」同属处理人筛选,合并为一个连体按钮组 -->
         <UButtonGroup size="sm">
@@ -410,6 +417,7 @@
 <script setup lang="ts">
 import { ISSUE_STATUS, ISSUE_STATUS_OPTIONS, KANBAN_DEFAULT_COLUMNS, KANBAN_COMPLETED_LEFT, KANBAN_COMPLETED_RIGHT, statusColor as statusColorFn } from '~/constants/issueStatus'
 import StatusCell from '~/components/issue/StatusCell.vue'
+import KanbanColumnEditor from '~/components/issue/KanbanColumnEditor.vue'
 import TransferDialog from '~/components/issue/TransferDialog.vue'
 import AssignDialog from '~/components/issue/AssignDialog.vue'
 import { buildIssueQueryParams, buildIssueFilterParams } from '~/utils/issueQuery'
@@ -814,10 +822,19 @@ const kanban = useKanbanIssues((status, pageNum) => {
   return p
 })
 
-// 被禁用的状态整列不显示(已有该状态的工单仅在列表视图可见)
-const kanbanStatusKeys = computed(() => (showCompleted.value
-  ? [...KANBAN_COMPLETED_LEFT, ...KANBAN_DEFAULT_COLUMNS, ...KANBAN_COMPLETED_RIGHT]
-  : KANBAN_DEFAULT_COLUMNS).filter(key => !isStatusDisabled(key)))
+// 看板候选列(完整顺序),排除管理员禁用的状态 —— 供列编辑器选择显隐
+const kanbanCandidateKeys = computed(() =>
+  [...KANBAN_COMPLETED_LEFT, ...KANBAN_DEFAULT_COLUMNS, ...KANBAN_COMPLETED_RIGHT]
+    .filter(key => !isStatusDisabled(key)))
+// 列编辑器选项:候选状态 + 显示名/主色
+const kanbanEditorStatuses = computed(() => kanbanCandidateKeys.value.map(key => ({
+  value: key,
+  label: statusLabel(key),
+  color: statusMainColor(key),
+})))
+// 实际渲染的看板列 = 候选列去掉用户隐藏的(被禁用的已在候选阶段排除;隐藏的列不拉取)
+const kanbanStatusKeys = computed(() =>
+  kanbanCandidateKeys.value.filter(key => !settings.value.issues_kanban_hidden.includes(key)))
 
 const kanbanColumns = computed(() => kanbanStatusKeys.value.map((key) => {
   const col = kanban.columns.value[key]
@@ -1038,6 +1055,11 @@ watch(showCompleted, (v) => {
   page.value = 1
   rowSelection.value = {}
   fetchIssues()
+})
+
+// 列编辑器改动后,看板模式需重新拉取可见列(新显示的列需要取数;隐藏的列自动不再渲染)
+watch(() => settings.value.issues_kanban_hidden, () => {
+  if (viewMode.value === 'kanban') fetchIssues()
 })
 
 // 从负责人下拉框选值时清除处理人标签（两者都按 assignee 筛选，互斥）

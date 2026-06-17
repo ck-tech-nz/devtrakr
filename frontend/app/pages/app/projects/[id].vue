@@ -127,6 +127,13 @@
               <USelect v-model="filterStatus" :items="statusOptions" size="xs" class="w-24" value-key="value" />
               <USelect v-model="filterAssignee" :items="assigneeOptions" size="xs" class="w-28" value-key="value" />
             </div>
+            <KanbanColumnEditor
+              v-if="viewMode === 'kanban'"
+              size="xs"
+              :statuses="kanbanEditorStatuses"
+              :hidden="settings.project_kanban_hidden"
+              @update:hidden="(v: string[]) => updateSettings('project_kanban_hidden', v)"
+            />
             <div class="flex items-center bg-gray-100 dark:bg-gray-800 rounded-lg p-0.5">
               <button
                 class="px-3 py-1 text-xs font-medium rounded-md transition-colors"
@@ -275,6 +282,7 @@
 <script setup lang="ts">
 import { ISSUE_STATUS_OPTIONS, KANBAN_DEFAULT_COLUMNS, KANBAN_COMPLETED_LEFT, KANBAN_COMPLETED_RIGHT } from '~/constants/issueStatus'
 import StatusCell from '~/components/issue/StatusCell.vue'
+import KanbanColumnEditor from '~/components/issue/KanbanColumnEditor.vue'
 import TransferDialog from '~/components/issue/TransferDialog.vue'
 import AssignDialog from '~/components/issue/AssignDialog.vue'
 
@@ -380,11 +388,20 @@ async function onStatusChange({ issueId, newStatus }: { issueId: number, newStat
   }
 }
 
+// 看板候选列(完整顺序),排除管理员禁用的状态 —— 供列编辑器选择显隐
+const kanbanCandidateKeys = computed(() =>
+  [...KANBAN_COMPLETED_LEFT, ...KANBAN_DEFAULT_COLUMNS, ...KANBAN_COMPLETED_RIGHT]
+    .filter(key => !isStatusDisabled(key)))
+// 列编辑器选项:候选状态 + 显示名/主色
+const kanbanEditorStatuses = computed(() => kanbanCandidateKeys.value.map(key => ({
+  value: key,
+  label: statusLabel(key),
+  color: statusMainColor(key),
+})))
+
 const kanbanColumns = computed(() => {
-  const baseKeys = KANBAN_DEFAULT_COLUMNS
-  // Always include all columns for the project view (no showCompleted toggle here)
-  // 被禁用的状态整列不显示(已有该状态的工单仅在列表视图可见)
-  const keys = [...KANBAN_COMPLETED_LEFT, ...baseKeys, ...KANBAN_COMPLETED_RIGHT].filter(key => !isStatusDisabled(key))
+  // 候选列去掉用户隐藏的(管理员禁用的已在候选阶段排除);项目页看板为客户端过滤,无需重拉
+  const keys = kanbanCandidateKeys.value.filter(key => !settings.value.project_kanban_hidden.includes(key))
   return keys.map(key => ({
     key,
     label: statusLabel(key),

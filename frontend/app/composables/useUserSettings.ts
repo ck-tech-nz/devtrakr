@@ -5,6 +5,9 @@ interface UserSettings {
   theme: 'light' | 'dark' | 'auto'
   // 工作台区块布局:有序的 {id, visible} 数组(空数组 = 用默认布局)
   dashboard_layout: { id: string; visible: boolean }[]
+  // 看板中被隐藏的状态列(状态值数组),按账号记忆;问题页与项目页各自独立
+  issues_kanban_hidden: string[]
+  project_kanban_hidden: string[]
 }
 
 const defaults: UserSettings = {
@@ -13,6 +16,9 @@ const defaults: UserSettings = {
   project_view_mode: 'kanban',
   theme: 'light',
   dashboard_layout: [],
+  // 问题页看板默认隐藏「未计划/已关闭」(沿用原「查看全部」关闭时的列集);项目页默认全显示
+  issues_kanban_hidden: ['未计划', '已关闭'],
+  project_kanban_hidden: [],
 }
 
 export function useUserSettings() {
