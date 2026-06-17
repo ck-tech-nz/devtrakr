@@ -127,13 +127,6 @@
               <USelect v-model="filterStatus" :items="statusOptions" size="xs" class="w-24" value-key="value" />
               <USelect v-model="filterAssignee" :items="assigneeOptions" size="xs" class="w-28" value-key="value" />
             </div>
-            <KanbanColumnEditor
-              v-if="viewMode === 'kanban'"
-              size="xs"
-              :statuses="kanbanEditorStatuses"
-              :hidden="settings.project_kanban_hidden"
-              @update:hidden="(v: string[]) => updateSettings('project_kanban_hidden', v)"
-            />
             <div class="flex items-center bg-gray-100 dark:bg-gray-800 rounded-lg p-0.5">
               <button
                 class="px-3 py-1 text-xs font-medium rounded-md transition-colors"
@@ -150,6 +143,14 @@
                 列表
               </button>
             </div>
+            <!-- 看板列显示/隐藏编辑器:置于行尾,仅看板视图显示 -->
+            <KanbanColumnEditor
+              v-if="viewMode === 'kanban'"
+              size="xs"
+              :statuses="kanbanEditorStatuses"
+              :hidden="settings.project_kanban_hidden"
+              @update:hidden="(v: string[]) => updateSettings('project_kanban_hidden', v)"
+            />
           </div>
         </div>
 

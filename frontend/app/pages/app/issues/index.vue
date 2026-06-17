@@ -11,12 +11,6 @@
           <span class="text-sm text-gray-500 dark:text-gray-400">查看全部</span>
           <USwitch v-model="showCompleted" size="lg" />
         </label>
-        <KanbanColumnEditor
-          v-else
-          :statuses="kanbanEditorStatuses"
-          :hidden="settings.issues_kanban_hidden"
-          @update:hidden="(v: string[]) => updateSettings('issues_kanban_hidden', v)"
-        />
         <UInput v-model="searchQuery" placeholder="搜索标题或编号" icon="i-heroicons-magnifying-glass" size="sm" class="w-44" />
         <!-- 「只看我的」与「负责人」同属处理人筛选,合并为一个连体按钮组 -->
         <UButtonGroup size="sm">
@@ -102,6 +96,13 @@
         <UButton icon="i-heroicons-plus" size="sm" @click="openCreateModal">
           <span class="hidden md:inline">新建问题</span>
         </UButton>
+        <!-- 看板列显示/隐藏编辑器:置于工具栏行尾,仅看板视图显示 -->
+        <KanbanColumnEditor
+          v-if="viewMode === 'kanban'"
+          :statuses="kanbanEditorStatuses"
+          :hidden="settings.issues_kanban_hidden"
+          @update:hidden="(v: string[]) => updateSettings('issues_kanban_hidden', v)"
+        />
       </div>
     </div>
 
