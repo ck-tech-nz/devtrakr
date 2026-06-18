@@ -1,6 +1,37 @@
-<script setup lang="ts">
-definePageMeta({ layout: 'default' })
+<template>
+  <div class="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 p-5">
+    <div class="flex items-center justify-between mb-3">
+      <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100">
+        数据库备份 ({{ targets.length }})
+      </h3>
+      <UButton
+        size="xs" color="neutral" variant="ghost"
+        icon="i-heroicons-arrow-path"
+        :loading="loading"
+        @click="refresh"
+      >刷新</UButton>
+    </div>
 
+    <div v-if="loading" class="text-sm text-gray-400 dark:text-gray-500 py-2">加载中...</div>
+
+    <div v-else-if="targets.length === 0" class="text-sm text-gray-400 dark:text-gray-500 py-2">
+      暂无备份目标
+    </div>
+
+    <div v-else class="space-y-2">
+      <BackupTargetCard
+        v-for="t in targets" :key="t.id" :target="t"
+        :bordered="false"
+        :running="runningId === t.id" :expanded="expandedId === t.id"
+        :records="recordsByTarget[t.id] || []"
+        @run="runBackup(t)" @toggle="toggleRecords(t)"
+        @download="downloadBackup" @delete="deleteBackup"
+      />
+    </div>
+  </div>
+</template>
+
+<script setup lang="ts">
 interface LatestBackup { status: string; created_at: string }
 interface BackupTarget {
   id: number
@@ -28,6 +59,10 @@ interface BackupRecord {
   created_at: string
 }
 
+const props = defineProps<{
+  projectId: number
+}>()
+
 const { api } = useApi()
 const toast = useToast()
 
@@ -37,13 +72,10 @@ const runningId = ref<number | null>(null)
 const expandedId = ref<number | null>(null)
 const recordsByTarget = ref<Record<number, BackupRecord[]>>({})
 
-// 本页仅管理站点级目标(project===null);项目级备份在各自项目详情页管理
-const siteTargets = computed(() => targets.value.filter(t => t.project === null))
-
 async function fetchTargets() {
   loading.value = true
   try {
-    const res = await api<any>('/api/backups/targets/')
+    const res = await api<any>(`/api/backups/targets/?project=${props.projectId}`)
     targets.value = res.results ?? res
   } finally {
     loading.value = false
@@ -107,31 +139,3 @@ async function deleteBackup(row: BackupRecord) {
 
 onMounted(fetchTargets)
 </script>
-
-<template>
-  <div class="p-6 space-y-6">
-    <div class="flex items-center gap-2">
-      <h1 class="text-lg font-semibold">数据库备份</h1>
-      <UButton
-        variant="ghost"
-        icon="i-heroicons-arrow-path"
-        :loading="loading"
-        @click="refresh"
-      >
-        刷新
-      </UButton>
-    </div>
-
-    <!-- 站点级(项目级备份请在各自项目详情页管理) -->
-    <section class="space-y-2">
-      <h2 class="text-sm font-medium text-gray-500">站点级</h2>
-      <BackupTargetCard
-        v-for="t in siteTargets" :key="t.id" :target="t"
-        :running="runningId === t.id" :expanded="expandedId === t.id"
-        :records="recordsByTarget[t.id] || []"
-        @run="runBackup(t)" @toggle="toggleRecords(t)"
-        @download="downloadBackup" @delete="deleteBackup"
-      />
-    </section>
-  </div>
-</template>

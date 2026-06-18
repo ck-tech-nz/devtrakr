@@ -31,12 +31,16 @@ interface BackupRecord {
   created_at: string
 }
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   target: BackupTarget
   running: boolean
   expanded: boolean
   records: BackupRecord[]
-}>()
+  // 是否显示卡片外边框;项目详情页已套在 section 容器内,传 false 去掉多余的双层边框
+  bordered?: boolean
+}>(), {
+  bordered: true,
+})
 
 const emit = defineEmits<{
   run: []
@@ -70,7 +74,10 @@ const connectionSummary = computed(() => {
 </script>
 
 <template>
-  <div class="border rounded-lg bg-white dark:bg-gray-900 divide-y divide-gray-100 dark:divide-gray-800">
+  <div
+    class="rounded-lg bg-white dark:bg-gray-900 divide-y divide-gray-100 dark:divide-gray-800"
+    :class="{ border: bordered }"
+  >
     <!-- 卡片头部 -->
     <div class="p-4 flex items-start justify-between gap-4">
       <div class="flex-1 min-w-0 space-y-1">

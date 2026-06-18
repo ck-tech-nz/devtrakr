@@ -101,6 +101,12 @@
     <!-- Uptime Monitors -->
     <ProjectsUptimeMonitorsSection :project-id="Number(route.params.id)" />
 
+    <!-- 数据库备份(仅超管可见) -->
+    <ProjectsBackupTargetsSection
+      v-if="user?.is_superuser"
+      :project-id="Number(route.params.id)"
+    />
+
     <!-- Issues View (collapsible card) -->
     <div class="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 p-5">
       <button
