@@ -48,7 +48,11 @@ export function useChat() {
     const created = await api<ChatComment>(`/api/issues/${issueId}/comments/`, {
       method: 'POST', body: { content },
     })
-    if (activeIssueId.value === issueId) messages.value.push(created)
+    // 乐观插入也要去重:WS 回声(Enhancement B)可能在 POST 解析前就先插入了同一条,
+    // 二者竞态;按 id 去重避免重复显示。
+    if (activeIssueId.value === issueId && !messages.value.some(m => m.id === created.id)) {
+      messages.value.push(created)
+    }
     return created
   }
 

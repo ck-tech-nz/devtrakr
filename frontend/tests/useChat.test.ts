@@ -47,6 +47,20 @@ describe('useChat REST', () => {
     expect((w.vm.conversations as any)[0].issue_id).toBe(9)
     w.unmount()
   })
+
+  it('does not duplicate when the WS echo races the optimistic sendReply', async () => {
+    apiMock.mockResolvedValue({ id: 99, content: 'once' })  // POST(+markRead) 都返回同一条
+    const w = await mountSuspended(Harness)
+    await flushPromises()
+    ;(w.vm.activeIssueId as any) = 5
+    // echo 先到(自己发的回声),handleIncoming 先插入 id=99
+    ;(w.vm.handleIncoming as Function)({ type: 'comment.new', issue_id: 5, issue_title: 'X', unread_count: 0, comment: { id: 99, content: 'once' } as any })
+    // 随后 POST 解析,sendReply 不应重复插入同一 id
+    await (w.vm.sendReply as Function)(5, 'once')
+    await flushPromises()
+    expect((w.vm.messages as any).length).toBe(1)
+    w.unmount()
+  })
 })
 
 describe('useChat WebSocket', () => {
