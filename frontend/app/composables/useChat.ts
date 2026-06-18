@@ -13,6 +13,8 @@ export interface ChatIncoming {
 
 export function useChat() {
   const { api } = useApi()
+  const { user } = useAuth()
+  const meId = computed(() => (user.value ? Number(user.value.id) : null))
   const conversations = useState<ChatConversation[]>('chat-conversations', () => [])
   const unreadTotal = useState<number>('chat-unread-total', () => 0)
   const activeIssueId = useState<number | null>('chat-active', () => null)
@@ -52,22 +54,28 @@ export function useChat() {
 
   // WS 事件入口(Task 9 wiring 调用)。
   function handleIncoming(ev: ChatIncoming) {
-    lastIncoming.value = ev
-    if (activeIssueId.value === ev.issue_id) {
-      messages.value.push(ev.comment)
-      markRead(ev.issue_id)
-      return
-    }
+    const isOwn = meId.value != null && ev.comment.author === meId.value
+    const active = activeIssueId.value === ev.issue_id
+
+    // 预览条 + 提示音:仅他人消息、且不在当前会话时才触发(自己发的不打扰自己)
+    if (!isOwn && !active) lastIncoming.value = ev
+
+    // 会话列表始终更新(置顶 + 刷新末条),这样自己从问题页发的评论也会实时回显到自己的列表
     let conv = conversations.value.find(c => c.issue_id === ev.issue_id)
     if (!conv) {
       conv = { issue_id: ev.issue_id, issue_title: ev.issue_title, unread_count: 0, last_comment: ev.comment }
-      conversations.value.unshift(conv)
     } else {
       conv.last_comment = ev.comment
-      conversations.value = [conv, ...conversations.value.filter(c => c.issue_id !== ev.issue_id)]
     }
-    conv.unread_count = ev.unread_count
+    conv.unread_count = active ? 0 : ev.unread_count
+    conversations.value = [conv, ...conversations.value.filter(c => c.issue_id !== ev.issue_id)]
     recomputeTotal()
+
+    if (active) {
+      // 去重:自己发的可能已被 sendReply 乐观插入,WS 回推时按 id 跳过,避免重复
+      if (!messages.value.some(m => m.id === ev.comment.id)) messages.value.push(ev.comment)
+      if (!isOwn) markRead(ev.issue_id)  // 他人消息推进服务端已读指针;自己的服务端已自动已读
+    }
   }
 
   let ws: WebSocket | null = null

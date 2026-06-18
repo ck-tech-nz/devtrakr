@@ -73,8 +73,8 @@ def broadcast_comment(comment) -> None:
             part.save(update_fields=["updated_at"])  # bump 排序
         parts[user.id] = part
 
-    for user in recipients:
-        if author and user.id == author.id:
-            continue
+    # 推送给所有参与者(含作者本人)。作者自己的消息 unread_count=0(已自动已读),
+    # 前端据此不弹预览条/不计未读,仅让作者本人的会话列表与线程实时回显自己的发言。
+    for user in everyone:
         part = parts[user.id]  # 复用第一遍已获取的行
         _push_comment_ws(user.id, comment, part.unread_count())
