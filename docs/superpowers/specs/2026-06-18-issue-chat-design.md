@@ -165,3 +165,59 @@ def broadcast_comment(comment):
 - **JWT 连接期内过期**：连接在 open 时鉴权；token 刷新或 `4401` 关闭时用新 token 重连。
 - **离线期间漏事件**（WS 曾断）：（重）连时 `loadConversations()` 从 DB 重新水合未读数——WS 负责活跃推送，DB 才是真相源，不会永久丢失。
 - **headless/CI 无 channel layer**：回落 `InMemoryChannelLayer`；`broadcast_comment` 在 layer/Redis 不可用时优雅降级（评论仍保存）。
+
+## 10. 部署 / Deploy
+
+### 环境变量
+
+| 变量 | 默认值 | 说明 |
+|---|---|---|
+| `CHANNEL_REDIS_URL` | `redis://127.0.0.1:6379/1` | Django Channels channel layer 使用的 Redis 地址。测试/生产须指向可达的 Redis；复用 Celery 同一实例，DB 用 `/1`（Celery broker 占 `/0`）。 |
+
+在 `backend/.env.example` 中已注明此变量。
+
+### ASGI 服务器
+
+后端已以 `uvicorn config.asgi:application` 启动（`backend/Dockerfile` CMD），原生支持 ASGI。加入 Django Channels 的 `ProtocolTypeRouter` 后**无需更换服务器**，uvicorn 直接处理 WebSocket 升级。
+
+- **生产**：`uvicorn config.asgi:application`（现有 Dockerfile CMD，不变）。
+- **开发 runserver**：`daphne`（由 `channels` 添加到 `INSTALLED_APPS` 后自动替换 `manage.py runserver`，仅本地开发使用）。
+
+### 反向代理（nginx / traefik）
+
+前置代理**必须**将 `/ws/` 路径的 WebSocket 升级头透传给后端，否则浏览器 WebSocket 连接将被拒绝（HTTP 101 协商失败）。
+
+**nginx 示例**（在 backend upstream 的 `location` 块中追加）：
+
+```nginx
+location /ws/ {
+    proxy_pass http://backend;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+    proxy_set_header Host $host;
+    proxy_read_timeout 86400s;
+}
+```
+
+**traefik**：确认中间件或路由规则未剥离 `Upgrade` / `Connection` 头（默认 traefik 会透传，无需额外配置）。
+
+### 前端代理
+
+- **开发**：`nuxt.config.ts` 的 `nitro.devProxy` 已添加 `/ws/`（`ws: true`），见第 6 节。
+- **生产**：Nitro `routeRules` 转发 `/ws/**` upgrade，或由前置代理直接将 `/ws/` 指向后端。
+
+### 启动验证
+
+部署后检查：
+
+```bash
+# uvicorn 无报错启动（ProtocolTypeRouter + consumer 导入正常）
+uv run uvicorn config.asgi:application --port 8001
+
+# HTTP 端点响应正常
+curl http://localhost:8001/api/about/
+
+# WebSocket 握手（需 Redis 在线 + 有效 JWT）
+wscat -c "ws://localhost:8001/ws/chat/?token=<access_token>"
+```
