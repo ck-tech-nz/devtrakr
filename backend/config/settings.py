@@ -346,6 +346,40 @@ UNFOLD = {
                 ],
             },
             {
+                "title": "数据库备份",
+                "separator": True,
+                "collapsible": True,
+                "items": [
+                    {
+                        "title": "备份目标",
+                        "icon": "database",
+                        "link": reverse_lazy("admin:backups_backuptarget_changelist"),
+                    },
+                    {
+                        "title": "备份记录",
+                        "icon": "backup",
+                        "link": reverse_lazy("admin:backups_databasebackup_changelist"),
+                    },
+                ],
+            },
+            {
+                "title": "系统监控",
+                "separator": True,
+                "collapsible": True,
+                "items": [
+                    {
+                        "title": "监控项",
+                        "icon": "monitor_heart",
+                        "link": reverse_lazy("admin:uptime_uptimemonitor_changelist"),
+                    },
+                    {
+                        "title": "检查记录",
+                        "icon": "fact_check",
+                        "link": reverse_lazy("admin:uptime_uptimecheck_changelist"),
+                    },
+                ],
+            },
+            {
                 "title": "系统",
                 "separator": True,
                 "collapsible": True,
