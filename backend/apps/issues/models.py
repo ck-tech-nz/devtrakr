@@ -212,3 +212,27 @@ class IssueComment(models.Model):
 
     def __str__(self):
         return f"#{self.issue_id} {self.author}: {self.content[:30]}"
+
+
+class IssueChatParticipant(models.Model):
+    """聊天会话成员 + 已读指针。一行 = 某用户参与某问题的评论会话。"""
+    issue = models.ForeignKey(Issue, on_delete=models.CASCADE, related_name="chat_participants")
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="issue_chats"
+    )
+    last_read_comment = models.ForeignKey(
+        IssueComment, on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = [("issue", "user")]
+        indexes = [models.Index(fields=["user", "-updated_at"])]
+
+    def unread_count(self) -> int:
+        """该会话对本用户的未读评论数:比指针更新、且非本人所发。"""
+        qs = self.issue.comments.exclude(author_id=self.user_id)
+        if self.last_read_comment_id:
+            qs = qs.filter(id__gt=self.last_read_comment_id)
+        return qs.count()
