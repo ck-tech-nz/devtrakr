@@ -5,6 +5,12 @@ import { resolve } from 'node:path'
 declare const process: { env: Record<string, string | undefined> }
 const apiBase = process.env.NUXT_API_BASE || 'http://localhost:8000'
 const minioBase = process.env.NUXT_MINIO_BASE || 'http://121.31.38.35:19000/devtrack-uploads'
+// WebSocket 基址。dev 直连后端:Nuxt dev 的 nitro devProxy 不转发 ws upgrade
+// (会被当成普通 HTTP 透传,daphne 收到的是 http scope → 404),故浏览器直连
+// 后端(apiBase 的 http→ws)。prod 留空 → 同源 /ws/,由前置反代(nginx/traefik)
+// 转发 upgrade。显式 NUXT_PUBLIC_WS_BASE 覆盖二者。
+const isDev = process.env.NODE_ENV !== 'production'
+const wsBase = process.env.NUXT_PUBLIC_WS_BASE || (isDev ? apiBase.replace(/^http/, 'ws') : '')
 
 function getBuildInfo() {
   const versionFile = resolve(__dirname, 'VERSION')
@@ -45,6 +51,7 @@ export default defineNuxtConfig({
       nuxtVersion,
       vueVersion,
       serverMonitorUrl: '',
+      wsBase,
     },
   },
   app: {
@@ -70,10 +77,8 @@ export default defineNuxtConfig({
         target: `${apiBase}/api/`,
         changeOrigin: true,
       },
-      '/ws/': {
-        target: `${apiBase}/ws/`,
-        ws: true,
-      },
+      // 注:dev 不再代理 /ws/。nitro devProxy 不转发 WebSocket upgrade,
+      // 浏览器改为直连后端(见上方 wsBase / useChat 的 wsUrl)。
       '/uploads/': {
         target: `${minioBase}/`,
         changeOrigin: true,

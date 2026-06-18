@@ -76,6 +76,10 @@ export function useChat() {
 
   function wsUrl() {
     const token = (typeof localStorage !== 'undefined' && localStorage.getItem('access_token')) || ''
+    // 显式 WS 基址优先(dev 直连后端,绕过不转发 upgrade 的 dev proxy);
+    // 留空则同源(prod 经前置反代转发 upgrade)。
+    const base = (useRuntimeConfig().public.wsBase as string) || ''
+    if (base) return `${base.replace(/\/$/, '')}/ws/chat/?token=${token}`
     const proto = (typeof location !== 'undefined' && location.protocol === 'https:') ? 'wss' : 'ws'
     const host = typeof location !== 'undefined' ? location.host : ''
     return `${proto}://${host}/ws/chat/?token=${token}`
