@@ -56,6 +56,23 @@ function scrollToBottom() {
 onMounted(() => nextTick(scrollToBottom))
 watch(() => props.messages.length, () => nextTick(scrollToBottom))
 
+// --- 评论内图片点击放大预览(事件委托:v-html 渲染的 <img> 无法直接绑定) ---
+const lightboxSrc = ref<string | null>(null)
+function onThreadClick(e: MouseEvent) {
+  const t = e.target as HTMLElement
+  if (t instanceof HTMLImageElement && t.closest('.ct-bubble')) {
+    lightboxSrc.value = t.currentSrc || t.src
+  }
+}
+function closeLightbox() { lightboxSrc.value = null }
+function onLightboxKey(e: KeyboardEvent) { if (e.key === 'Escape') closeLightbox() }
+watch(lightboxSrc, (v) => {
+  if (typeof document === 'undefined') return
+  if (v) document.addEventListener('keydown', onLightboxKey)
+  else document.removeEventListener('keydown', onLightboxKey)
+})
+onUnmounted(() => { if (typeof document !== 'undefined') document.removeEventListener('keydown', onLightboxKey) })
+
 // --- @-mention autocomplete ---
 
 async function fetchUserSuggestions(query: string): Promise<MentionItem[]> {
@@ -139,7 +156,7 @@ function insertMention(item: MentionItem) {
 
 <template>
   <div class="ct-thread">
-    <div ref="scroller" class="ct-scroll">
+    <div ref="scroller" class="ct-scroll" @click="onThreadClick">
       <div v-for="m in messages" :key="m.id" class="ct-msg" :class="{ mine: isMine(m) }">
         <div class="ct-mav" :class="{ 'ct-mav--img': m.author_avatar }">
           <!-- 优先显示用户头像(内置头像/上传图),无头像时回退到姓名首字母 -->
@@ -169,6 +186,16 @@ function insertMention(item: MentionItem) {
       </div>
       <button class="ct-send" :disabled="!draft.trim()" data-test="reply-send" @click="submit">发送</button>
     </div>
+
+    <!-- 图片放大预览:Teleport 到 body,避免被面板 overflow 裁切;点任意处/✕/Esc 关闭 -->
+    <Teleport to="body">
+      <Transition name="ct-lb">
+        <div v-if="lightboxSrc" class="ct-lightbox" data-test="chat-lightbox" @click="closeLightbox">
+          <img :src="lightboxSrc" class="ct-lightbox__img" alt="" />
+          <button class="ct-lightbox__close" aria-label="关闭" @click="closeLightbox">✕</button>
+        </div>
+      </Transition>
+    </Teleport>
   </div>
 </template>
 
@@ -185,6 +212,19 @@ function insertMention(item: MentionItem) {
 .ct-mav-img { width: 100%; height: 100%; object-fit: cover; }
 .ct-bubble { padding: 9px 13px; border-radius: 14px; font-size: 14px; background: #fff; border: 1px solid #e4e8ef; }
 .ct-msg.mine .ct-bubble { background: var(--ui-primary, #2f55ea); color: #fff; border: none; }
+/* 评论内图片可点击放大 */
+.ct-scroll :deep(.ct-bubble img) { cursor: zoom-in; }
+/* 图片放大预览遮罩(Teleport 到 body) */
+.ct-lightbox { position: fixed; inset: 0; z-index: 9999; display: grid; place-items: center; padding: 32px;
+  background: rgba(8,12,20,.82); cursor: zoom-out; }
+.ct-lightbox__img { max-width: 92vw; max-height: 88vh; object-fit: contain; border-radius: 8px;
+  box-shadow: 0 24px 60px -12px rgba(0,0,0,.6); }
+.ct-lightbox__close { position: fixed; top: 20px; right: 24px; width: 40px; height: 40px; border-radius: 12px;
+  border: none; background: rgba(255,255,255,.14); color: #fff; font-size: 18px; line-height: 1; cursor: pointer;
+  display: grid; place-items: center; transition: background .15s; }
+.ct-lightbox__close:hover { background: rgba(255,255,255,.26); }
+.ct-lb-enter-active, .ct-lb-leave-active { transition: opacity .2s ease; }
+.ct-lb-enter-from, .ct-lb-leave-to { opacity: 0; }
 .ct-mname { font-size: 11.5px; font-weight: 700; color: #64748b; margin: 0 0 4px 3px; }
 .ct-composer { display: flex; align-items: center; gap: 8px; padding: 11px 12px; border-top: 1px solid #e4e8ef; }
 .ct-input-wrap { flex: 1; position: relative; }
