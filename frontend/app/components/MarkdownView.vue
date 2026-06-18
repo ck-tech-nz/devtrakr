@@ -7,15 +7,18 @@ const props = defineProps<{ text?: string }>()
 
 const { md } = useMentionMarkdown()
 
-const rootEl = ref<HTMLElement | null>(null)
-useInlineLinkPreviews(rootEl, () => html.value)
-
+// html 必须在 useInlineLinkPreviews 之前声明:后者的 immediate watch 会在 setup
+// 阶段同步读取 htmlGetter(),若 html 尚未初始化会触发 TDZ
+// (ReferenceError: Cannot access 'html' before initialization)。
 const html = computed(() => {
   if (!props.text) return ''
   return md.render(props.text)
     .replace(/<input class="task-list-item-checkbox" checked=""type="checkbox">/g, '<span class="md-checkbox md-checked"></span>')
     .replace(/<input class="task-list-item-checkbox"type="checkbox">/g, '<span class="md-checkbox"></span>')
 })
+
+const rootEl = ref<HTMLElement | null>(null)
+useInlineLinkPreviews(rootEl, () => html.value)
 </script>
 
 <style>
