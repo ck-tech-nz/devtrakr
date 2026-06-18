@@ -559,7 +559,8 @@ class IssueAssignInputSerializer(serializers.Serializer):
 
 
 class ChatConversationSerializer(serializers.Serializer):
-    """聊天会话列表项。期望传入已 annotate 的 IssueChatParticipant 实例。"""
+    """聊天会话列表项。接受 IssueChatParticipant 实例；unread_count 与 last_comment
+    均由 SerializerMethodField 实时计算，无需预先 annotate。"""
     issue_id = serializers.IntegerField()  # 直接读 IssueChatParticipant.issue_id
     issue_title = serializers.CharField(source="issue.title")
     unread_count = serializers.SerializerMethodField()

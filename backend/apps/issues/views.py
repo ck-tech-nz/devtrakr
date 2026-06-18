@@ -601,6 +601,8 @@ class IssueCommentsView(APIView):
             comment=comment, old_content="", new_content=comment.content,
             actor=request.user,
         )
+        # 必须保持为 return 前的最后一条语句：推送发出后若事务回滚，评论消失但 WS 事件已送达。
+        # 若日后在此之后新增可能抛出的逻辑，应改用 transaction.on_commit(lambda: broadcast_comment(comment))。
         broadcast_comment(comment)  # 推送聊天气泡(独立于通知铃铛)
         return Response(
             IssueCommentSerializer(comment).data, status=status.HTTP_201_CREATED,

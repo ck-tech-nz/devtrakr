@@ -62,6 +62,8 @@ def broadcast_comment(comment) -> None:
     author = comment.author
     everyone = recipients | ({author} if author else set())
 
+    # 第一遍:upsert 所有参与者行；缓存到 dict 供推送遍历复用，避免重复查询
+    parts: dict[int, IssueChatParticipant] = {}
     for user in everyone:
         part, _ = IssueChatParticipant.objects.get_or_create(issue=comment.issue, user=user)
         if author and user.id == author.id:
@@ -69,9 +71,10 @@ def broadcast_comment(comment) -> None:
             part.save(update_fields=["last_read_comment", "updated_at"])
         else:
             part.save(update_fields=["updated_at"])  # bump 排序
+        parts[user.id] = part
 
     for user in recipients:
         if author and user.id == author.id:
             continue
-        part = IssueChatParticipant.objects.get(issue=comment.issue, user=user)
+        part = parts[user.id]  # 复用第一遍已获取的行
         _push_comment_ws(user.id, comment, part.unread_count())

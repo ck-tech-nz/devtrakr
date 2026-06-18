@@ -25,4 +25,11 @@ describe('ChatBubble', () => {
     await w.find('[data-test="fab"]').trigger('click')
     expect(w.find('[data-test="chat-panel"]').exists()).toBe(true)
   })
+
+  it('hides unread badge when there are no unread conversations', async () => {
+    apiMock.mockResolvedValueOnce({ results: [] })
+    const w = await mountSuspended(ChatBubble)
+    await new Promise(r => setTimeout(r, 0))
+    expect(w.find('[data-test="fab-badge"]').exists()).toBe(false)
+  })
 })

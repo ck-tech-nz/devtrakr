@@ -83,6 +83,8 @@ export function useChat() {
 
   function connect() {
     if (typeof WebSocket === 'undefined') return
+    // 防止重复开启：已处于 OPEN 或 CONNECTING 时直接跳过（重连路径在旧 socket CLOSED 后才调用，不受影响）
+    if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return
     closedByUs = false
     ws = new WebSocket(wsUrl())
     ws.onopen = () => { retry = 0 }
@@ -94,7 +96,12 @@ export function useChat() {
     }
     ws.onclose = () => {
       if (closedByUs) return
-      // 退避重连(token 可能已过期 → useApi 后续请求会刷新;此处直接用最新 token 重连)
+      // Token 刷新委托给 useApi 的 REST-401 流程：重连时从 localStorage 读取最新 access_token，
+      // 任意 REST 请求触发 401 刷新后，下次重连即可自愈。
+      // 已知边界：标签页空闲超过 token 有效期（约 2h）且期间无 REST 流量时，
+      // WS 会循环重连直到某次 REST 请求刷新 token 为止。
+      // 注意：不在此处调用 refreshAccessToken()——其失败路径会跳转 /login，
+      // 在瞬态断网时会误退登录。
       retry = Math.min(retry + 1, 6)
       setTimeout(connect, Math.min(1000 * 2 ** retry, 30000))
     }
