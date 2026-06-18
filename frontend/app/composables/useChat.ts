@@ -70,6 +70,43 @@ export function useChat() {
     recomputeTotal()
   }
 
+  let ws: WebSocket | null = null
+  let retry = 0
+  let closedByUs = false
+
+  function wsUrl() {
+    const token = (typeof localStorage !== 'undefined' && localStorage.getItem('access_token')) || ''
+    const proto = (typeof location !== 'undefined' && location.protocol === 'https:') ? 'wss' : 'ws'
+    const host = typeof location !== 'undefined' ? location.host : ''
+    return `${proto}://${host}/ws/chat/?token=${token}`
+  }
+
+  function connect() {
+    if (typeof WebSocket === 'undefined') return
+    closedByUs = false
+    ws = new WebSocket(wsUrl())
+    ws.onopen = () => { retry = 0 }
+    ws.onmessage = (e: MessageEvent) => {
+      try {
+        const ev = JSON.parse(e.data)
+        if (ev?.type === 'comment.new') handleIncoming(ev as ChatIncoming)
+      } catch { /* 忽略格式错误的消息 */ }
+    }
+    ws.onclose = () => {
+      if (closedByUs) return
+      // 退避重连(token 可能已过期 → useApi 后续请求会刷新;此处直接用最新 token 重连)
+      retry = Math.min(retry + 1, 6)
+      setTimeout(connect, Math.min(1000 * 2 ** retry, 30000))
+    }
+  }
+
+  function disconnect() {
+    closedByUs = true
+    ws?.close()
+    ws = null
+  }
+
   return { conversations, unreadTotal, activeIssueId, messages, lastIncoming,
-           loadConversations, openConversation, markRead, sendReply, handleIncoming }
+           loadConversations, openConversation, markRead, sendReply, handleIncoming,
+           connect, disconnect }
 }

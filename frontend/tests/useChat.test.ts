@@ -1,5 +1,5 @@
 // @vitest-environment nuxt
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
 import { flushPromises } from '@vue/test-utils'
 import { defineComponent, h } from 'vue'
@@ -45,6 +45,39 @@ describe('useChat REST', () => {
     ;(w.vm.handleIncoming as Function)({ type: 'comment.new', issue_id: 9, issue_title: 'Z', unread_count: 1, comment: { id: 5, content: 'hi' } as any })
     expect(w.vm.unreadTotal as any).toBe(1)
     expect((w.vm.conversations as any)[0].issue_id).toBe(9)
+    w.unmount()
+  })
+})
+
+describe('useChat WebSocket', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    vi.useRealTimers()
+  })
+
+  it('connect opens a socket and routes comment.new to handleIncoming', async () => {
+    vi.useFakeTimers()
+    const sockets: any[] = []
+    class FakeWS {
+      url: string; onopen: any; onmessage: any; onclose: any; readyState = 1
+      constructor(url: string) { this.url = url; sockets.push(this) }
+      close() { this.readyState = 3 }
+    }
+    vi.stubGlobal('WebSocket', FakeWS as any)
+    vi.stubGlobal('localStorage', { getItem: () => 'tok123' } as any)
+
+    const w = await mountSuspended(Harness)
+    ;(w.vm.connect as Function)()
+    expect(sockets[0].url).toContain('/ws/chat/?token=tok123')
+
+    sockets[0].onmessage({ data: JSON.stringify({ type: 'comment.new', issue_id: 3, issue_title: 'W', unread_count: 1, comment: { id: 1, content: 'x' } }) })
+    expect((w.vm.conversations as any).find((v: any) => v.issue_id === 3)?.unread_count).toBe(1)
+
+    ;(w.vm.disconnect as Function)()
+    // 确认 disconnect 后不触发重连定时器
+    vi.runAllTimers()
+    expect(sockets.length).toBe(1)
+
     w.unmount()
   })
 })
