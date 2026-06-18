@@ -39,8 +39,19 @@ function onPreviewOpen(id: number) { open.value = true; openConv(id) }
     <div ref="rootEl" class="chat-root">
       <ChatPreviewToast v-if="!open" :event="lastIncoming" @open="onPreviewOpen" />
 
-      <button class="chat-fab" data-test="fab" aria-label="聊天" @click="toggle">
-        <span>{{ open ? '✕' : '💬' }}</span>
+      <button class="chat-fab" :class="{ 'is-open': open, 'has-unread': unreadTotal > 0 }"
+              data-test="fab" aria-label="聊天" @click="toggle">
+        <svg v-if="!open" class="chat-fab__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M20.5 11.4a8 8 0 0 1-11.7 7.1L4 20l1.5-4.6A8 8 0 1 1 20.5 11.4Z" />
+          <circle cx="8.6" cy="11.5" r=".9" fill="currentColor" stroke="none" />
+          <circle cx="12" cy="11.5" r=".9" fill="currentColor" stroke="none" />
+          <circle cx="15.4" cy="11.5" r=".9" fill="currentColor" stroke="none" />
+        </svg>
+        <svg v-else class="chat-fab__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2.2" stroke-linecap="round" aria-hidden="true">
+          <path d="M6 6l12 12M18 6 6 18" />
+        </svg>
         <span v-if="unreadTotal > 0" class="chat-fab-badge" data-test="fab-badge">{{ unreadTotal }}</span>
       </button>
 
@@ -74,11 +85,36 @@ function onPreviewOpen(id: number) { open.value = true; openConv(id) }
 </template>
 
 <style scoped>
-.chat-fab { position: fixed; right: 24px; bottom: 24px; z-index: 46; width: 60px; height: 60px; border-radius: 20px;
-  border: none; cursor: pointer; color: #fff; font-size: 24px; background: linear-gradient(140deg, var(--ui-primary,#2f55ea), #5b7bff);
-  box-shadow: 0 14px 30px -8px rgba(47,85,234,.55); }
-.chat-fab-badge { position: absolute; top: -6px; right: -6px; min-width: 22px; height: 22px; padding: 0 6px; border-radius: 11px;
-  background: #ef4444; color: #fff; font-size: 12px; font-weight: 800; display: grid; place-items: center; border: 2.5px solid #eef1f6; }
+/* 消息悬浮按钮:深翠→墨青渐变 + 玻璃高光 + 环境辉光,替代原扁平亮绿+emoji */
+.chat-fab { position: fixed; right: 24px; bottom: 24px; z-index: 46; width: 58px; height: 58px; padding: 0;
+  border: none; cursor: pointer; color: #fff; border-radius: 18px; display: grid; place-items: center;
+  background:
+    radial-gradient(125% 125% at 28% 20%, rgba(255,255,255,.40) 0%, rgba(255,255,255,0) 44%),
+    linear-gradient(152deg, #10b981 0%, #0d9488 50%, #0f766e 100%);
+  box-shadow:
+    0 14px 30px -10px rgba(13,148,136,.60),
+    0 4px 10px -3px rgba(4,47,46,.45),
+    inset 0 1px 0 rgba(255,255,255,.50),
+    inset 0 -12px 20px rgba(3,42,42,.34);
+  transition: transform .26s cubic-bezier(.2,.9,.3,1.35), box-shadow .26s; }
+.chat-fab::before { content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+  background: linear-gradient(180deg, rgba(255,255,255,.20), transparent 52%); }
+.chat-fab::after { content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; z-index: -1; }
+.chat-fab.has-unread::after { animation: fab-pulse 2.4s ease-out infinite; }
+@keyframes fab-pulse {
+  0% { box-shadow: 0 0 0 0 rgba(16,185,129,.45); }
+  70% { box-shadow: 0 0 0 13px rgba(16,185,129,0); }
+  100% { box-shadow: 0 0 0 0 rgba(16,185,129,0); } }
+.chat-fab:hover { transform: translateY(-3px);
+  box-shadow: 0 20px 40px -10px rgba(13,148,136,.72), 0 6px 14px -3px rgba(4,47,46,.5),
+    inset 0 1px 0 rgba(255,255,255,.55), inset 0 -12px 20px rgba(3,42,42,.34); }
+.chat-fab:active { transform: translateY(-1px) scale(.95); }
+.chat-fab__icon { width: 26px; height: 26px; position: relative; z-index: 1;
+  transition: transform .3s cubic-bezier(.2,.9,.3,1.35); }
+.chat-fab.is-open .chat-fab__icon { transform: rotate(90deg); }
+.chat-fab-badge { position: absolute; top: -5px; right: -5px; min-width: 21px; height: 21px; padding: 0 6px; border-radius: 11px;
+  background: linear-gradient(180deg, #fb7185, #ef4444); color: #fff; font-size: 11.5px; font-weight: 800; line-height: 1;
+  display: grid; place-items: center; border: 2px solid #fff; box-shadow: 0 3px 7px -2px rgba(239,68,68,.6); z-index: 2; }
 .chat-panel { position: fixed; right: 24px; bottom: 96px; z-index: 47; width: 384px; height: min(584px, calc(100vh - 132px));
   background: #fff; border: 1px solid #e4e8ef; border-radius: 16px; box-shadow: 0 24px 60px -16px rgba(15,23,42,.32);
   display: flex; flex-direction: column; overflow: hidden; }
