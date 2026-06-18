@@ -126,6 +126,8 @@ const emit = defineEmits<{
   'update:modelValue': [value: string]
   'upload-complete': [attachment: { url: string; filename: string; id: string }]
   'blur': []
+  // Cmd+Enter(Mac)/ Ctrl+Enter(PC) 提交;由消费方监听决定具体行为(可选)
+  'submit': []
 }>()
 
 const { api } = useApi()
@@ -233,6 +235,13 @@ function insertMention(item: { id: number; label: string; prefix?: string }) {
 }
 
 function handleMentionKeydown(e: KeyboardEvent) {
+  // Cmd/Ctrl+Enter 提交,优先于提及下拉的 Enter 选择;空内容由消费方的提交逻辑兜底
+  if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+    e.preventDefault()
+    mentionVisible.value = false
+    emit('submit')
+    return
+  }
   if (!mentionVisible.value) return
   if (e.key === 'ArrowUp') {
     e.preventDefault()
