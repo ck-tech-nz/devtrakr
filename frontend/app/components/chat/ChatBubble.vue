@@ -65,7 +65,7 @@ function onPreviewOpen(id: number) { open.value = true; openConv(id) }
 .chat-head { display: flex; align-items: center; gap: 10px; padding: 14px 16px; border-bottom: 1px solid #e4e8ef; }
 .chat-head strong { flex: 1; }
 .chat-back, .chat-x { border: none; background: transparent; font-size: 18px; cursor: pointer; color: #64748b; }
-.chat-list { overflow-y: auto; padding: 6px; }
+.chat-list { flex: 1; min-height: 0; overflow-y: auto; padding: 6px; }
 .chat-list-hd { padding: 10px 12px 6px; font-size: 11px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; color: #94a3b8; }
 .chat-conv { display: flex; gap: 11px; width: 100%; text-align: left; padding: 11px 12px; border: none; background: transparent; border-radius: 12px; cursor: pointer; }
 .chat-conv:hover { background: #f7f8fb; }

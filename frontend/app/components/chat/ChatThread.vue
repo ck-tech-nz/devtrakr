@@ -167,8 +167,10 @@ function insertMention(item: MentionItem) {
 </template>
 
 <style scoped>
-.ct-thread { display: flex; flex-direction: column; height: 100%; }
-.ct-scroll { flex: 1; overflow-y: auto; padding: 16px 14px; background: var(--ui-bg-muted, #f7f8fb); }
+/* flex:1 + min-height:0 让线程填满 header 之外的剩余高度并允许内部滚动区收缩;
+   旧的 height:100% 会按整个面板高计算 → 加上 header 高后溢出面板底部,把输入框顶到面板外("太靠下") */
+.ct-thread { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+.ct-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 16px 14px; background: var(--ui-bg-muted, #f7f8fb); }
 .ct-msg { display: flex; gap: 9px; margin-bottom: 12px; max-width: 86%; }
 .ct-msg.mine { margin-left: auto; flex-direction: row-reverse; }
 .ct-mav { width: 30px; height: 30px; border-radius: 9px; flex: none; display: grid; place-items: center; color: #fff; font-size: 12px; font-weight: 700; background: linear-gradient(135deg,#34d399,#0d9488); }
