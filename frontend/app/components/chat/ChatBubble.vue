@@ -8,8 +8,22 @@ const view = ref<'list' | 'thread'>('list')
 const meId = computed(() => (user.value ? Number(user.value.id) : null))
 const activeTitle = computed(() => conversations.value.find(c => c.issue_id === activeIssueId.value)?.issue_title || '消息')
 
-onMounted(() => { chat.loadConversations(); chat.connect() })
-onUnmounted(() => chat.disconnect())
+const rootEl = ref<HTMLElement | null>(null)
+function onClickOutside(e: MouseEvent) {
+  // 点击气泡/面板以外区域时收起(FAB 与面板都在 rootEl 内,不会误关)
+  if (open.value && rootEl.value && !rootEl.value.contains(e.target as Node)) {
+    open.value = false
+  }
+}
+onMounted(() => {
+  chat.loadConversations()
+  chat.connect()
+  document.addEventListener('click', onClickOutside)
+})
+onUnmounted(() => {
+  chat.disconnect()
+  document.removeEventListener('click', onClickOutside)
+})
 
 function toggle() { open.value = !open.value }
 async function openConv(id: number) { await chat.openConversation(id); view.value = 'thread' }
@@ -20,7 +34,7 @@ function onPreviewOpen(id: number) { open.value = true; openConv(id) }
 
 <template>
   <ClientOnly>
-    <div class="chat-root">
+    <div ref="rootEl" class="chat-root">
       <ChatPreviewToast v-if="!open" :event="lastIncoming" @open="onPreviewOpen" />
 
       <button class="chat-fab" data-test="fab" aria-label="聊天" @click="toggle">
