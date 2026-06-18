@@ -35,6 +35,7 @@ function submit() {
   emit('send', text)
   draft.value = ''
   mentionVisible.value = false
+  if (textareaRef.value) textareaRef.value.style.height = 'auto'  // 复位高度
 }
 
 function onKey(e: KeyboardEvent) {
@@ -87,9 +88,8 @@ async function handleMentionInput() {
   mentionType.value = trigger.type
   mentionTriggerStart.value = trigger.start
 
-  // 简单定位：在 textarea 左上角附近显示下拉
-  const rect = ta.getBoundingClientRect()
-  mentionPosition.value = { top: rect.height + 4, left: 0 }
+  // 向上展开(placement="top"),贴在输入框上方左侧
+  mentionPosition.value = { top: 0, left: 0 }
 
   if (trigger.type === 'user') {
     mentionItems.value = await fetchUserSuggestions(trigger.query)
@@ -100,6 +100,12 @@ async function handleMentionInput() {
 }
 
 function onInput() {
+  // 自动撑高(1~5 行),超出滚动
+  const ta = textareaRef.value
+  if (ta) {
+    ta.style.height = 'auto'
+    ta.style.height = Math.min(ta.scrollHeight, 110) + 'px'
+  }
   nextTick(handleMentionInput)
 }
 
@@ -150,6 +156,7 @@ function insertMention(item: MentionItem) {
           :items="mentionItems"
           :position="mentionPosition"
           :type="mentionType"
+          placement="top"
           @select="insertMention"
         />
       </div>
@@ -168,10 +175,12 @@ function insertMention(item: MentionItem) {
 .ct-bubble { padding: 9px 13px; border-radius: 14px; font-size: 14px; background: #fff; border: 1px solid #e4e8ef; }
 .ct-msg.mine .ct-bubble { background: var(--ui-primary, #2f55ea); color: #fff; border: none; }
 .ct-mname { font-size: 11.5px; font-weight: 700; color: #64748b; margin: 0 0 4px 3px; }
-.ct-composer { display: flex; gap: 8px; padding: 11px 12px; border-top: 1px solid #e4e8ef; }
+.ct-composer { display: flex; align-items: flex-end; gap: 8px; padding: 11px 12px; border-top: 1px solid #e4e8ef; }
 .ct-input-wrap { flex: 1; position: relative; }
-.ct-input-wrap textarea { width: 100%; resize: none; border: 1px solid #e4e8ef; border-radius: 12px; padding: 9px 12px; font: inherit; }
-.ct-send { border: none; background: var(--ui-primary, #2f55ea); color: #fff; border-radius: 10px; padding: 0 14px; cursor: pointer; }
-.ct-send:disabled { background: #c3ccde; }
+.ct-input-wrap textarea { width: 100%; resize: none; border: 1px solid #e4e8ef; border-radius: 12px; padding: 9px 12px; font: inherit; line-height: 1.45; max-height: 110px; overflow-y: auto; transition: border-color .15s, box-shadow .15s; }
+.ct-input-wrap textarea:focus { outline: none; border-color: var(--ui-primary, #16a34a); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ui-primary, #16a34a) 18%, transparent); }
+.ct-send { flex: none; height: 38px; padding: 0 16px; border: none; border-radius: 10px; background: var(--ui-primary, #16a34a); color: #fff; font-weight: 600; cursor: pointer; transition: filter .15s; }
+.ct-send:hover:not(:disabled) { filter: brightness(1.06); }
+.ct-send:disabled { background: #cbd5e1; color: #f1f5f9; cursor: default; }
 .ct-hint { font-size: 11px; color: #94a3b8; padding: 0 12px 10px; }
 </style>

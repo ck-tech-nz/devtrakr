@@ -3,7 +3,7 @@
     v-if="visible && items.length > 0"
     ref="containerRef"
     class="absolute z-50 w-64 max-h-48 overflow-y-auto bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg"
-    :style="{ top: `${position.top}px`, left: `${position.left}px` }"
+    :style="dropdownStyle"
   >
     <button
       v-for="(item, idx) in items"
@@ -34,12 +34,19 @@ export interface MentionItem {
   prefix?: string
 }
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   visible: boolean
   items: MentionItem[]
   position: { top: number; left: number }
   type: 'user' | 'issue'
-}>()
+  // 'bottom'(默认):锚定在输入下方;'top':向上展开(用于贴近视口底部的输入框,如聊天气泡)
+  placement?: 'top' | 'bottom'
+}>(), { placement: 'bottom' })
+
+// top 放置时贴在定位父级顶部向上展开(bottom:100%),避免被底部容器裁切
+const dropdownStyle = computed(() => props.placement === 'top'
+  ? { bottom: '100%', left: `${props.position.left}px`, marginBottom: '6px' }
+  : { top: `${props.position.top}px`, left: `${props.position.left}px` })
 
 const emit = defineEmits<{
   select: [item: MentionItem]
