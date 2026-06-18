@@ -81,3 +81,43 @@ def test_broadcast_is_safe_when_channel_layer_missing(settings):
     # 不应抛异常
     broadcast_comment(comment)
     assert IssueChatParticipant.objects.filter(issue=issue).exists()
+
+
+def test_conversations_endpoint_lists_with_unread(auth_client, auth_user):
+    issue = IssueFactory()
+    other = UserFactory()
+    c1 = IssueCommentFactory(issue=issue, author=other)
+    IssueChatParticipant.objects.create(issue=issue, user=auth_user, last_read_comment=c1)
+    IssueCommentFactory(issue=issue, author=other)  # 未读 +1
+
+    resp = auth_client.get("/api/issues/chat/conversations/")
+    assert resp.status_code == 200
+    items = resp.json()["results"] if isinstance(resp.json(), dict) else resp.json()
+    row = next(r for r in items if r["issue_id"] == issue.id)
+    assert row["unread_count"] == 1
+    assert row["issue_title"] == issue.title
+    assert row["last_comment"]["content"]
+
+
+def test_unread_total_endpoint(auth_client, auth_user):
+    issue = IssueFactory()
+    other = UserFactory()
+    IssueChatParticipant.objects.create(issue=issue, user=auth_user)
+    IssueCommentFactory(issue=issue, author=other)
+
+    resp = auth_client.get("/api/issues/chat/unread-total/")
+    assert resp.status_code == 200
+    assert resp.json()["unread_total"] == 1
+
+
+def test_mark_read_advances_pointer(auth_client, auth_user):
+    issue = IssueFactory()
+    other = UserFactory()
+    IssueChatParticipant.objects.create(issue=issue, user=auth_user)
+    latest = IssueCommentFactory(issue=issue, author=other)
+
+    resp = auth_client.post(f"/api/issues/chat/conversations/{issue.id}/read/")
+    assert resp.status_code == 200
+    part = IssueChatParticipant.objects.get(issue=issue, user=auth_user)
+    assert part.last_read_comment_id == latest.id
+    assert part.unread_count() == 0

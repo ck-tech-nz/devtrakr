@@ -11,7 +11,7 @@ from apps.repos.serializers import GitHubIssueBriefSerializer
 from apps.tools.models import Attachment
 from apps.tools.serializers import AttachmentSerializer
 from apps.notifications.services import create_mention_notifications
-from .models import Issue, IssueStatus, Activity, IssueAssignment, IssueComment
+from .models import Issue, IssueStatus, Activity, IssueAssignment, IssueComment, IssueChatParticipant
 
 User = get_user_model()
 
@@ -556,3 +556,18 @@ class IssueTransferInputSerializer(serializers.Serializer):
 
 class IssueAssignInputSerializer(serializers.Serializer):
     to_user = serializers.PrimaryKeyRelatedField(queryset=User.objects.all())
+
+
+class ChatConversationSerializer(serializers.Serializer):
+    """聊天会话列表项。期望传入已 annotate 的 IssueChatParticipant 实例。"""
+    issue_id = serializers.IntegerField()  # 直接读 IssueChatParticipant.issue_id
+    issue_title = serializers.CharField(source="issue.title")
+    unread_count = serializers.SerializerMethodField()
+    last_comment = serializers.SerializerMethodField()
+
+    def get_unread_count(self, obj):
+        return obj.unread_count()
+
+    def get_last_comment(self, obj):
+        last = obj.issue.comments.select_related("author").last()
+        return IssueCommentSerializer(last).data if last else None

@@ -22,13 +22,14 @@ from apps.ai.models import Analysis
 from apps.ai.services import IssueAnalysisService
 from apps.repos.services import GitHubSyncService
 from apps.repos.serializers import GitHubIssueBriefSerializer
-from .models import Issue, IssueStatus, Activity, IssueComment
+from .models import Issue, IssueStatus, Activity, IssueComment, IssueChatParticipant
 from .serializers import (
     IssueListSerializer, IssueDetailSerializer,
     IssueCreateUpdateSerializer, BatchUpdateSerializer,
     ActivitySerializer,
     IssueTransferInputSerializer, IssueAssignInputSerializer,
     IssueCommentSerializer,
+    ChatConversationSerializer,
 )
 from apps.notifications.services import create_comment_mention_notifications
 from .services import claim_issue, confirm_issue, transfer_issue, assign_issue, InvalidTransition
@@ -1115,3 +1116,43 @@ class IssuePullRequestsView(APIView):
             "results": PullRequestSerializer(prs, many=True).data,
             "suggest_resolved": suggest_resolved,
         })
+
+
+class ChatConversationsView(APIView):
+    """GET: 我参与且有评论的会话列表(按最近活动倒序)。"""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        parts = (
+            IssueChatParticipant.objects
+            .filter(user=request.user, issue__comments__isnull=False)
+            .select_related("issue")
+            .distinct()
+            .order_by("-updated_at")
+        )
+        data = ChatConversationSerializer(parts, many=True).data
+        return Response({"results": data})
+
+
+class ChatUnreadTotalView(APIView):
+    """GET: 跨所有会话的未读总数(供气泡角标)。"""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        parts = IssueChatParticipant.objects.filter(user=request.user).select_related("issue")
+        total = sum(p.unread_count() for p in parts)
+        return Response({"unread_total": total})
+
+
+class ChatMarkReadView(APIView):
+    """POST: 把某会话已读指针推进到最新评论。"""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, issue_id):
+        part = IssueChatParticipant.objects.filter(user=request.user, issue_id=issue_id).first()
+        if not part:
+            return Response({"detail": "会话不存在"}, status=status.HTTP_404_NOT_FOUND)
+        latest = part.issue.comments.last()
+        part.last_read_comment = latest
+        part.save(update_fields=["last_read_comment", "updated_at"])
+        return Response({"unread_count": part.unread_count()})
