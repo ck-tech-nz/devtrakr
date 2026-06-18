@@ -33,6 +33,7 @@ from .serializers import (
 )
 from apps.notifications.services import create_comment_mention_notifications
 from .services import claim_issue, confirm_issue, transfer_issue, assign_issue, InvalidTransition
+from .services_chat import broadcast_comment
 
 User = get_user_model()
 
@@ -600,6 +601,7 @@ class IssueCommentsView(APIView):
             comment=comment, old_content="", new_content=comment.content,
             actor=request.user,
         )
+        broadcast_comment(comment)  # 推送聊天气泡(独立于通知铃铛)
         return Response(
             IssueCommentSerializer(comment).data, status=status.HTTP_201_CREATED,
         )

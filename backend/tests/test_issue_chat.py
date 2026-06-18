@@ -121,3 +121,17 @@ def test_mark_read_advances_pointer(auth_client, auth_user):
     part = IssueChatParticipant.objects.get(issue=issue, user=auth_user)
     assert part.last_read_comment_id == latest.id
     assert part.unread_count() == 0
+
+
+def test_posting_comment_notifies_assignee(auth_client, auth_user):
+    assignee = UserFactory()
+    issue = IssueFactory(assignee=assignee)  # auth_user 作为作者
+
+    resp = auth_client.post(
+        f"/api/issues/{issue.id}/comments/", {"content": "请看下这个问题"}, format="json"
+    )
+    assert resp.status_code == 201
+    assignee_row = IssueChatParticipant.objects.get(issue=issue, user=assignee)
+    author_row = IssueChatParticipant.objects.get(issue=issue, user=auth_user)
+    assert assignee_row.unread_count() == 1
+    assert author_row.unread_count() == 0
