@@ -563,6 +563,7 @@ class ChatConversationSerializer(serializers.Serializer):
     均由 SerializerMethodField 实时计算，无需预先 annotate。"""
     issue_id = serializers.IntegerField()  # 直接读 IssueChatParticipant.issue_id
     issue_title = serializers.CharField(source="issue.title")
+    issue_status = serializers.CharField(source="issue.status")  # 值;前端按 useStatus 着色
     unread_count = serializers.SerializerMethodField()
     last_comment = serializers.SerializerMethodField()
 

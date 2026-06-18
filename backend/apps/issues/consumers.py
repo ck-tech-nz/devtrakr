@@ -26,6 +26,7 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
             "type": "comment.new",
             "issue_id": event["issue_id"],
             "issue_title": event["issue_title"],
+            "issue_status": event.get("issue_status", ""),
             "unread_count": event["unread_count"],
             "comment": event["comment"],
         })

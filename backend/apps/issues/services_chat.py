@@ -48,6 +48,7 @@ def _push_comment_ws(user_id: int, comment, unread_count: int) -> None:
                 "type": "comment.new",  # → ChatConsumer.comment_new
                 "issue_id": comment.issue_id,
                 "issue_title": comment.issue.title,
+                "issue_status": comment.issue.status,
                 "unread_count": unread_count,
                 "comment": IssueCommentSerializer(comment).data,
             },

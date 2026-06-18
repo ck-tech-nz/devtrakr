@@ -135,3 +135,22 @@ def test_posting_comment_notifies_assignee(auth_client, auth_user):
     author_row = IssueChatParticipant.objects.get(issue=issue, user=auth_user)
     assert assignee_row.unread_count() == 1
     assert author_row.unread_count() == 0
+
+
+def test_conversations_excludes_closed_and_returns_status(auth_client, auth_user):
+    from apps.issues.models import IssueStatus
+    other = UserFactory()
+    open_issue = IssueFactory(status="进行中")
+    closed_issue = IssueFactory(status=IssueStatus.CLOSED.value)  # 已关闭
+    for iss in (open_issue, closed_issue):
+        IssueCommentFactory(issue=iss, author=other)
+        IssueChatParticipant.objects.create(issue=iss, user=auth_user)
+
+    resp = auth_client.get("/api/issues/chat/conversations/")
+    assert resp.status_code == 200
+    items = resp.json()["results"]
+    ids = {r["issue_id"] for r in items}
+    assert open_issue.id in ids
+    assert closed_issue.id not in ids  # 已关闭不进列表
+    row = next(r for r in items if r["issue_id"] == open_issue.id)
+    assert row["issue_status"] == "进行中"

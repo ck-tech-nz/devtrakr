@@ -1,14 +1,16 @@
 // 聊天会话状态:会话列表、未读、当前会话消息。WebSocket 连接在 Task 9 加入。
 // 回复走现有 REST POST .../comments/(Fork B1),接收走 WS(Task 9)。
+import { ISSUE_STATUS } from '~/constants/issueStatus'
+
 export interface ChatComment {
   id: number; author: number | null; author_name: string | null; author_avatar: string
   content: string; created_at: string; updated_at: string; is_edited: boolean
 }
 export interface ChatConversation {
-  issue_id: number; issue_title: string; unread_count: number; last_comment: ChatComment | null
+  issue_id: number; issue_title: string; issue_status: string; unread_count: number; last_comment: ChatComment | null
 }
 export interface ChatIncoming {
-  type: 'comment.new'; issue_id: number; issue_title: string; unread_count: number; comment: ChatComment
+  type: 'comment.new'; issue_id: number; issue_title: string; issue_status: string; unread_count: number; comment: ChatComment
 }
 
 export function useChat() {
@@ -58,6 +60,9 @@ export function useChat() {
 
   // WS 事件入口(Task 9 wiring 调用)。
   function handleIncoming(ev: ChatIncoming) {
+    // 已关闭的问题不进会话列表,也不弹提示
+    if (ev.issue_status === ISSUE_STATUS.CLOSED) return
+
     const isOwn = meId.value != null && ev.comment.author === meId.value
     const active = activeIssueId.value === ev.issue_id
 
@@ -67,9 +72,10 @@ export function useChat() {
     // 会话列表始终更新(置顶 + 刷新末条),这样自己从问题页发的评论也会实时回显到自己的列表
     let conv = conversations.value.find(c => c.issue_id === ev.issue_id)
     if (!conv) {
-      conv = { issue_id: ev.issue_id, issue_title: ev.issue_title, unread_count: 0, last_comment: ev.comment }
+      conv = { issue_id: ev.issue_id, issue_title: ev.issue_title, issue_status: ev.issue_status, unread_count: 0, last_comment: ev.comment }
     } else {
       conv.last_comment = ev.comment
+      conv.issue_status = ev.issue_status  // 状态可能已变,刷新
     }
     conv.unread_count = active ? 0 : ev.unread_count
     conversations.value = [conv, ...conversations.value.filter(c => c.issue_id !== ev.issue_id)]

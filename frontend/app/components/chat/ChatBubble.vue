@@ -56,7 +56,11 @@ function onPreviewOpen(id: number) { open.value = true; openConv(id) }
           <button v-for="c in conversations" :key="c.issue_id" class="chat-conv"
                   data-test="conv" @click="openConv(c.issue_id)">
             <div class="cc-main">
-              <div class="cc-top"><span class="cc-iss">ISS-{{ c.issue_id }}</span><span class="cc-title">{{ c.issue_title }}</span></div>
+              <div class="cc-top">
+                <span class="cc-iss">ISS-{{ c.issue_id }}</span>
+                <span v-if="c.issue_status" class="cc-status" :style="{ backgroundColor: statusMainColor(c.issue_status) }">{{ statusLabel(c.issue_status) }}</span>
+                <span class="cc-title">{{ c.issue_title }}</span>
+              </div>
               <div class="cc-snip">{{ c.last_comment?.content }}</div>
             </div>
             <span v-if="c.unread_count > 0" class="cc-unread">{{ c.unread_count }}</span>
@@ -88,8 +92,10 @@ function onPreviewOpen(id: number) { open.value = true; openConv(id) }
 .chat-conv { display: flex; gap: 11px; width: 100%; text-align: left; padding: 11px 12px; border: none; background: transparent; border-radius: 12px; cursor: pointer; }
 .chat-conv:hover { background: #f7f8fb; }
 .cc-main { flex: 1; min-width: 0; }
-.cc-iss { font-size: 11px; font-weight: 700; color: var(--ui-primary,#2f55ea); margin-right: 8px; }
-.cc-title { font-weight: 700; font-size: 13.5px; }
+.cc-top { display: flex; align-items: center; gap: 6px; }
+.cc-iss { font-size: 11px; font-weight: 700; color: var(--ui-primary,#2f55ea); flex: none; }
+.cc-status { flex: none; font-size: 10px; line-height: 1.7; color: #fff; padding: 0 6px; border-radius: 6px; font-weight: 600; white-space: nowrap; }
+.cc-title { font-weight: 700; font-size: 13.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cc-snip { font-size: 13px; color: #64748b; margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cc-unread { align-self: center; min-width: 19px; height: 19px; padding: 0 5px; border-radius: 10px; background: var(--ui-primary,#2f55ea); color: #fff; font-size: 11px; font-weight: 800; display: grid; place-items: center; }
 </style>

@@ -1130,6 +1130,7 @@ class ChatConversationsView(APIView):
         parts = (
             IssueChatParticipant.objects
             .filter(user=request.user, issue__comments__isnull=False)
+            .exclude(issue__status=IssueStatus.CLOSED.value)  # 已关闭的问题不进会话列表
             .select_related("issue")
             .distinct()
             .order_by("-updated_at")

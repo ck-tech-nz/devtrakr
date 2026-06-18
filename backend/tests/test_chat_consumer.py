@@ -34,9 +34,9 @@ async def test_authed_connects_and_receives_push():
     layer = get_channel_layer()
     await layer.group_send(f"chat_user_{user.id}", {
         "type": "comment.new",
-        "issue_id": 7, "issue_title": "T", "unread_count": 2,
+        "issue_id": 7, "issue_title": "T", "issue_status": "进行中", "unread_count": 2,
         "comment": {"id": 1, "content": "hi"},
     })
     msg = await comm.receive_json_from(timeout=2)
-    assert msg["issue_id"] == 7 and msg["unread_count"] == 2
+    assert msg["issue_id"] == 7 and msg["unread_count"] == 2 and msg["issue_status"] == "进行中"
     await comm.disconnect()
