@@ -48,10 +48,12 @@ function onKey(e: KeyboardEvent) {
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submit() }
 }
 
-watch(() => props.messages.length, async () => {
-  await nextTick()
+function scrollToBottom() {
   if (scroller.value) scroller.value.scrollTop = scroller.value.scrollHeight
-})
+}
+// 打开会话(组件挂载时消息已加载)直接滚到底;后续新消息到达也滚到底
+onMounted(() => nextTick(scrollToBottom))
+watch(() => props.messages.length, () => nextTick(scrollToBottom))
 
 // --- @-mention autocomplete ---
 
@@ -177,11 +179,11 @@ function insertMention(item: MentionItem) {
 .ct-bubble { padding: 9px 13px; border-radius: 14px; font-size: 14px; background: #fff; border: 1px solid #e4e8ef; }
 .ct-msg.mine .ct-bubble { background: var(--ui-primary, #2f55ea); color: #fff; border: none; }
 .ct-mname { font-size: 11.5px; font-weight: 700; color: #64748b; margin: 0 0 4px 3px; }
-.ct-composer { display: flex; align-items: flex-end; gap: 8px; padding: 11px 12px; border-top: 1px solid #e4e8ef; }
+.ct-composer { display: flex; align-items: center; gap: 8px; padding: 11px 12px; border-top: 1px solid #e4e8ef; }
 .ct-input-wrap { flex: 1; position: relative; }
-.ct-input-wrap textarea { width: 100%; resize: none; border: 1px solid #e4e8ef; border-radius: 12px; padding: 9px 12px; font: inherit; line-height: 1.45; max-height: 110px; overflow-y: auto; transition: border-color .15s, box-shadow .15s; }
+.ct-input-wrap textarea { width: 100%; box-sizing: border-box; min-height: 40px; resize: none; border: 1px solid #e4e8ef; border-radius: 12px; padding: 9px 12px; font: inherit; line-height: 1.45; max-height: 110px; overflow-y: auto; transition: border-color .15s, box-shadow .15s; }
 .ct-input-wrap textarea:focus { outline: none; border-color: var(--ui-primary, #16a34a); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ui-primary, #16a34a) 18%, transparent); }
-.ct-send { flex: none; height: 38px; padding: 0 16px; border: none; border-radius: 10px; background: var(--ui-primary, #16a34a); color: #fff; font-weight: 600; cursor: pointer; transition: filter .15s; }
+.ct-send { flex: none; height: 40px; padding: 0 16px; border: none; border-radius: 10px; background: var(--ui-primary, #16a34a); color: #fff; font-weight: 600; cursor: pointer; transition: filter .15s; }
 .ct-send:hover:not(:disabled) { filter: brightness(1.06); }
 .ct-send:disabled { background: #cbd5e1; color: #f1f5f9; cursor: default; }
 .ct-hint { font-size: 11px; color: #94a3b8; padding: 0 12px 10px; }
