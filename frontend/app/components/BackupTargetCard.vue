@@ -94,8 +94,11 @@ const connectionSummary = computed(() => {
     class="rounded-lg bg-white dark:bg-gray-900 divide-y divide-gray-100 dark:divide-gray-800"
     :class="{ border: bordered }"
   >
-    <!-- 卡片头部 -->
-    <div class="p-4 flex items-start justify-between gap-4">
+    <!-- 卡片头部：整行点击展开/收起（参考 issue card 的整卡可点击；立即备份按钮 @click.stop 不触发） -->
+    <div
+      class="p-4 flex items-start justify-between gap-4 cursor-pointer rounded-t-lg hover:bg-gray-50 dark:hover:bg-gray-800/40 transition-colors"
+      @click="emit('toggle')"
+    >
       <div class="flex-1 min-w-0 space-y-1">
         <div class="flex items-center gap-2 flex-wrap">
           <span class="font-medium text-sm">{{ target.name }}</span>
@@ -123,15 +126,14 @@ const connectionSummary = computed(() => {
           variant="outline"
           icon="i-heroicons-play"
           :loading="running"
-          @click="emit('run')"
+          @click.stop="emit('run')"
         >
           立即备份
         </UButton>
-        <UButton
-          size="xs"
-          variant="ghost"
-          :icon="expanded ? 'i-heroicons-chevron-up' : 'i-heroicons-chevron-down'"
-          @click="emit('toggle')"
+        <!-- 被动的展开/收起指示箭头（不再是单独按钮,整个 header 才是点击区域） -->
+        <UIcon
+          :name="expanded ? 'i-heroicons-chevron-up' : 'i-heroicons-chevron-down'"
+          class="size-5 text-gray-400 dark:text-gray-500 shrink-0"
         />
       </div>
     </div>
