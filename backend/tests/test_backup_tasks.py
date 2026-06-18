@@ -19,6 +19,19 @@ def test_run_backup_success(mock_dump, tmp_path, settings):
 
 
 @patch("apps.backups.tasks.dump_database")
+def test_filename_namespaced_by_target(mock_dump, tmp_path, settings):
+    # 两个目标备份同名库(如 test/prod 各自的 outcall_db)不能生成相同文件名相互覆盖
+    settings.BACKUP_DIR = str(tmp_path)
+    mock_dump.return_value = (True, 10, "")
+    t1 = BackupTarget.objects.create(name="A", db_name="outcall_db")
+    t2 = BackupTarget.objects.create(name="B", db_name="outcall_db")
+    b1 = DatabaseBackup.objects.get(id=tasks.run_backup(t1.id))
+    b2 = DatabaseBackup.objects.get(id=tasks.run_backup(t2.id))
+    assert b1.filename != b2.filename
+    assert f"t{t1.id}" in b1.filename and f"t{t2.id}" in b2.filename
+
+
+@patch("apps.backups.tasks.dump_database")
 def test_run_backup_failure_cleans_partial_file(mock_dump, tmp_path, settings):
     settings.BACKUP_DIR = str(tmp_path)
     mock_dump.return_value = (False, 0, "connection refused")

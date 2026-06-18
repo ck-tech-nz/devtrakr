@@ -42,7 +42,9 @@ def run_backup(target_id, trigger="scheduled", created_by_id=None):
             return None
 
         timestamp = timezone.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"{target.db_name}_{timestamp}.dump"
+        # 用 target id 给文件名加命名空间:不同目标可能备份同名库(如多套 outcall_db),
+        # 否则同秒触发会生成相同文件名相互覆盖
+        filename = f"{target.db_name}_t{target.id}_{timestamp}.dump"
         backup = DatabaseBackup.objects.create(
             target=target, filename=filename, status="running",
             trigger=trigger, created_by_id=created_by_id,
