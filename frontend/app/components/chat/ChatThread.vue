@@ -13,6 +13,7 @@ function renderContent(content: string) {
 }
 
 const { api } = useApi()
+const { resolveAvatarUrl } = useAvatars()
 
 const draft = ref('')
 const scroller = ref<HTMLElement | null>(null)
@@ -140,7 +141,11 @@ function insertMention(item: MentionItem) {
   <div class="ct-thread">
     <div ref="scroller" class="ct-scroll">
       <div v-for="m in messages" :key="m.id" class="ct-msg" :class="{ mine: isMine(m) }">
-        <div class="ct-mav">{{ (m.author_name || '?').slice(0, 1) }}</div>
+        <div class="ct-mav" :class="{ 'ct-mav--img': m.author_avatar }">
+          <!-- 优先显示用户头像(内置头像/上传图),无头像时回退到姓名首字母 -->
+          <img v-if="m.author_avatar" :src="resolveAvatarUrl(m.author_avatar)" alt="" class="ct-mav-img" />
+          <template v-else>{{ (m.author_name || '?').slice(0, 1) }}</template>
+        </div>
         <div class="ct-mwrap">
           <div class="ct-mname">{{ m.author_name }}</div>
           <!-- eslint-disable-next-line vue/no-v-html -->
@@ -164,7 +169,6 @@ function insertMention(item: MentionItem) {
       </div>
       <button class="ct-send" :disabled="!draft.trim()" data-test="reply-send" @click="submit">发送</button>
     </div>
-    <div class="ct-hint">回车发送 · @ 提及 · 回复即在该问题新增评论</div>
   </div>
 </template>
 
@@ -175,16 +179,18 @@ function insertMention(item: MentionItem) {
 .ct-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 16px 14px; background: var(--ui-bg-muted, #f7f8fb); }
 .ct-msg { display: flex; gap: 9px; margin-bottom: 12px; max-width: 86%; }
 .ct-msg.mine { margin-left: auto; flex-direction: row-reverse; }
-.ct-mav { width: 30px; height: 30px; border-radius: 9px; flex: none; display: grid; place-items: center; color: #fff; font-size: 12px; font-weight: 700; background: linear-gradient(135deg,#34d399,#0d9488); }
+.ct-mav { width: 30px; height: 30px; border-radius: 9px; flex: none; display: grid; place-items: center; color: #fff; font-size: 12px; font-weight: 700; background: linear-gradient(135deg,#34d399,#0d9488); overflow: hidden; }
+/* 有头像图时去掉绿色渐变底:透明 PNG(如带白底的 logo)不再透出绿色,与个人资料一致 */
+.ct-mav--img { background: #fff; }
+.ct-mav-img { width: 100%; height: 100%; object-fit: cover; }
 .ct-bubble { padding: 9px 13px; border-radius: 14px; font-size: 14px; background: #fff; border: 1px solid #e4e8ef; }
 .ct-msg.mine .ct-bubble { background: var(--ui-primary, #2f55ea); color: #fff; border: none; }
 .ct-mname { font-size: 11.5px; font-weight: 700; color: #64748b; margin: 0 0 4px 3px; }
 .ct-composer { display: flex; align-items: center; gap: 8px; padding: 11px 12px; border-top: 1px solid #e4e8ef; }
 .ct-input-wrap { flex: 1; position: relative; }
-.ct-input-wrap textarea { width: 100%; box-sizing: border-box; min-height: 40px; resize: none; border: 1px solid #e4e8ef; border-radius: 12px; padding: 9px 12px; font: inherit; line-height: 1.45; max-height: 110px; overflow-y: auto; transition: border-color .15s, box-shadow .15s; }
+.ct-input-wrap textarea { display: block; width: 100%; box-sizing: border-box; min-height: 40px; resize: none; border: 1px solid #e4e8ef; border-radius: 12px; padding: 9px 12px; font: inherit; line-height: 1.45; max-height: 110px; overflow-y: auto; transition: border-color .15s, box-shadow .15s; }
 .ct-input-wrap textarea:focus { outline: none; border-color: var(--ui-primary, #16a34a); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ui-primary, #16a34a) 18%, transparent); }
 .ct-send { flex: none; height: 40px; padding: 0 16px; border: none; border-radius: 10px; background: var(--ui-primary, #16a34a); color: #fff; font-weight: 600; cursor: pointer; transition: filter .15s; }
 .ct-send:hover:not(:disabled) { filter: brightness(1.06); }
 .ct-send:disabled { background: #cbd5e1; color: #f1f5f9; cursor: default; }
-.ct-hint { font-size: 11px; color: #94a3b8; padding: 0 12px 10px; }
 </style>
