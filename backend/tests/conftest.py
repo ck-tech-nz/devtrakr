@@ -67,3 +67,11 @@ def regular_client(api_client):
 def repo_with_token():
     from tests.factories import RepoFactory
     return RepoFactory(github_token="ghp_testtoken123", last_synced_at=None)
+
+
+@pytest.fixture(autouse=True)
+def _inmemory_channel_layer(settings):
+    """所有测试用进程内通道层,避免依赖 Redis。"""
+    settings.CHANNEL_LAYERS = {
+        "default": {"BACKEND": "channels.layers.InMemoryChannelLayer"}
+    }

@@ -5,10 +5,13 @@
 """
 import logging
 
+from asgiref.sync import async_to_sync
+from channels.layers import get_channel_layer
 from django.contrib.auth import get_user_model
 
 from apps.notifications.services import extract_mentioned_user_ids
 from .models import IssueChatParticipant
+from .serializers import IssueCommentSerializer
 
 logger = logging.getLogger(__name__)
 User = get_user_model()
@@ -31,3 +34,44 @@ def participants_for_comment(comment) -> set:
     if existing_ids:
         users.update(User.objects.filter(id__in=list(existing_ids)))
     return {u for u in users if u.is_active}
+
+
+def _push_comment_ws(user_id: int, comment, unread_count: int) -> None:
+    """向某用户的 WS 组推送一条新评论事件;通道层不可用时静默跳过。"""
+    layer = get_channel_layer()
+    if layer is None:
+        return
+    try:
+        async_to_sync(layer.group_send)(
+            f"chat_user_{user_id}",
+            {
+                "type": "comment.new",  # → ChatConsumer.comment_new
+                "issue_id": comment.issue_id,
+                "issue_title": comment.issue.title,
+                "unread_count": unread_count,
+                "comment": IssueCommentSerializer(comment).data,
+            },
+        )
+    except Exception:  # noqa: BLE001 — 推送失败不得影响评论保存
+        logger.warning("chat ws push failed for user %s", user_id, exc_info=True)
+
+
+def broadcast_comment(comment) -> None:
+    """评论创建后调用:upsert 成员行 + 作者自动已读 + 推送给其余参与者。"""
+    recipients = participants_for_comment(comment)
+    author = comment.author
+    everyone = recipients | ({author} if author else set())
+
+    for user in everyone:
+        part, _ = IssueChatParticipant.objects.get_or_create(issue=comment.issue, user=user)
+        if author and user.id == author.id:
+            part.last_read_comment = comment   # 自己发的自动已读
+            part.save(update_fields=["last_read_comment", "updated_at"])
+        else:
+            part.save(update_fields=["updated_at"])  # bump 排序
+
+    for user in recipients:
+        if author and user.id == author.id:
+            continue
+        part = IssueChatParticipant.objects.get(issue=comment.issue, user=user)
+        _push_comment_ws(user.id, comment, part.unread_count())
