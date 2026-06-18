@@ -50,6 +50,22 @@ const emit = defineEmits<{
 }>()
 
 const { formatSize, formatTime, statusMap } = useBackupFormat()
+const toast = useToast()
+
+// 失败记录可点击查看完整原因（pg_dump / ssh 的 stderr 存在 error_message 里）
+function isFailedWithReason(r: BackupRecord): boolean {
+  return r.status === 'failed' && !!r.error_message
+}
+
+function showError(r: BackupRecord) {
+  toast.add({
+    title: `备份失败：${r.filename}`,
+    description: r.error_message,
+    color: 'error',
+    icon: 'i-heroicons-exclamation-triangle',
+    duration: 0,
+  })
+}
 
 const recordColumns = [
   { accessorKey: 'filename', header: '文件名' },
@@ -134,8 +150,16 @@ const connectionSummary = computed(() => {
           <UBadge
             :color="statusMap[row.original.status]?.color"
             variant="subtle"
+            :class="isFailedWithReason(row.original) ? 'cursor-pointer gap-1' : ''"
+            :title="isFailedWithReason(row.original) ? '点击查看失败原因' : undefined"
+            @click="isFailedWithReason(row.original) && showError(row.original)"
           >
             {{ statusMap[row.original.status]?.label }}
+            <UIcon
+              v-if="isFailedWithReason(row.original)"
+              name="i-heroicons-exclamation-circle-16-solid"
+              class="size-3.5"
+            />
           </UBadge>
         </template>
         <template #trigger-cell="{ row }">
