@@ -28,15 +28,23 @@ const avatarList: AvatarInfo[] = [
 
 const avatarModules = import.meta.glob('~/assets/images/avatars/*.svg', { eager: true, import: 'default' })
 
+function isUploadedAvatar(id: string): boolean {
+  // 上传头像存的是 URL(MinIO 公网地址或 /uploads 代理路径),内置头像存的是 id
+  return /^https?:\/\//.test(id) || id.startsWith('/')
+}
+
 function resolveAvatarUrl(id: string): string {
+  if (!id) return ''
+  if (isUploadedAvatar(id)) return id
   const key = Object.keys(avatarModules).find(k => k.includes(`/${id}.svg`))
   return key ? (avatarModules[key] as string) : ''
 }
 
 function randomAvatarId(): string {
-  return avatarList[Math.floor(Math.random() * avatarList.length)].id
+  const item = avatarList[Math.floor(Math.random() * avatarList.length)]
+  return item ? item.id : avatarList[0]!.id
 }
 
 export function useAvatars() {
-  return { avatarList, resolveAvatarUrl, randomAvatarId }
+  return { avatarList, resolveAvatarUrl, randomAvatarId, isUploadedAvatar }
 }

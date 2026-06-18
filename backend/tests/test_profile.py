@@ -27,6 +27,43 @@ class TestProfileUpdate:
         user.refresh_from_db()
         assert user.avatar == "docker-whale"
 
+    def test_update_avatar_uploaded_url(self, api_client, settings):
+        # 上传头像存的是本站 MinIO 公网 URL,应被接受
+        settings.MINIO_PUBLIC_URL = "/uploads"
+        user = UserFactory()
+        api_client.force_authenticate(user=user)
+        url = "/uploads/2026/06/19/abc123def456.png"
+        response = api_client.patch("/api/auth/me/", {"avatar": url}, format="json")
+        assert response.status_code == 200
+        user.refresh_from_db()
+        assert user.avatar == url
+
+    def test_update_avatar_rejects_external_url(self, api_client, settings):
+        # 非本站地址应被拒绝(防止指向任意外部 URL)
+        settings.MINIO_PUBLIC_URL = "/uploads"
+        user = UserFactory()
+        api_client.force_authenticate(user=user)
+        response = api_client.patch(
+            "/api/auth/me/",
+            {"avatar": "https://evil.example.com/x.png"},
+            format="json",
+        )
+        assert response.status_code == 400
+        assert "avatar" in response.data
+
+    def test_update_avatar_rejects_non_image_upload(self, api_client, settings):
+        # 本站上传但非图片(如 PDF)应被拒绝
+        settings.MINIO_PUBLIC_URL = "/uploads"
+        user = UserFactory()
+        api_client.force_authenticate(user=user)
+        response = api_client.patch(
+            "/api/auth/me/",
+            {"avatar": "/uploads/2026/06/19/doc.pdf"},
+            format="json",
+        )
+        assert response.status_code == 400
+        assert "avatar" in response.data
+
     def test_update_settings(self, api_client):
         user = UserFactory()
         api_client.force_authenticate(user=user)

@@ -1,8 +1,8 @@
 <template>
   <div>
     <div v-if="modelValue" class="flex items-center gap-3 mb-4">
-      <img :src="resolveAvatarUrl(modelValue)" :alt="modelValue" class="w-16 h-16 rounded-full ring-2 ring-crystal-500" />
-      <span class="text-sm text-gray-500 dark:text-gray-400">{{ avatarList.find(a => a.id === modelValue)?.label }}</span>
+      <img :src="resolveAvatarUrl(modelValue)" :alt="modelValue" class="w-16 h-16 rounded-full ring-2 ring-crystal-500 object-cover" />
+      <span class="text-sm text-gray-500 dark:text-gray-400">{{ currentLabel }}</span>
     </div>
     <div class="grid grid-cols-5 gap-3">
       <button
@@ -23,8 +23,13 @@
 </template>
 
 <script setup lang="ts">
-defineProps<{ modelValue: string }>()
+const props = defineProps<{ modelValue: string }>()
 defineEmits<{ 'update:modelValue': [value: string] }>()
 
-const { avatarList, resolveAvatarUrl } = useAvatars()
+const { avatarList, resolveAvatarUrl, isUploadedAvatar } = useAvatars()
+
+const currentLabel = computed(() => {
+  if (isUploadedAvatar(props.modelValue)) return '自定义头像'
+  return avatarList.find(a => a.id === props.modelValue)?.label
+})
 </script>
