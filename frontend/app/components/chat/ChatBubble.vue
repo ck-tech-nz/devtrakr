@@ -10,8 +10,10 @@ const activeTitle = computed(() => conversations.value.find(c => c.issue_id === 
 
 const rootEl = ref<HTMLElement | null>(null)
 function onClickOutside(e: MouseEvent) {
-  // 点击气泡/面板以外区域时收起(FAB 与面板都在 rootEl 内,不会误关)
-  if (open.value && rootEl.value && !rootEl.value.contains(e.target as Node)) {
+  // 用 composedPath 而非 contains(target):返回按钮点击后会因 v-if 立即从 DOM 移除,
+  // contains(已脱离的 target) 会误判为"点击外部"而关掉弹窗;composedPath 在事件派发时
+  // 已固定路径,即使节点随后被移除仍包含 rootEl。
+  if (open.value && rootEl.value && !e.composedPath().includes(rootEl.value)) {
     open.value = false
   }
 }
@@ -78,7 +80,9 @@ function onPreviewOpen(id: number) { open.value = true; openConv(id) }
   display: flex; flex-direction: column; overflow: hidden; }
 .chat-head { display: flex; align-items: center; gap: 10px; padding: 14px 16px; border-bottom: 1px solid #e4e8ef; }
 .chat-head strong { flex: 1; }
-.chat-back, .chat-x { border: none; background: transparent; font-size: 18px; cursor: pointer; color: #64748b; }
+.chat-back, .chat-x { display: grid; place-items: center; width: 30px; height: 30px; flex: none; border: none; background: transparent; border-radius: 8px; font-size: 20px; line-height: 1; cursor: pointer; color: #64748b; transition: background .15s, color .15s; }
+.chat-back:hover, .chat-x:hover { background: #f1f5f9; color: #0f172a; }
+.chat-back { margin-left: -4px; }
 .chat-list { flex: 1; min-height: 0; overflow-y: auto; padding: 6px; }
 .chat-list-hd { padding: 10px 12px 6px; font-size: 11px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; color: #94a3b8; }
 .chat-conv { display: flex; gap: 11px; width: 100%; text-align: left; padding: 11px 12px; border: none; background: transparent; border-radius: 12px; cursor: pointer; }
