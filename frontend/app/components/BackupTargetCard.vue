@@ -47,6 +47,8 @@ const emit = defineEmits<{
   toggle: []
   download: [record: BackupRecord]
   delete: [record: BackupRecord]
+  // 启用/禁用、启动/关闭定时:发出部分字段补丁,由父组件 PATCH 目标
+  update: [patch: Record<string, unknown>]
 }>()
 
 const { formatSize, formatTime, statusMap } = useBackupFormat()
@@ -91,8 +93,8 @@ const connectionSummary = computed(() => {
 
 <template>
   <div
-    class="rounded-lg bg-white dark:bg-gray-900 divide-y divide-gray-100 dark:divide-gray-800"
-    :class="{ border: bordered }"
+    class="rounded-lg bg-white dark:bg-gray-900 divide-y divide-gray-100 dark:divide-gray-800 transition-opacity"
+    :class="{ border: bordered, 'opacity-60': !target.is_active }"
   >
     <!-- 卡片头部：整行点击展开/收起（参考 issue card 的整卡可点击；立即备份按钮 @click.stop 不触发） -->
     <div
@@ -120,7 +122,26 @@ const connectionSummary = computed(() => {
           <span>保留：{{ target.retention_count }} 份</span>
         </div>
       </div>
-      <div class="flex items-center gap-2 shrink-0">
+      <div class="flex items-center gap-3 shrink-0">
+        <!-- 启用/禁用目标（@click.stop 不触发 header 展开） -->
+        <div class="flex items-center gap-1.5" @click.stop>
+          <span class="text-xs text-gray-500">启用</span>
+          <USwitch
+            size="sm"
+            :model-value="target.is_active"
+            @update:model-value="emit('update', { is_active: $event })"
+          />
+        </div>
+        <!-- 启动/关闭定时（无 cron 时禁用,先去后台配置计划） -->
+        <div class="flex items-center gap-1.5" @click.stop>
+          <span class="text-xs text-gray-500">定时</span>
+          <USwitch
+            size="sm"
+            :model-value="target.schedule_enabled"
+            :disabled="!target.schedule_cron"
+            @update:model-value="emit('update', { schedule_enabled: $event })"
+          />
+        </div>
         <UButton
           size="xs"
           variant="outline"

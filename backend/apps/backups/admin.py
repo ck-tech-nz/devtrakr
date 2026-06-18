@@ -6,8 +6,9 @@ from apps.backups.models import BackupTarget, DatabaseBackup
 
 @admin.register(BackupTarget)
 class BackupTargetAdmin(ModelAdmin):
-    list_display = ("name", "project", "db_name", "ssh_host", "schedule_cron", "is_active")
-    list_filter = ("is_active", "engine", "project")
+    list_display = ("name", "project", "db_name", "ssh_host", "schedule_cron", "schedule_enabled", "is_active")
+    list_editable = ("schedule_enabled", "is_active")
+    list_filter = ("is_active", "schedule_enabled", "engine", "project")
     search_fields = ("name", "db_name", "ssh_host")
 
 

@@ -26,6 +26,7 @@
         :records="recordsByTarget[t.id] || []"
         @run="runBackup(t)" @toggle="toggleRecords(t)"
         @download="downloadBackup" @delete="deleteBackup"
+        @update="patchTarget(t, $event)"
       />
     </div>
   </div>
@@ -135,6 +136,17 @@ async function deleteBackup(row: BackupRecord) {
       recordsByTarget.value[expandedId.value] = res.results ?? res
     }
   } catch { toast.add({ title: '删除失败', color: 'error' }) }
+}
+
+// 启用/禁用、定时开关:PATCH 目标并就地更新本地状态
+async function patchTarget(t: BackupTarget, patch: Record<string, unknown>) {
+  try {
+    await api(`/api/backups/targets/${t.id}/`, { method: 'PATCH', body: patch })
+    Object.assign(t, patch)
+  } catch {
+    toast.add({ title: '更新失败', color: 'error' })
+    await fetchTargets()
+  }
 }
 
 onMounted(fetchTargets)
