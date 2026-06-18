@@ -4,12 +4,14 @@
       <NuxtPage />
     </NuxtLayout>
     <AppDialog />
+    <ChatBubble v-if="user" />
   </UApp>
 </template>
 
 <script setup lang="ts">
 const colorMode = useColorMode()
 const { settings } = useUserSettings()
+const { user } = useAuth()
 
 useHead({
   htmlAttrs: { lang: 'zh-CN' },

@@ -61,6 +61,7 @@ export default defineNuxtConfig({
   },
   routeRules: {
     '/api/**': { proxy: `${apiBase}/api/**` },
+    '/ws/**': { proxy: `${apiBase}/ws/**` },
     '/uploads/**': { proxy: `${minioBase}/**` },
   },
   nitro: {
@@ -68,6 +69,10 @@ export default defineNuxtConfig({
       '/api/': {
         target: `${apiBase}/api/`,
         changeOrigin: true,
+      },
+      '/ws/': {
+        target: `${apiBase}/ws/`,
+        ws: true,
       },
       '/uploads/': {
         target: `${minioBase}/`,
