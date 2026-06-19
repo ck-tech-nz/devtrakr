@@ -2,7 +2,9 @@ import random
 
 from django.conf import settings
 
+# 内置头像 id 白名单,需与前端 useAvatars.ts 的 avatarGroups 保持一致
 AVATAR_CHOICES = [
+    # 极客风格(SVG)
     "terminal-hacker",
     "robot",
     "bug-monster",
@@ -23,6 +25,31 @@ AVATAR_CHOICES = [
     "infinite-coffee",
     "sudo-penguin",
     "null-pointer",
+    # 卡通插画(flaticon PNG)
+    "fox",
+    "bear",
+    "bear-2",
+    "lion",
+    "crocodile",
+    "giraffe",
+    "squirrel",
+    "wild-boar",
+    "cow",
+    "bee",
+    "man",
+    "man-2",
+    "man-3",
+    "woman",
+    "woman-2",
+    "woman-3",
+    "planet-earth",
+    "leaf",
+    "plant-pot",
+    "eco-friendly",
+    "laptop",
+    "online-training",
+    "listening",
+    "shovel",
 ]
 
 
