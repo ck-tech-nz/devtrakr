@@ -62,22 +62,36 @@
         </UFormField>
       </div>
 
-      <!-- Change password -->
+      <!-- Change password (默认收起,点击标题展开) -->
       <div class="pt-4 border-t border-gray-100 dark:border-gray-800">
-        <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-3">修改密码</h3>
-        <div class="space-y-3">
-          <UFormField label="当前密码" :error="pwError">
-            <UInput v-model="pw.current" type="password" placeholder="请输入当前密码" size="lg" class="w-full" :color="pwError ? 'error' : undefined" />
-          </UFormField>
-          <div class="grid grid-cols-2 gap-4">
-            <UFormField label="新密码">
-              <UInput v-model="pw.new_password" type="password" placeholder="请输入新密码" size="lg" class="w-full" />
+        <button
+          type="button"
+          class="flex items-center gap-1.5 w-full text-left"
+          :aria-expanded="pwOpen"
+          @click="pwOpen = !pwOpen"
+        >
+          <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100">修改密码</h3>
+          <UIcon
+            name="i-heroicons-chevron-down"
+            class="w-4 h-4 text-gray-400 transition-transform"
+            :class="pwOpen ? 'rotate-180' : ''"
+          />
+        </button>
+        <transition name="slide">
+          <div v-show="pwOpen" class="space-y-3 mt-3">
+            <UFormField label="当前密码" :error="pwError">
+              <UInput v-model="pw.current" type="password" placeholder="请输入当前密码" size="lg" class="w-full" :color="pwError ? 'error' : undefined" />
             </UFormField>
-            <UFormField label="确认新密码">
-              <UInput v-model="pw.confirm" type="password" placeholder="请确认新密码" size="lg" class="w-full" />
-            </UFormField>
+            <div class="grid grid-cols-2 gap-4">
+              <UFormField label="新密码">
+                <UInput v-model="pw.new_password" type="password" placeholder="请输入新密码" size="lg" class="w-full" />
+              </UFormField>
+              <UFormField label="确认新密码">
+                <UInput v-model="pw.confirm" type="password" placeholder="请确认新密码" size="lg" class="w-full" />
+              </UFormField>
+            </div>
           </div>
-        </div>
+        </transition>
       </div>
 
       <!-- Personal settings -->
@@ -150,7 +164,11 @@ const toast = useToast()
 const saving = ref(false)
 const error = ref('')
 const pwError = ref('')
+const pwOpen = ref(false) // 修改密码默认收起
 const success = ref('')
+
+// 校验报错时自动展开,避免错误被折叠隐藏
+watch(pwError, (v) => { if (v) pwOpen.value = true })
 const generatingName = ref(false)
 const generatedNames = ref<string[]>([])
 
@@ -341,3 +359,21 @@ async function handleSave() {
   }
 }
 </script>
+
+<style scoped>
+.slide-enter-active,
+.slide-leave-active {
+  transition: all 0.2s ease;
+  overflow: hidden;
+}
+.slide-enter-from,
+.slide-leave-to {
+  opacity: 0;
+  max-height: 0;
+}
+.slide-enter-to,
+.slide-leave-from {
+  opacity: 1;
+  max-height: 500px;
+}
+</style>
