@@ -65,6 +65,7 @@ const avatarGroups: AvatarGroup[] = [
       { id: 'online-training', label: '在线学习' },
       { id: 'listening', label: '听音乐' },
       { id: 'shovel', label: '铲子' },
+      { id: 'ninja', label: '忍者' },
     ],
   },
 ]

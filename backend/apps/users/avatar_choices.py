@@ -50,6 +50,7 @@ AVATAR_CHOICES = [
     "online-training",
     "listening",
     "shovel",
+    "ninja",
 ]
 
 
