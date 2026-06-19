@@ -18,6 +18,11 @@ services:
       - "traefik.enable=true"
       - "traefik.http.routers.devtrakr-backend.rule=Host(`devtrakr.matrixai.xin`) && PathPrefix(`/api`)"
       - "traefik.http.routers.devtrakr-backend.entrypoints=web"
+      # 聊天 WebSocket:/ws 直连后端(daphne ASGI);Traefik 原生转发 upgrade。
+      # 否则 /ws 会落到前端 catch-all(nitro 不转发 ws upgrade)。已在 test 验证。
+      - "traefik.http.routers.devtrakr-backend-ws.rule=Host(`devtrakr.matrixai.xin`) && PathPrefix(`/ws`)"
+      - "traefik.http.routers.devtrakr-backend-ws.entrypoints=web"
+      - "traefik.http.routers.devtrakr-backend-ws.service=devtrakr-backend"
       - "traefik.http.services.devtrakr-backend.loadbalancer.server.port=8000"
     command: >
       sh -c "uv run --no-sync python manage.py migrate --noinput &&
