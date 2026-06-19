@@ -7,15 +7,18 @@ const props = defineProps<{ text?: string }>()
 
 const { md } = useMentionMarkdown()
 
-const rootEl = ref<HTMLElement | null>(null)
-useInlineLinkPreviews(rootEl, () => html.value)
-
+// html 必须在 useInlineLinkPreviews 之前声明:后者的 immediate watch 会在 setup
+// 阶段同步读取 htmlGetter(),若 html 尚未初始化会触发 TDZ
+// (ReferenceError: Cannot access 'html' before initialization)。
 const html = computed(() => {
   if (!props.text) return ''
   return md.render(props.text)
     .replace(/<input class="task-list-item-checkbox" checked=""type="checkbox">/g, '<span class="md-checkbox md-checked"></span>')
     .replace(/<input class="task-list-item-checkbox"type="checkbox">/g, '<span class="md-checkbox"></span>')
 })
+
+const rootEl = ref<HTMLElement | null>(null)
+useInlineLinkPreviews(rootEl, () => html.value)
 </script>
 
 <style>
@@ -50,7 +53,11 @@ const html = computed(() => {
 .markdown-view table { border-collapse: collapse; margin: 0.5em 0; }
 .markdown-view th, .markdown-view td { border: 1px solid #d1d5db; padding: 0.4em 0.6em; }
 :root.dark .markdown-view th, :root.dark .markdown-view td { border-color: #4b5563; }
-.markdown-view img { max-width: 100%; border-radius: 6px; margin: 0.5em 0; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.08), 0 2px 8px rgba(0, 0, 0, 0.12); }
+.markdown-view img { max-width: 100%; height: auto; border-radius: 6px; margin: 0.5em 0; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.08), 0 2px 8px rgba(0, 0, 0, 0.12); }
+/* 图片对齐:|left/center/right 标记(块级 + auto 外边距,配合 |w= 才有可见效果) */
+.markdown-view img.md-img-left { display: block; margin-right: auto; }
+.markdown-view img.md-img-center { display: block; margin-left: auto; margin-right: auto; }
+.markdown-view img.md-img-right { display: block; margin-left: auto; }
 :root.dark .markdown-view img { box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.1), 0 2px 8px rgba(0, 0, 0, 0.45); }
 
 /* 以下 mention/file-card/task-list 样式与 MarkdownEditor.vue 的 .markdown-body 段保持同步 */

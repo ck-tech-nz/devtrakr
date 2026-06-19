@@ -5,7 +5,8 @@ from django.db import models
 class User(AbstractUser):
     name = models.CharField(max_length=50, verbose_name="姓名")
     github_id = models.CharField(max_length=100, blank=True, verbose_name="GitHub ID")
-    avatar = models.CharField(max_length=50, blank=True, verbose_name="头像")
+    # 可存内置头像 id(如 "robot")或上传头像的 URL(MinIO public url),故放宽到 512
+    avatar = models.CharField(max_length=512, blank=True, verbose_name="头像")
     settings = models.JSONField(default=dict, blank=True, verbose_name="用户设置")
     is_bot = models.BooleanField(default=False, verbose_name="是否为机器人")
     default_project = models.ForeignKey(

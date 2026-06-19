@@ -16,7 +16,27 @@
           <UInput v-model="username" placeholder="请输入用户名" icon="i-heroicons-user" size="lg" class="w-full" />
         </UFormField>
         <UFormField label="密码">
-          <UInput v-model="password" type="password" placeholder="请输入密码" icon="i-heroicons-lock-closed" size="lg" class="w-full" />
+          <UInput
+            v-model="password"
+            :type="showPassword ? 'text' : 'password'"
+            placeholder="请输入密码"
+            icon="i-heroicons-lock-closed"
+            size="lg"
+            class="w-full"
+          >
+            <template #trailing>
+              <UButton
+                color="neutral"
+                variant="link"
+                size="sm"
+                :icon="showPassword ? 'i-heroicons-eye-slash' : 'i-heroicons-eye'"
+                :aria-label="showPassword ? '隐藏密码' : '显示密码'"
+                :padded="false"
+                tabindex="-1"
+                @click="showPassword = !showPassword"
+              />
+            </template>
+          </UInput>
         </UFormField>
         <p v-if="error" class="text-sm text-red-500">{{ error }}</p>
         <UButton block size="lg" color="primary" :loading="loading" type="submit">登录</UButton>
@@ -39,6 +59,7 @@ const registered = computed(() => route.query.registered === '1')
 
 const username = ref('')
 const password = ref('')
+const showPassword = ref(false)
 const error = ref('')
 const loading = ref(false)
 

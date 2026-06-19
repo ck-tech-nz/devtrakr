@@ -126,6 +126,8 @@ const emit = defineEmits<{
   'update:modelValue': [value: string]
   'upload-complete': [attachment: { url: string; filename: string; id: string }]
   'blur': []
+  // Cmd+Enter(Mac)/ Ctrl+Enter(PC) 提交;由消费方监听决定具体行为(可选)
+  'submit': []
 }>()
 
 const { api } = useApi()
@@ -233,6 +235,13 @@ function insertMention(item: { id: number; label: string; prefix?: string }) {
 }
 
 function handleMentionKeydown(e: KeyboardEvent) {
+  // Cmd/Ctrl+Enter 提交,优先于提及下拉的 Enter 选择;空内容由消费方的提交逻辑兜底
+  if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+    e.preventDefault()
+    mentionVisible.value = false
+    emit('submit')
+    return
+  }
   if (!mentionVisible.value) return
   if (e.key === 'ArrowUp') {
     e.preventDefault()
@@ -672,7 +681,11 @@ async function uploadFiles(files: File[]) {
 .markdown-body pre { background: #f3f4f6; padding: 1em; border-radius: 6px; overflow-x: auto; margin: 0.5em 0; }
 .markdown-body pre code { background: none; padding: 0; }
 .markdown-body blockquote { border-left: 4px solid #d1d5db; padding-left: 1em; color: #6b7280; margin: 0.5em 0; }
-.markdown-body img { max-width: 100%; border-radius: 6px; margin: 0.5em 0; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.08), 0 2px 8px rgba(0, 0, 0, 0.12); }
+.markdown-body img { max-width: 100%; height: auto; border-radius: 6px; margin: 0.5em 0; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.08), 0 2px 8px rgba(0, 0, 0, 0.12); }
+/* 图片对齐:|left/center/right 标记(块级 + auto 外边距,配合 |w= 才有可见效果) */
+.markdown-body img.md-img-left { display: block; margin-right: auto; }
+.markdown-body img.md-img-center { display: block; margin-left: auto; margin-right: auto; }
+.markdown-body img.md-img-right { display: block; margin-left: auto; }
 .markdown-body a { color: #2563eb; text-decoration: none; }
 .markdown-body a:hover { text-decoration: underline; }
 .markdown-body hr { border: none; border-top: 1px solid #e5e7eb; margin: 1em 0; }

@@ -22,16 +22,18 @@ from apps.ai.models import Analysis
 from apps.ai.services import IssueAnalysisService
 from apps.repos.services import GitHubSyncService
 from apps.repos.serializers import GitHubIssueBriefSerializer
-from .models import Issue, IssueStatus, Activity, IssueComment
+from .models import Issue, IssueStatus, Activity, IssueComment, IssueChatParticipant
 from .serializers import (
     IssueListSerializer, IssueDetailSerializer,
     IssueCreateUpdateSerializer, BatchUpdateSerializer,
     ActivitySerializer,
     IssueTransferInputSerializer, IssueAssignInputSerializer,
     IssueCommentSerializer,
+    ChatConversationSerializer,
 )
 from apps.notifications.services import create_comment_mention_notifications
 from .services import claim_issue, confirm_issue, transfer_issue, assign_issue, InvalidTransition
+from .services_chat import broadcast_comment
 
 User = get_user_model()
 
@@ -599,6 +601,9 @@ class IssueCommentsView(APIView):
             comment=comment, old_content="", new_content=comment.content,
             actor=request.user,
         )
+        # 必须保持为 return 前的最后一条语句：推送发出后若事务回滚，评论消失但 WS 事件已送达。
+        # 若日后在此之后新增可能抛出的逻辑，应改用 transaction.on_commit(lambda: broadcast_comment(comment))。
+        broadcast_comment(comment)  # 推送聊天气泡(独立于通知铃铛)
         return Response(
             IssueCommentSerializer(comment).data, status=status.HTTP_201_CREATED,
         )
@@ -1115,3 +1120,44 @@ class IssuePullRequestsView(APIView):
             "results": PullRequestSerializer(prs, many=True).data,
             "suggest_resolved": suggest_resolved,
         })
+
+
+class ChatConversationsView(APIView):
+    """GET: 我参与且有评论的会话列表(按最近活动倒序)。"""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        parts = (
+            IssueChatParticipant.objects
+            .filter(user=request.user, issue__comments__isnull=False)
+            .exclude(issue__status=IssueStatus.CLOSED.value)  # 已关闭的问题不进会话列表
+            .select_related("issue")
+            .distinct()
+            .order_by("-updated_at")
+        )
+        data = ChatConversationSerializer(parts, many=True).data
+        return Response({"results": data})
+
+
+class ChatUnreadTotalView(APIView):
+    """GET: 跨所有会话的未读总数(供气泡角标)。"""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        parts = IssueChatParticipant.objects.filter(user=request.user).select_related("issue")
+        total = sum(p.unread_count() for p in parts)
+        return Response({"unread_total": total})
+
+
+class ChatMarkReadView(APIView):
+    """POST: 把某会话已读指针推进到最新评论。"""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, issue_id):
+        part = IssueChatParticipant.objects.filter(user=request.user, issue_id=issue_id).first()
+        if not part:
+            return Response({"detail": "会话不存在"}, status=status.HTTP_404_NOT_FOUND)
+        latest = part.issue.comments.last()
+        part.last_read_comment = latest
+        part.save(update_fields=["last_read_comment", "updated_at"])
+        return Response({"unread_count": part.unread_count()})

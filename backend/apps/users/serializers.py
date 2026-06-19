@@ -1,9 +1,16 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from django.contrib.auth.password_validation import validate_password
-from .avatar_choices import AVATAR_CHOICES, random_avatar
+from .avatar_choices import AVATAR_CHOICES, is_valid_avatar, random_avatar
 
 User = get_user_model()
+
+
+def _validate_avatar(value):
+    """头像可为内置 id 或本站上传的图片 URL,其余拒绝。"""
+    if not is_valid_avatar(value):
+        raise serializers.ValidationError("无效的头像")
+    return value
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -41,6 +48,9 @@ class MeSerializer(serializers.ModelSerializer):
 
     def get_permissions(self, obj):
         return list(obj.get_all_permissions())
+
+    def validate_avatar(self, value):
+        return _validate_avatar(value)
 
     def to_representation(self, instance):
         data = super().to_representation(instance)

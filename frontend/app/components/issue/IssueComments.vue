@@ -42,7 +42,7 @@
         </div>
         <div class="p-3">
           <template v-if="editingId === c.id">
-            <MarkdownEditor v-model="editDraft" min-height="120px" />
+            <MarkdownEditor v-model="editDraft" min-height="120px" @submit="saveEdit(c)" />
             <div class="flex justify-end gap-2 mt-2">
               <UButton size="xs" variant="ghost" color="neutral" @click="cancelEdit">取消</UButton>
               <UButton size="xs" :loading="savingEdit" :disabled="!editDraft.trim()" @click="saveEdit(c)">保存</UButton>
@@ -55,8 +55,9 @@
 
     <!-- 新评论输入框 -->
     <div data-testid="new-comment" class="space-y-2">
-      <MarkdownEditor v-model="draft" placeholder="发表评论... 支持 Markdown 和 @提及" min-height="120px" />
-      <div class="flex justify-end">
+      <MarkdownEditor v-model="draft" placeholder="发表评论... 支持 Markdown 和 @提及" min-height="120px" @submit="submit" />
+      <div class="flex items-center justify-end gap-3">
+        <span class="text-xs text-gray-400 dark:text-gray-500">{{ submitHint }}</span>
         <UButton data-testid="submit-comment" size="sm" :loading="submitting" :disabled="!draft.trim()" @click="submit">评论</UButton>
       </div>
     </div>
@@ -109,6 +110,12 @@ const loadError = ref(false)
 
 const draft = ref('')
 const submitting = ref(false)
+
+// 发送快捷键提示:Mac 显示 ⌘ + Enter,其他平台显示 Ctrl + Enter
+const submitHint = computed(() => {
+  const ua = typeof navigator !== 'undefined' ? (navigator.platform || navigator.userAgent) : ''
+  return /Mac|iPhone|iPad/.test(ua) ? '⌘ + Enter 发送' : 'Ctrl + Enter 发送'
+})
 
 const editingId = ref<number | null>(null)
 const editDraft = ref('')

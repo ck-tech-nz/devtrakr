@@ -19,6 +19,7 @@ CSRF_TRUSTED_ORIGINS = [
 ]
 
 INSTALLED_APPS = [
+    "daphne",   # 必须在最前:让 runserver 走 ASGI 以支持 WebSocket(dev)
     "unfold",
     "django.contrib.admin",
     "django.contrib.auth",
@@ -48,6 +49,7 @@ INSTALLED_APPS = [
     "apps.backups",
     # Packages
     "page_perms",
+    "channels",
 ]
 
 MIDDLEWARE = [
@@ -81,6 +83,18 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = "config.wsgi.application"
+
+ASGI_APPLICATION = "config.asgi.application"
+
+# Channels 通道层:复用 Celery 的 Redis,另用 DB /1。
+# 测试经 conftest 改用 InMemoryChannelLayer(无需 Redis)。
+CHANNEL_REDIS_URL = os.environ.get("CHANNEL_REDIS_URL", "redis://127.0.0.1:6379/1")
+CHANNEL_LAYERS = {
+    "default": {
+        "BACKEND": "channels_redis.core.RedisChannelLayer",
+        "CONFIG": {"hosts": [CHANNEL_REDIS_URL]},
+    }
+}
 
 DATABASES = {
     "default": {

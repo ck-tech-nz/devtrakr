@@ -1,0 +1,156 @@
+import pytest
+
+from apps.issues.models import IssueChatParticipant
+from apps.issues.services_chat import participants_for_comment
+from tests.factories import IssueFactory, IssueCommentFactory, UserFactory
+from apps.issues.services_chat import broadcast_comment
+
+pytestmark = pytest.mark.django_db
+
+
+def test_unread_count_excludes_own_and_counts_newer():
+    issue = IssueFactory()
+    me = UserFactory()
+    other = UserFactory()
+    c1 = IssueCommentFactory(issue=issue, author=other)
+    part = IssueChatParticipant.objects.create(issue=issue, user=me, last_read_comment=c1)
+    # 一条别人的新评论 + 一条自己的评论
+    IssueCommentFactory(issue=issue, author=other)   # 未读 +1
+    IssueCommentFactory(issue=issue, author=me)       # 自己的不计
+    assert part.unread_count() == 1
+
+
+def test_unread_count_none_pointer_counts_all_others():
+    issue = IssueFactory()
+    me = UserFactory()
+    other = UserFactory()
+    IssueCommentFactory(issue=issue, author=other)
+    IssueCommentFactory(issue=issue, author=other)
+    part = IssueChatParticipant.objects.create(issue=issue, user=me, last_read_comment=None)
+    assert part.unread_count() == 2
+
+
+def test_participants_union_assignee_helpers_mentions():
+    assignee = UserFactory()
+    helper = UserFactory()
+    mentioned = UserFactory()
+    author = UserFactory()
+    issue = IssueFactory(assignee=assignee)
+    issue.helpers.add(helper)
+    content = f"看下 @[{mentioned.name}](user:{mentioned.id})"
+    comment = IssueCommentFactory(issue=issue, author=author, content=content)
+
+    result = participants_for_comment(comment)
+    assert {assignee, helper, mentioned}.issubset(result)
+
+
+def test_participants_includes_existing_participants_and_skips_inactive():
+    issue = IssueFactory(assignee=None)
+    existing = UserFactory()
+    inactive = UserFactory(is_active=False)
+    IssueChatParticipant.objects.create(issue=issue, user=existing)
+    IssueChatParticipant.objects.create(issue=issue, user=inactive)
+    comment = IssueCommentFactory(issue=issue)
+
+    result = participants_for_comment(comment)
+    assert existing in result
+    assert inactive not in result
+
+
+def test_broadcast_creates_rows_and_marks_author_read():
+    assignee = UserFactory()
+    author = UserFactory()
+    issue = IssueFactory(assignee=assignee)
+    comment = IssueCommentFactory(issue=issue, author=author)
+
+    broadcast_comment(comment)
+
+    # 作者与负责人都有成员行
+    author_row = IssueChatParticipant.objects.get(issue=issue, user=author)
+    assignee_row = IssueChatParticipant.objects.get(issue=issue, user=assignee)
+    # 作者自己的评论自动已读;负责人未读=1
+    assert author_row.last_read_comment_id == comment.id
+    assert author_row.unread_count() == 0
+    assert assignee_row.unread_count() == 1
+
+
+def test_broadcast_is_safe_when_channel_layer_missing(settings):
+    settings.CHANNEL_LAYERS = {}  # get_channel_layer() -> None
+    issue = IssueFactory(assignee=UserFactory())
+    comment = IssueCommentFactory(issue=issue)
+    # 不应抛异常
+    broadcast_comment(comment)
+    assert IssueChatParticipant.objects.filter(issue=issue).exists()
+
+
+def test_conversations_endpoint_lists_with_unread(auth_client, auth_user):
+    issue = IssueFactory()
+    other = UserFactory()
+    c1 = IssueCommentFactory(issue=issue, author=other)
+    IssueChatParticipant.objects.create(issue=issue, user=auth_user, last_read_comment=c1)
+    IssueCommentFactory(issue=issue, author=other)  # 未读 +1
+
+    resp = auth_client.get("/api/issues/chat/conversations/")
+    assert resp.status_code == 200
+    items = resp.json()["results"] if isinstance(resp.json(), dict) else resp.json()
+    row = next(r for r in items if r["issue_id"] == issue.id)
+    assert row["unread_count"] == 1
+    assert row["issue_title"] == issue.title
+    assert row["last_comment"]["content"]
+
+
+def test_unread_total_endpoint(auth_client, auth_user):
+    issue = IssueFactory()
+    other = UserFactory()
+    IssueChatParticipant.objects.create(issue=issue, user=auth_user)
+    IssueCommentFactory(issue=issue, author=other)
+
+    resp = auth_client.get("/api/issues/chat/unread-total/")
+    assert resp.status_code == 200
+    assert resp.json()["unread_total"] == 1
+
+
+def test_mark_read_advances_pointer(auth_client, auth_user):
+    issue = IssueFactory()
+    other = UserFactory()
+    IssueChatParticipant.objects.create(issue=issue, user=auth_user)
+    latest = IssueCommentFactory(issue=issue, author=other)
+
+    resp = auth_client.post(f"/api/issues/chat/conversations/{issue.id}/read/")
+    assert resp.status_code == 200
+    part = IssueChatParticipant.objects.get(issue=issue, user=auth_user)
+    assert part.last_read_comment_id == latest.id
+    assert part.unread_count() == 0
+
+
+def test_posting_comment_notifies_assignee(auth_client, auth_user):
+    assignee = UserFactory()
+    issue = IssueFactory(assignee=assignee)  # auth_user 作为作者
+
+    resp = auth_client.post(
+        f"/api/issues/{issue.id}/comments/", {"content": "请看下这个问题"}, format="json"
+    )
+    assert resp.status_code == 201
+    assignee_row = IssueChatParticipant.objects.get(issue=issue, user=assignee)
+    author_row = IssueChatParticipant.objects.get(issue=issue, user=auth_user)
+    assert assignee_row.unread_count() == 1
+    assert author_row.unread_count() == 0
+
+
+def test_conversations_excludes_closed_and_returns_status(auth_client, auth_user):
+    from apps.issues.models import IssueStatus
+    other = UserFactory()
+    open_issue = IssueFactory(status="进行中")
+    closed_issue = IssueFactory(status=IssueStatus.CLOSED.value)  # 已关闭
+    for iss in (open_issue, closed_issue):
+        IssueCommentFactory(issue=iss, author=other)
+        IssueChatParticipant.objects.create(issue=iss, user=auth_user)
+
+    resp = auth_client.get("/api/issues/chat/conversations/")
+    assert resp.status_code == 200
+    items = resp.json()["results"]
+    ids = {r["issue_id"] for r in items}
+    assert open_issue.id in ids
+    assert closed_issue.id not in ids  # 已关闭不进列表
+    row = next(r for r in items if r["issue_id"] == open_issue.id)
+    assert row["issue_status"] == "进行中"

@@ -78,8 +78,8 @@ jobs:
           tags: |
             ${{ env.REGISTRY }}/${{ env.PROJECT_NAME }}/backend-${{ needs.set-env.outputs.env }}:latest
             ${{ env.REGISTRY }}/${{ env.PROJECT_NAME }}/backend-${{ needs.set-env.outputs.env }}:${{ steps.vars.outputs.short_sha }}
-          cache-from: type=gha,scope=backend-${{ needs.set-env.outputs.env }}
-          cache-to: type=gha,scope=backend-${{ needs.set-env.outputs.env }},mode=max
+          cache-from: type=gha,scope=backend-${{ needs.set-env.outputs.env }}-uvws
+          cache-to: type=gha,scope=backend-${{ needs.set-env.outputs.env }}-uvws,mode=max
 
       - name: Skip existing Backend image
         if: steps.image-check.outputs.exists == 'true'

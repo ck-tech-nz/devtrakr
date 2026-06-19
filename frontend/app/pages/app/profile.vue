@@ -5,7 +5,7 @@
     <div class="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 p-6 space-y-6">
       <!-- Avatar & basic info -->
       <div class="flex items-center gap-4 pb-4 border-b border-gray-100 dark:border-gray-800">
-        <img v-if="form.avatar" :src="resolveAvatarUrl(form.avatar)" class="w-16 h-16 rounded-full" />
+        <img v-if="form.avatar" :src="resolveAvatarUrl(form.avatar)" class="w-16 h-16 rounded-full object-cover" />
         <div>
           <div class="text-lg font-semibold text-gray-900 dark:text-gray-100">{{ user?.username }}</div>
           <div class="text-sm text-gray-500 dark:text-gray-400">{{ user?.groups?.join(', ') || '无用户组' }}</div>
@@ -14,9 +14,32 @@
 
       <!-- Avatar picker -->
       <div>
-        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">修改头像</label>
+        <div class="flex items-center justify-between mb-2">
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">修改头像</label>
+          <UButton
+            variant="outline"
+            color="neutral"
+            size="sm"
+            icon="i-heroicons-arrow-up-tray"
+            :loading="uploadingAvatar"
+            @click="triggerAvatarUpload"
+          >
+            上传图片
+          </UButton>
+        </div>
+        <input
+          ref="avatarFileInput"
+          type="file"
+          accept="image/png,image/jpeg,image/gif,image/webp"
+          class="hidden"
+          @change="onAvatarFileChange"
+        />
+        <p class="text-xs text-gray-400 mb-3">支持 PNG / JPG / GIF / WEBP,最大 10MB;上传后可裁剪;或从下方内置头像中选择</p>
         <AvatarPicker v-model="form.avatar" />
       </div>
+
+      <!-- 裁剪弹窗:选择文件后打开,确认裁剪后再上传 -->
+      <AvatarCropper v-model="cropOpen" :src="cropSrc" @cropped="onCropped" />
 
       <!-- Editable fields -->
       <div class="grid grid-cols-2 gap-4">
@@ -39,22 +62,36 @@
         </UFormField>
       </div>
 
-      <!-- Change password -->
+      <!-- Change password (默认收起,点击标题展开) -->
       <div class="pt-4 border-t border-gray-100 dark:border-gray-800">
-        <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-3">修改密码</h3>
-        <div class="space-y-3">
-          <UFormField label="当前密码" :error="pwError">
-            <UInput v-model="pw.current" type="password" placeholder="请输入当前密码" size="lg" class="w-full" :color="pwError ? 'error' : undefined" />
-          </UFormField>
-          <div class="grid grid-cols-2 gap-4">
-            <UFormField label="新密码">
-              <UInput v-model="pw.new_password" type="password" placeholder="请输入新密码" size="lg" class="w-full" />
+        <button
+          type="button"
+          class="flex items-center gap-1.5 w-full text-left"
+          :aria-expanded="pwOpen"
+          @click="pwOpen = !pwOpen"
+        >
+          <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100">修改密码</h3>
+          <UIcon
+            name="i-heroicons-chevron-down"
+            class="w-4 h-4 text-gray-400 transition-transform"
+            :class="pwOpen ? 'rotate-180' : ''"
+          />
+        </button>
+        <transition name="slide">
+          <div v-show="pwOpen" class="space-y-3 mt-3">
+            <UFormField label="当前密码" :error="pwError">
+              <UInput v-model="pw.current" type="password" placeholder="请输入当前密码" size="lg" class="w-full" :color="pwError ? 'error' : undefined" />
             </UFormField>
-            <UFormField label="确认新密码">
-              <UInput v-model="pw.confirm" type="password" placeholder="请确认新密码" size="lg" class="w-full" />
-            </UFormField>
+            <div class="grid grid-cols-2 gap-4">
+              <UFormField label="新密码">
+                <UInput v-model="pw.new_password" type="password" placeholder="请输入新密码" size="lg" class="w-full" />
+              </UFormField>
+              <UFormField label="确认新密码">
+                <UInput v-model="pw.confirm" type="password" placeholder="请确认新密码" size="lg" class="w-full" />
+              </UFormField>
+            </div>
           </div>
-        </div>
+        </transition>
       </div>
 
       <!-- Personal settings -->
@@ -122,13 +159,83 @@ const { api } = useApi()
 const { user, fetchMe } = useAuth()
 const { resolveAvatarUrl } = useAvatars()
 const { settings } = useUserSettings()
+const toast = useToast()
 
 const saving = ref(false)
 const error = ref('')
 const pwError = ref('')
+const pwOpen = ref(false) // 修改密码默认收起
 const success = ref('')
+
+// 校验报错时自动展开,避免错误被折叠隐藏
+watch(pwError, (v) => { if (v) pwOpen.value = true })
 const generatingName = ref(false)
 const generatedNames = ref<string[]>([])
+
+// --- 头像上传(选择 → 裁剪 → 上传)---
+const AVATAR_MAX_SIZE = 10 * 1024 * 1024 // 源图 10MB(裁剪后会重新编码为小图)
+const AVATAR_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp']
+const uploadingAvatar = ref(false)
+const avatarFileInput = ref<HTMLInputElement | null>(null)
+const cropOpen = ref(false)
+const cropSrc = ref('')
+
+function triggerAvatarUpload() {
+  avatarFileInput.value?.click()
+}
+
+function onAvatarFileChange(e: Event) {
+  const input = e.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = '' // 允许重新选择同一文件
+  if (!file) return
+  if (!AVATAR_TYPES.includes(file.type)) {
+    toast.add({ title: '仅支持 PNG / JPG / GIF / WEBP 图片', color: 'error' })
+    return
+  }
+  if (file.size > AVATAR_MAX_SIZE) {
+    toast.add({ title: '图片超过 10MB 限制', color: 'error' })
+    return
+  }
+  revokeCropSrc()
+  cropSrc.value = URL.createObjectURL(file)
+  cropOpen.value = true
+}
+
+function revokeCropSrc() {
+  if (cropSrc.value) {
+    URL.revokeObjectURL(cropSrc.value)
+    cropSrc.value = ''
+  }
+}
+
+// 关闭裁剪弹窗(取消或完成)时释放临时 object URL
+watch(cropOpen, (open) => {
+  if (!open) revokeCropSrc()
+})
+
+async function onCropped(file: File) {
+  uploadingAvatar.value = true
+  try {
+    // 1) 上传裁剪后的图片到对象存储
+    const formData = new FormData()
+    formData.append('file', file)
+    const res = await api<{ url: string }>('/api/tools/upload/image/', {
+      method: 'POST',
+      body: formData,
+    })
+    // 2) 立即落库,无需再点「保存修改」(只 PATCH avatar,不动其它未保存的编辑)
+    await api('/api/auth/me/', { method: 'PATCH', body: { avatar: res.url } })
+    form.value.avatar = res.url
+    // 3) 同步全局用户态,让顶栏等处头像即时刷新(不整体 fetchMe 以免覆盖未保存的昵称/邮箱)
+    if (user.value) user.value = { ...user.value, avatar: res.url }
+    toast.add({ title: '头像已更新', color: 'success' })
+  } catch {
+    toast.add({ title: '头像更新失败', color: 'error' })
+  } finally {
+    uploadingAvatar.value = false
+  }
+}
 
 async function generateNickname() {
   generatingName.value = true
@@ -186,7 +293,10 @@ async function saveDefaultProject(v: string) {
   }
 }
 
-watch(user, (u) => {
+// 仅在用户身份变化(初始加载/模拟登录切换)时初始化表单,避免头像即时落库
+// 后整体覆盖用户态时,把未保存的昵称/邮箱编辑冲掉
+watch(() => user.value?.id, () => {
+  const u = user.value
   if (u) {
     form.value = { name: u.name || '', email: u.email || '', avatar: u.avatar || '' }
   }
@@ -249,3 +359,21 @@ async function handleSave() {
   }
 }
 </script>
+
+<style scoped>
+.slide-enter-active,
+.slide-leave-active {
+  transition: all 0.2s ease;
+  overflow: hidden;
+}
+.slide-enter-from,
+.slide-leave-to {
+  opacity: 0;
+  max-height: 0;
+}
+.slide-enter-to,
+.slide-leave-from {
+  opacity: 1;
+  max-height: 500px;
+}
+</style>
