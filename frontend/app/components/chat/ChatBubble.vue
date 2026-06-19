@@ -30,6 +30,8 @@ onUnmounted(() => {
 function toggle() { open.value = !open.value }
 async function openConv(id: number) { await chat.openConversation(id); view.value = 'thread' }
 function back() { view.value = 'list'; activeIssueId.value = null }
+// 点击标题跳到案件详情页(SPA 导航,弹窗常驻 app.vue 根节点不会卸载,保持打开)
+function goToIssue() { if (activeIssueId.value != null) navigateTo(`/app/issues/${activeIssueId.value}`) }
 function send(content: string) { if (activeIssueId.value) chat.sendReply(activeIssueId.value, content) }
 function onPreviewOpen(id: number) { open.value = true; openConv(id) }
 </script>
@@ -58,7 +60,9 @@ function onPreviewOpen(id: number) { open.value = true; openConv(id) }
       <div v-if="open" class="chat-panel" data-test="chat-panel">
         <header class="chat-head">
           <button v-if="view === 'thread'" class="chat-back" @click="back">‹</button>
-          <strong>{{ view === 'thread' ? activeTitle : '消息' }}</strong>
+          <button v-if="view === 'thread'" class="chat-title-link" :title="activeTitle"
+                  data-test="chat-title-link" @click="goToIssue">{{ activeTitle }}</button>
+          <strong v-else>消息</strong>
           <button class="chat-x" @click="toggle">✕</button>
         </header>
 
@@ -120,6 +124,12 @@ function onPreviewOpen(id: number) { open.value = true; openConv(id) }
   display: flex; flex-direction: column; overflow: hidden; }
 .chat-head { display: flex; align-items: center; gap: 10px; padding: 14px 16px; border-bottom: 1px solid #e4e8ef; }
 .chat-head strong { flex: 1; }
+/* 标题可点击跳详情:沿用 strong 的加粗外观,截断至两行(超出省略号),hover 提示可点 */
+.chat-title-link { flex: 1; min-width: 0; text-align: left; border: none; background: transparent; padding: 0;
+  font: inherit; font-weight: 700; color: inherit; cursor: pointer; line-height: 1.3;
+  display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  transition: color .15s; }
+.chat-title-link:hover { color: var(--ui-primary, #2f55ea); text-decoration: underline; }
 .chat-back, .chat-x { display: grid; place-items: center; width: 30px; height: 30px; flex: none; border: none; background: transparent; border-radius: 8px; font-size: 20px; line-height: 1; cursor: pointer; color: #64748b; transition: background .15s, color .15s; }
 .chat-back:hover, .chat-x:hover { background: #f1f5f9; color: #0f172a; }
 .chat-back { margin-left: -4px; }

@@ -36,10 +36,10 @@
         <!-- 缩放滑块 -->
         <div class="flex items-center gap-3 px-1">
           <UIcon name="i-heroicons-magnifying-glass-minus" class="w-4 h-4 text-gray-400 shrink-0" />
-          <USlider v-model="zoom" :min="1" :max="MAX_ZOOM" :step="0.01" class="flex-1" />
+          <USlider v-model="zoom" :min="minZoomVal" :max="MAX_ZOOM" :step="0.01" class="flex-1" />
           <UIcon name="i-heroicons-magnifying-glass-plus" class="w-4 h-4 text-gray-400 shrink-0" />
         </div>
-        <p class="text-xs text-gray-400 text-center">拖动调整位置,滑动缩放</p>
+        <p class="text-xs text-gray-400 text-center">拖动调整位置,滑动缩放;缩到最小可让整张图(含边角)收进圆形(四周留白)</p>
       </div>
     </template>
     <template #footer>
@@ -52,7 +52,7 @@
 </template>
 
 <script setup lang="ts">
-import { centerOffset, clampOffset, coverScale, offsetForZoomAtCenter, sourceRect } from '~/composables/useAvatarCrop'
+import { centerOffset, clampOffset, coverScale, minZoom, offsetForZoomAtCenter, sourceRect } from '~/composables/useAvatarCrop'
 
 const props = defineProps<{ modelValue: boolean; src: string }>()
 const emit = defineEmits<{
@@ -79,6 +79,8 @@ const ox = ref(0)
 const oy = ref(0)
 
 const ready = computed(() => iw.value > 0 && ih.value > 0)
+// 允许缩小到「完整显示整图」(≤1);方图为 1,长图/小图可缩出留白避免裁切
+const minZoomVal = computed(() => (ready.value ? minZoom(iw.value, ih.value, VIEW) : 1))
 const scale = computed(() => base.value * zoom.value)
 const dw = computed(() => iw.value * scale.value)
 const dh = computed(() => ih.value * scale.value)
@@ -135,7 +137,7 @@ function onPointerUp(e: PointerEvent) {
 function onWheel(e: WheelEvent) {
   if (!ready.value) return
   const delta = -e.deltaY * 0.0015
-  zoom.value = Math.min(MAX_ZOOM, Math.max(1, zoom.value + delta))
+  zoom.value = Math.min(MAX_ZOOM, Math.max(minZoomVal.value, zoom.value + delta))
 }
 
 /** 画布是否含透明像素(任一 alpha < 255)。 */

@@ -21,12 +21,35 @@ export function coverScale(iw: number, ih: number, view: number): number {
   return Math.max(view / iw, view / ih)
 }
 
-/** 把偏移夹紧到「图片盖满取景框」的合法范围内。 */
+/** 让整张图片完整放入取景框(contain)所需的缩放;小于此即出现留白。 */
+export function containScale(iw: number, ih: number, view: number): number {
+  if (iw <= 0 || ih <= 0) return 1
+  return Math.min(view / iw, view / ih)
+}
+
+/**
+ * 相对 cover 基准(=1)的最小 zoom。
+ * 头像最终显示为圆形,故按「整张图(含四角)收进内切圆」来定下限:
+ * 图片对角线 ≤ 取景框边长(= 圆直径)。这样连方图也能缩到 ~0.707,
+ * 把边角内容(如尾巴)收进圆形头像;长图缩得更多。封顶 1(cover 为上界)。
+ */
+export function minZoom(iw: number, ih: number, view: number): number {
+  if (iw <= 0 || ih <= 0) return 1
+  const cover = coverScale(iw, ih, view)
+  if (cover <= 0) return 1
+  const fitCircle = view / Math.hypot(iw, ih)
+  return Math.min(1, fitCircle / cover)
+}
+
+/**
+ * 把偏移夹紧到合法范围。
+ * 盖满取景框(d≥view):范围 [view-d, 0](无空隙)。
+ * 图片小于取景框(d<view,缩到 contain):范围 [0, view-d],图片整体留在框内,
+ * 四周为留白(导出时作为透明 padding,不裁切内容)。
+ */
 export function clampOffset(ox: number, oy: number, dw: number, dh: number, view: number): CropOffset {
-  return {
-    ox: Math.min(0, Math.max(view - dw, ox)),
-    oy: Math.min(0, Math.max(view - dh, oy)),
-  }
+  const clamp1 = (v: number, d: number) => Math.min(Math.max(0, view - d), Math.max(Math.min(0, view - d), v))
+  return { ox: clamp1(ox, dw), oy: clamp1(oy, dh) }
 }
 
 /** 初始居中偏移。 */

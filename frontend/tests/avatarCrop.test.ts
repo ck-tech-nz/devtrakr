@@ -2,7 +2,9 @@ import { describe, it, expect } from 'vitest'
 import {
   centerOffset,
   clampOffset,
+  containScale,
   coverScale,
+  minZoom,
   offsetForZoomAtCenter,
   sourceRect,
 } from '../app/composables/useAvatarCrop'
@@ -34,6 +36,29 @@ describe('clampOffset', () => {
   })
   it('leaves valid offsets untouched', () => {
     expect(clampOffset(-20, -30, 400, 400, VIEW)).toEqual({ ox: -20, oy: -30 })
+  })
+  it('allows padding (keeps image inside) when smaller than the viewport (contain/zoom-out)', () => {
+    const dw = 144, dh = 144 // < VIEW(288) → 四周留白
+    expect(clampOffset(-10, -10, dw, dh, VIEW)).toEqual({ ox: 0, oy: 0 })          // 不许越出左/上
+    expect(clampOffset(999, 999, dw, dh, VIEW)).toEqual({ ox: VIEW - dw, oy: VIEW - dh }) // 不许越出右/下
+    expect(clampOffset(50, 50, dw, dh, VIEW)).toEqual({ ox: 50, oy: 50 })           // 框内自由摆放
+  })
+})
+
+describe('containScale / minZoom', () => {
+  it('contains the whole image (longer side fits)', () => {
+    expect(containScale(800, 400, VIEW)).toBeCloseTo(VIEW / 800)
+    expect(containScale(400, 800, VIEW)).toBeCloseTo(VIEW / 800)
+  })
+  it('shrinks the whole image (incl. corners) into the inscribed circle', () => {
+    // 圆形头像:下限让整张图收进内切圆(对角线≤边长)。方图 ≈1/√2,长图更小。
+    expect(minZoom(500, 500, VIEW)).toBeCloseTo(1 / Math.SQRT2, 3)              // ≈0.707
+    expect(minZoom(400, 800, VIEW)).toBeCloseTo(400 / Math.hypot(400, 800), 3) // ≈0.447
+    expect(minZoom(800, 400, VIEW)).toBeCloseTo(400 / Math.hypot(800, 400), 3)
+  })
+  it('never exceeds 1 (cover is always the upper anchor)', () => {
+    expect(minZoom(123, 456, VIEW)).toBeLessThanOrEqual(1)
+    expect(minZoom(500, 500, VIEW)).toBeLessThanOrEqual(1)
   })
 })
 
