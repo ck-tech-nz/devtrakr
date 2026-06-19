@@ -228,6 +228,23 @@ UNFOLD = {
         "show_all_applications": False,
         "navigation": [
             {
+                "title": "用户与权限",
+                "separator": True,
+                "collapsible": True,
+                "items": [
+                    {
+                        "title": "用户",
+                        "icon": "people",
+                        "link": reverse_lazy("admin:users_user_changelist"),
+                    },
+                    {
+                        "title": "用户组",
+                        "icon": "group_work",
+                        "link": reverse_lazy("admin:auth_group_changelist"),
+                    },
+                ],
+            },
+            {
                 "title": "项目管理",
                 "separator": True,
                 "collapsible": True,
@@ -272,23 +289,6 @@ UNFOLD = {
                 ],
             },
             {
-                "title": "用户与权限",
-                "separator": True,
-                "collapsible": True,
-                "items": [
-                    {
-                        "title": "用户",
-                        "icon": "people",
-                        "link": reverse_lazy("admin:users_user_changelist"),
-                    },
-                    {
-                        "title": "用户组",
-                        "icon": "group_work",
-                        "link": reverse_lazy("admin:auth_group_changelist"),
-                    },
-                ],
-            },
-            {
                 "title": "通知",
                 "separator": True,
                 "collapsible": True,
@@ -307,6 +307,62 @@ UNFOLD = {
                         "title": "走马灯公告",
                         "icon": "campaign",
                         "link": reverse_lazy("admin:notifications_bulletin_changelist"),
+                    },
+                ],
+            },
+            {
+                "title": "工具-1. 数据库备份",
+                "separator": True,
+                "collapsible": True,
+                "items": [
+                    {
+                        "title": "备份目标",
+                        "icon": "database",
+                        "link": reverse_lazy("admin:backups_backuptarget_changelist"),
+                    },
+                    {
+                        "title": "备份记录",
+                        "icon": "backup",
+                        "link": reverse_lazy("admin:backups_databasebackup_changelist"),
+                    },
+                ],
+            },
+            {
+                "title": "工具-2. 系统监控",
+                "separator": True,
+                "collapsible": True,
+                "items": [
+                    {
+                        "title": "监控项",
+                        "icon": "monitor_heart",
+                        "link": reverse_lazy("admin:uptime_uptimemonitor_changelist"),
+                    },
+                    {
+                        "title": "检查记录",
+                        "icon": "fact_check",
+                        "link": reverse_lazy("admin:uptime_uptimecheck_changelist"),
+                    },
+                ],
+            },
+            {
+                "title": "AI 配置",
+                "separator": True,
+                "collapsible": True,
+                "items": [
+                    {
+                        "title": "LLM 配置",
+                        "icon": "smart_toy",
+                        "link": reverse_lazy("admin:ai_llmconfig_changelist"),
+                    },
+                    {
+                        "title": "提示词",
+                        "icon": "description",
+                        "link": reverse_lazy("admin:ai_prompt_changelist"),
+                    },
+                    {
+                        "title": "分析记录",
+                        "icon": "analytics",
+                        "link": reverse_lazy("admin:ai_analysis_changelist"),
                     },
                 ],
             },
@@ -338,63 +394,7 @@ UNFOLD = {
                 ],
             },
             {
-                "title": "AI 配置",
-                "separator": True,
-                "collapsible": True,
-                "items": [
-                    {
-                        "title": "LLM 配置",
-                        "icon": "smart_toy",
-                        "link": reverse_lazy("admin:ai_llmconfig_changelist"),
-                    },
-                    {
-                        "title": "提示词",
-                        "icon": "description",
-                        "link": reverse_lazy("admin:ai_prompt_changelist"),
-                    },
-                    {
-                        "title": "分析记录",
-                        "icon": "analytics",
-                        "link": reverse_lazy("admin:ai_analysis_changelist"),
-                    },
-                ],
-            },
-            {
-                "title": "数据库备份",
-                "separator": True,
-                "collapsible": True,
-                "items": [
-                    {
-                        "title": "备份目标",
-                        "icon": "database",
-                        "link": reverse_lazy("admin:backups_backuptarget_changelist"),
-                    },
-                    {
-                        "title": "备份记录",
-                        "icon": "backup",
-                        "link": reverse_lazy("admin:backups_databasebackup_changelist"),
-                    },
-                ],
-            },
-            {
-                "title": "系统监控",
-                "separator": True,
-                "collapsible": True,
-                "items": [
-                    {
-                        "title": "监控项",
-                        "icon": "monitor_heart",
-                        "link": reverse_lazy("admin:uptime_uptimemonitor_changelist"),
-                    },
-                    {
-                        "title": "检查记录",
-                        "icon": "fact_check",
-                        "link": reverse_lazy("admin:uptime_uptimecheck_changelist"),
-                    },
-                ],
-            },
-            {
-                "title": "系统",
+                "title": "站点管理",
                 "separator": True,
                 "collapsible": True,
                 "items": [
