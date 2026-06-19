@@ -23,6 +23,7 @@ dependencies = [
     "django-simple-history==3.11.0",
     "channels[daphne]>=4.1,<5.0",
     "channels-redis>=4.2,<5.0",
+    "websockets>=13,<16",
 ]
 
 [dependency-groups]
