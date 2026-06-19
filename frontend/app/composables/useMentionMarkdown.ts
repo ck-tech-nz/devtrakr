@@ -157,14 +157,30 @@ function createMentionMarkdown(): MarkdownIt {
   // 该 API 会整体替换 TLD 列表,且两字符国家域名在 linkify-it 里是硬编码的。
   md.linkify.set({ fuzzyLink: false })
 
-  // 行内图片补 loading=lazy/decoding=async:评论流里的截图滚到视口再加载
+  // 行内图片补 loading=lazy/decoding=async:评论流里的截图滚到视口再加载。
+  // 另外支持 alt 末尾的 |-分隔标记串:|w=300 控制显示宽度(高度由浏览器
+  // 按比例自适应,CSS 已声明 height:auto),|left|center|right 控制对齐。
+  // 标记可组合、顺序无关,渲染时从 alt 中剥离。
   const defaultImage = md.renderer.rules.image
     ?? ((tokens, idx, options, _env, self) => self.renderToken(tokens, idx, options))
   md.renderer.rules.image = (tokens, idx, options, env, self) => {
     const token = tokens[idx]
-    if (token) {
-      token.attrSet('loading', 'lazy')
-      token.attrSet('decoding', 'async')
+    if (!token) return defaultImage(tokens, idx, options, env, self)
+    token.attrSet('loading', 'lazy')
+    token.attrSet('decoding', 'async')
+    // alt 由 children 渲染得到;命中标记时我们自己算 alt 并直接渲染 token,
+    // 绕过默认规则对 alt 的重算,从而剥离标记。每个标记须是已知指令
+    // (w=数字 或 left/center/right),否则整体当普通 alt 不解析。
+    const rawAlt = self.renderInlineAsText(token.children || [], options, env)
+    const dirMatch = rawAlt.match(/^(.*?)((?:\s*\|\s*(?:w=\d+|left|center|right)\s*)+)$/)
+    if (dirMatch) {
+      const directives = dirMatch[2] ?? ''
+      const widthMatch = directives.match(/w=(\d+)/)
+      if (widthMatch) token.attrSet('width', widthMatch[1] ?? '')
+      const alignMatch = directives.match(/\b(left|center|right)\b/)
+      if (alignMatch) token.attrJoin('class', `md-img-${alignMatch[1]}`)
+      token.attrSet('alt', dirMatch[1] ?? '')
+      return self.renderToken(tokens, idx, options)
     }
     return defaultImage(tokens, idx, options, env, self)
   }

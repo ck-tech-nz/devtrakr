@@ -77,3 +77,80 @@ describe('useMentionMarkdown 渲染', () => {
     expect(html).not.toContain('external-link')
   })
 })
+
+describe('图片尺寸标记 |w=', () => {
+  it('alt 末尾的 |w=300 设置宽度并从 alt 中剥离', () => {
+    const html = md.render('![架构图|w=300](/uploads/x.png)')
+    expect(html).toContain('width="300"')
+    expect(html).toContain('alt="架构图"')
+    expect(html).not.toContain('|w=300')
+  })
+
+  it('只有标记没有说明文字时宽度生效且 alt 为空', () => {
+    const html = md.render('![|w=200](/uploads/x.png)')
+    expect(html).toContain('width="200"')
+    expect(html).toContain('alt=""')
+  })
+
+  it('不写标记的图片宽度不受影响(回归)', () => {
+    const html = md.render('![普通截图](/uploads/x.png)')
+    expect(html).not.toContain('width=')
+    expect(html).toContain('alt="普通截图"')
+  })
+
+  it('非数字宽度不解析,标记原样保留为 alt', () => {
+    const html = md.render('![图|w=abc](/uploads/x.png)')
+    expect(html).not.toContain('width=')
+    expect(html).toContain('|w=abc')
+  })
+
+  it('容忍标记前后的空格', () => {
+    const html = md.render('![图 | w=300 ](/uploads/x.png)')
+    expect(html).toContain('width="300"')
+    expect(html).toContain('alt="图"')
+  })
+})
+
+describe('图片对齐标记 |left/center/right', () => {
+  it('|center 加居中 class 并从 alt 剥离', () => {
+    const html = md.render('![图|center](/uploads/x.png)')
+    expect(html).toContain('md-img-center')
+    expect(html).toContain('alt="图"')
+    expect(html).not.toContain('|center')
+  })
+
+  it('|right 加靠右 class', () => {
+    const html = md.render('![图|right](/uploads/x.png)')
+    expect(html).toContain('md-img-right')
+  })
+
+  it('|left 加靠左 class', () => {
+    const html = md.render('![图|left](/uploads/x.png)')
+    expect(html).toContain('md-img-left')
+  })
+
+  it('宽度与对齐可组合', () => {
+    const html = md.render('![图|w=300|center](/uploads/x.png)')
+    expect(html).toContain('width="300"')
+    expect(html).toContain('md-img-center')
+    expect(html).toContain('alt="图"')
+  })
+
+  it('标记顺序无关', () => {
+    const html = md.render('![图|center|w=300](/uploads/x.png)')
+    expect(html).toContain('width="300"')
+    expect(html).toContain('md-img-center')
+  })
+
+  it('无标记的图片不加对齐 class(回归)', () => {
+    const html = md.render('![普通图](/uploads/x.png)')
+    expect(html).not.toContain('md-img-')
+    expect(html).toContain('alt="普通图"')
+  })
+
+  it('未知关键字不解析,原样保留为 alt', () => {
+    const html = md.render('![图|middle](/uploads/x.png)')
+    expect(html).not.toContain('md-img-')
+    expect(html).toContain('|middle')
+  })
+})
