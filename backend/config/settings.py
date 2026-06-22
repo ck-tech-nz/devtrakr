@@ -139,7 +139,10 @@ REST_FRAMEWORK = {
 
 SIMPLE_JWT = {
     "ACCESS_TOKEN_LIFETIME": timedelta(hours=2),
-    "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
+    "REFRESH_TOKEN_LIFETIME": timedelta(days=14),
+    # Issue a fresh refresh token on every /api/auth/refresh/ so an active
+    # client's 14-day window slides forward and never forces a re-login.
+    "ROTATE_REFRESH_TOKENS": True,
 }
 
 LANGUAGE_CODE = "zh-hans"
