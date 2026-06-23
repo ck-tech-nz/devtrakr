@@ -42,7 +42,15 @@
         >
           <span class="font-mono text-gray-400 dark:text-gray-600 mr-2">#{{ task.id }}</span>
           <span class="truncate flex-1">{{ task.title }}</span>
-          <span class="w-1.5 h-1.5 rounded-full ml-2 flex-shrink-0" :class="dotColor(task.status)" />
+          <!-- 分配给我、待我接手:图标 + 脉冲点,区别于普通状态圆点 -->
+          <template v-if="task.status === '待确认'">
+            <UIcon name="i-heroicons-hand-raised" class="w-3.5 h-3.5 ml-2 flex-shrink-0 text-crystal-500" title="待我接手" />
+            <span class="relative flex w-1.5 h-1.5 ml-1.5 flex-shrink-0">
+              <span class="absolute inline-flex w-full h-full rounded-full bg-crystal-400 opacity-75 animate-ping" />
+              <span class="relative inline-flex w-1.5 h-1.5 rounded-full bg-crystal-500" />
+            </span>
+          </template>
+          <span v-else class="w-1.5 h-1.5 rounded-full ml-2 flex-shrink-0" :class="dotColor(task.status)" />
         </NuxtLink>
 
         <div v-if="displayTasks.length === 0" class="pl-9 pr-2 py-1.5 text-xs text-gray-400 dark:text-gray-600">

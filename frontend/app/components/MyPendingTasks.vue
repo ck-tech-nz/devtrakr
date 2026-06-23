@@ -40,7 +40,12 @@
             {{ task.title }}
           </p>
           <div class="flex items-center justify-between mt-2.5">
+            <span
+              v-if="task.status === '待确认'"
+              class="text-[11px] font-medium px-1.5 py-0.5 rounded-full bg-crystal-500 text-white"
+            >待我接手</span>
             <UBadge
+              v-else
               :color="statusColor(task.status)"
               variant="solid"
               size="xs"
