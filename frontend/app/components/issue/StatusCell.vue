@@ -80,7 +80,7 @@ async function onConfirm() {
         size="xs" color="primary" variant="soft"
         icon="i-lucide-plus" :loading="busy"
         @click.stop="onClaim"
-      >接单</UButton>
+      >认领</UButton>
       <UButton
         v-if="issue.can_assign"
         size="xs" color="neutral" variant="ghost"

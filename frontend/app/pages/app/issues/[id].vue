@@ -1691,7 +1691,7 @@ function insertAttachmentToDescription(attachment: any) {
 
 function assignmentActionLabel(a: string): string {
   return ({
-    claim: '接单',
+    claim: '认领',
     assign: '指派',
     ai_assign: 'AI 分配',
     transfer: '转单',

@@ -763,7 +763,7 @@ async function handleCreateIssue() {
     const created = await api<any>('/api/issues/', { method: 'POST', body, format: 'json' })
     const msg = created?.assignee
       ? `已创建，分配给 ${created.assignee_name || '该成员'}`
-      : '已创建，等待人工接单'
+      : '已创建，等待人工认领'
     toast.add({ title: msg, color: 'success' })
     resetCreateForm()
     showCreateModal.value = false
