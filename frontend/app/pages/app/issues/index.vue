@@ -337,7 +337,6 @@
             @changed="fetchIssues"
             @request-transfer="openTransfer(row.original)"
             @request-assign="openAssign(row.original)"
-            @filter-assignee="filterByAssignee(row.original)"
           />
         </template>
         <template #reporter-cell="{ row }">
@@ -472,13 +471,6 @@ function filterByReporter(issue: any) {
   } else if (issue.created_by) {
     filterReporter.value = { type: 'reporter_display_user', value: String(issue.created_by), label: issue.created_by_name || '创建人' }
   }
-}
-
-// 点击有处理人的状态：以独立标签按该处理人(assignee)筛选；同时清空负责人下拉，避免双重筛选
-function filterByAssignee(issue: any) {
-  if (!issue.assignee) return
-  filterAssignee.value = ''
-  filterHandler.value = { id: String(issue.assignee), label: issue.assignee_name || '处理人' }
 }
 
 // 点击优先级徽章：以独立标签筛选；同时清空优先级下拉，避免双重筛选
