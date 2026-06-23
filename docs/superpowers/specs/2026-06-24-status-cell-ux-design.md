@@ -75,12 +75,31 @@
                  └─ 取消/关闭        → 无变更
 ```
 
-### 3.2 Item 2 — 「接单」→「认领」
+### 3.2 Item 2 — 「接单」→「认领」(消除该词所有用户可见处)
 
-- 列表状态单元格按钮文案: [`frontend/app/components/issue/StatusCell.vue`](../../../frontend/app/components/issue/StatusCell.vue) 第 83 行 `接单` → `认领`
-- 详情页审计日志标签映射: `[id].vue` 第 1694 行 `claim: '接单'` → `claim: '认领'`
-- 可选(为内部一致性): 后端 `apps/issues/models.py` 的 `AssignmentAction.CLAIM = 'claim', '接单'` → `'认领'`。该标签仅 Django admin / `get_action_display()` 用,SPA 不读;改动会经 `makemigrations` 生成一条 no-op `AlterField` 迁移。**默认包含此项**;如不希望动后端,去掉即可。
-- 存储值 `'claim'` 保持不变(锁定值,前端按值映射文案)。
+用户诉求是「不要用『接单』这个词」,因此替换**所有用户可见**的出现处(存储值 `'claim'` 保持不变):
+
+**前端**
+- `frontend/app/components/issue/StatusCell.vue` 第 83 行按钮文案 `接单` → `认领`
+- `[id].vue` 第 1694 行审计标签映射 `claim: '接单'` → `claim: '认领'`
+- `frontend/app/pages/app/issues/index.vue` 第 766 行创建后 toast `已创建，等待人工接单` → `已创建，等待人工认领`
+
+**后端**(`apps/issues/services.py` — 用户可见的错误信息与活动详情)
+- 第 186 行错误 `只有「待分配」可被接单,当前 …` → `…可被认领…`
+- 第 189 行错误 `仅项目成员可接单` → `仅项目成员可认领`
+- 第 205 行活动详情 `f"{actor…} 接单"` → `f"{actor…} 认领"`(仅影响新生成的活动记录,历史记录不变)
+- 第 218 行错误 `仅当前负责人可确认接单` → `仅当前负责人可确认认领`
+- 第 233 行活动详情 `确认接单` → `确认认领`
+- 第 183 行 docstring(内部)一并改为 `认领`,保持一致
+
+**后端枚举 + 迁移**
+- `apps/issues/models.py` 第 36 行 `AssignmentAction.CLAIM = 'claim', '接单'` → `'认领'`(仅 Django admin / `get_action_display()` 用)
+- 经 `makemigrations issues` 生成一条新的 `AlterField` 迁移(改 `IssueAssignment.action` 的 choices 标签);**不可手改既有 0010 迁移**(其中 `("claim","接单")` 是冻结的历史,保持原样)
+
+**测试 docstring**(可选,内部)
+- `tests/test_assignment_api.py` 第 10、22 行 docstring 里的「接单」改为「认领」(仅注释,无断言依赖)
+
+**不改**: `dashboardLayout.ts` 的「直接单测」是误匹配(子串),保持原样。
 
 ### 3.3 Item 3 — 去掉状态徽章的筛选点击
 
