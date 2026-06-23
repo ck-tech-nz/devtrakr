@@ -852,6 +852,25 @@
         </div>
       </template>
     </UModal>
+
+    <!-- 「进行中」自动认领弹窗 -->
+    <UModal v-model:open="showSelfAssignPrompt">
+      <template #content>
+        <div class="modal-form">
+          <div class="modal-header">
+            <h3>设为进行中</h3>
+            <UButton icon="i-heroicons-x-mark" variant="ghost" color="neutral" size="sm" @click="showSelfAssignPrompt = false" />
+          </div>
+          <div class="modal-body">
+            <p class="text-sm text-gray-700 dark:text-gray-300">该问题还没有负责人，要同时把负责人设为你自己吗？</p>
+          </div>
+          <div class="modal-footer">
+            <UButton variant="outline" color="neutral" @click="confirmSelfAssign(false)">仅修改状态</UButton>
+            <UButton color="primary" @click="confirmSelfAssign(true)">是，由我处理</UButton>
+          </div>
+        </div>
+      </template>
+    </UModal>
   </div>
 
   <div v-else class="text-center py-20 text-sm text-gray-400 dark:text-gray-500">问题不存在</div>
@@ -868,6 +887,7 @@ const isManager = computed(() =>
   hasGroup('管理员') || (authUser.value?.is_superuser ?? false)
 )
 const canEditEstimatedHours = isManager
+const selfUserId = computed(() => Number(authUser.value?.id ?? 0))
 
 type HistoryChange = { field: string; label: string; before: any; after: any }
 type HistoryEntry = { id: number; type: '+' | '~' | '-'; date: string; user: string | null; changes: HistoryChange[] }
@@ -1434,7 +1454,11 @@ async function updateField(field: string, value: string) {
   await autoSave(field, value)
 }
 
-// 状态胶囊点击处理（已解决 -> 已关闭 时检查 GitHub）
+// 「进行中」自动认领弹窗状态
+const showSelfAssignPrompt = ref(false)
+const pendingStatus = ref('')
+
+// 状态胶囊点击处理（已解决 -> 已关闭 时检查 GitHub；进行中且无负责人时询问认领）
 function handleStatusClick(newStatus: string) {
   if (newStatus === '已关闭') {
     const hasOpenGH = issue.value?.github_issues?.some((gh: any) => gh.state === 'open')
@@ -1443,7 +1467,30 @@ function handleStatusClick(newStatus: string) {
       return
     }
   }
+  // 改为「进行中」且当前无负责人 → 询问是否同时把负责人设为自己
+  if (newStatus === '进行中' && form.value.assignee === '_none') {
+    pendingStatus.value = newStatus
+    showSelfAssignPrompt.value = true
+    return
+  }
   updateField('status', newStatus)
+}
+
+// 弹窗确认:alsoAssign 为 true 时同时把负责人设为当前用户
+async function confirmSelfAssign(alsoAssign: boolean) {
+  const targetStatus = pendingStatus.value
+  showSelfAssignPrompt.value = false
+  pendingStatus.value = ''
+  if (!issue.value || !targetStatus) return
+  const body: Record<string, any> = { status: targetStatus }
+  if (alsoAssign) body.assignee = selfUserId.value
+  try {
+    await api(`/api/issues/${issue.value.id}/`, { method: 'PATCH', body })
+    issue.value = await api<any>(`/api/issues/${route.params.id}/`)
+    populateForm(issue.value)
+  } catch (e) {
+    console.error('Self-assign status change failed:', e)
+  }
 }
 
 async function closeWithGitHub() {
