@@ -288,9 +288,12 @@
         </div>
 
         <!-- 分析记录 -->
-        <div class="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 p-5">
-          <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-4">分析记录</h3>
-          <div class="space-y-4">
+        <div class="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 p-5 space-y-3">
+          <button class="flex items-center justify-between w-full" @click="showAnalysis = !showAnalysis">
+            <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100">分析记录</h3>
+            <UIcon :name="showAnalysis ? 'i-heroicons-chevron-up' : 'i-heroicons-chevron-down'" class="w-4 h-4 text-gray-400" />
+          </button>
+          <div v-if="showAnalysis" class="space-y-4">
             <div class="form-row">
               <div class="flex items-center justify-between h-5">
                 <label>备注</label>
@@ -356,9 +359,12 @@
         </div>
 
         <div class="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 p-5 space-y-3">
-          <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100">关联仓库</h3>
+          <button class="flex items-center justify-between w-full" @click="showRepo = !showRepo">
+            <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100">关联仓库</h3>
+            <UIcon :name="showRepo ? 'i-heroicons-chevron-up' : 'i-heroicons-chevron-down'" class="w-4 h-4 text-gray-400" />
+          </button>
 
-          <div class="space-y-2">
+          <div v-if="showRepo" class="space-y-2">
             <div>
               <div class="text-xs text-gray-500 dark:text-gray-400 mb-1">项目</div>
               <USelect
@@ -388,7 +394,7 @@
             </div>
           </div>
 
-          <div v-if="issueRepo" class="flex items-center gap-2 pt-1">
+          <div v-if="showRepo && issueRepo" class="flex items-center gap-2 pt-1">
             <UIcon name="i-heroicons-code-bracket" class="w-4 h-4 text-gray-400" />
             <NuxtLink :to="`/app/repos/${issueRepo.id}`" class="text-sm text-blue-600 dark:text-blue-400 hover:underline truncate">
               {{ issueRepo.full_name }}
@@ -611,8 +617,11 @@
 
         <!-- 分配流转 -->
         <div v-if="issue?.assignments?.length" class="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 p-5 space-y-3">
-          <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100">分配流转</h3>
-          <ol class="space-y-1.5 text-sm">
+          <button class="flex items-center justify-between w-full" @click="showAssignments = !showAssignments">
+            <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100">分配流转</h3>
+            <UIcon :name="showAssignments ? 'i-heroicons-chevron-up' : 'i-heroicons-chevron-down'" class="w-4 h-4 text-gray-400" />
+          </button>
+          <ol v-if="showAssignments" class="space-y-1.5 text-sm">
             <li v-for="a in issue.assignments" :key="a.id" class="flex flex-wrap gap-x-2 gap-y-0.5">
               <span class="text-gray-400 dark:text-gray-500 text-xs">{{ formatAssignmentDate(a.created_at) }}</span>
               <span class="font-medium text-gray-700 dark:text-gray-300">{{ assignmentActionLabel(a.action) }}</span>
@@ -874,6 +883,11 @@ const selfUserId = computed(() => Number(authUser.value?.id ?? 0))
 
 type HistoryChange = { field: string; label: string; before: any; after: any }
 type HistoryEntry = { id: number; type: '+' | '~' | '-'; date: string; user: string | null; changes: HistoryChange[] }
+
+// 侧栏卡默认收起
+const showAnalysis = ref(false)
+const showRepo = ref(false)
+const showAssignments = ref(false)
 
 const showHistory = ref(true)
 const historyLoading = ref(false)
