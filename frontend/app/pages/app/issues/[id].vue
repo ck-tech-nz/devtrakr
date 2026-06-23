@@ -609,10 +609,24 @@
           </div>
         </div>
 
-        <!-- 更新历史 (仅管理员; 内容为空 + 已加载完成时整张卡隐藏) -->
-        <div v-if="isManager && (historyLoading || history.length)" class="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 p-5 space-y-3">
+        <!-- 分配流转 -->
+        <div v-if="issue?.assignments?.length" class="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 p-5 space-y-3">
+          <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100">分配流转</h3>
+          <ol class="space-y-1.5 text-sm">
+            <li v-for="a in issue.assignments" :key="a.id" class="flex flex-wrap gap-x-2 gap-y-0.5">
+              <span class="text-gray-400 dark:text-gray-500 text-xs">{{ formatAssignmentDate(a.created_at) }}</span>
+              <span class="font-medium text-gray-700 dark:text-gray-300">{{ assignmentActionLabel(a.action) }}</span>
+              <span v-if="a.from_user_name" class="text-gray-500 dark:text-gray-400">from {{ a.from_user_name }}</span>
+              <span class="text-gray-500 dark:text-gray-400">→ {{ a.to_user_name }}</span>
+              <span v-if="a.reason" class="text-gray-400 dark:text-gray-500 italic">— {{ a.reason }}</span>
+            </li>
+          </ol>
+        </div>
+
+        <!-- 变更历史 (仅管理员) -->
+        <div v-if="isManager" class="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 p-5 space-y-3">
           <button class="flex items-center justify-between w-full" @click="toggleHistory">
-            <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100">更新历史</h3>
+            <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100">变更历史</h3>
             <UIcon :name="showHistory ? 'i-heroicons-chevron-up' : 'i-heroicons-chevron-down'" class="w-4 h-4 text-gray-400" />
           </button>
           <div v-if="showHistory" class="space-y-3">
@@ -626,45 +640,13 @@
                 :class="entry.type === '+' ? 'border-emerald-400' : entry.type === '-' ? 'border-rose-400' : 'border-crystal-300 dark:border-crystal-700'"
               >
                 <div class="flex items-center justify-between gap-2">
-                  <span class="text-xs font-medium text-gray-700 dark:text-gray-300">
-                    {{ entry.user || '系统' }}
-                    <span class="text-gray-400 dark:text-gray-500 font-normal ml-1">
-                      {{ entry.type === '+' ? '创建' : entry.type === '-' ? '删除' : '更新' }}
-                    </span>
-                  </span>
-                  <time class="text-[11px] text-gray-400 dark:text-gray-500" :title="entry.date">
-                    {{ formatRelative(entry.date) }}
-                  </time>
+                  <span class="text-xs font-medium text-gray-700 dark:text-gray-300">{{ entry.user || '系统' }}</span>
+                  <time class="text-[11px] text-gray-400 dark:text-gray-500" :title="entry.date">{{ formatRelative(entry.date) }}</time>
                 </div>
-                <div v-if="entry.changes.length && entry.changes[0].field !== '_created'" class="mt-1.5 space-y-1">
-                  <div
-                    v-for="change in entry.changes"
-                    :key="change.field"
-                    class="text-xs text-gray-600 dark:text-gray-400"
-                  >
-                    <span class="text-gray-500 dark:text-gray-500">{{ change.label }}：</span>
-                    <span v-if="change.before !== null && change.before !== undefined" class="line-through text-rose-500/80 dark:text-rose-400/80">{{ formatValue(change.before) }}</span>
-                    <span v-if="change.before !== null && change.before !== undefined && change.after !== null && change.after !== undefined" class="text-gray-400 mx-1">→</span>
-                    <span v-if="change.after !== null && change.after !== undefined" class="text-emerald-600 dark:text-emerald-400">{{ formatValue(change.after) }}</span>
-                  </div>
-                </div>
+                <div class="mt-1 text-xs text-gray-600 dark:text-gray-400">{{ changeSummary(entry) }}</div>
               </div>
             </div>
           </div>
-        </div>
-
-        <!-- 分配流转 -->
-        <div v-if="issue?.assignments?.length" class="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 p-5 space-y-3">
-          <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100">分配流转</h3>
-          <ol class="space-y-1.5 text-sm">
-            <li v-for="a in issue.assignments" :key="a.id" class="flex flex-wrap gap-x-2 gap-y-0.5">
-              <span class="text-gray-400 dark:text-gray-500 text-xs">{{ formatAssignmentDate(a.created_at) }}</span>
-              <span class="font-medium text-gray-700 dark:text-gray-300">{{ assignmentActionLabel(a.action) }}</span>
-              <span v-if="a.from_user_name" class="text-gray-500 dark:text-gray-400">from {{ a.from_user_name }}</span>
-              <span class="text-gray-500 dark:text-gray-400">→ {{ a.to_user_name }}</span>
-              <span v-if="a.reason" class="text-gray-400 dark:text-gray-500 italic">— {{ a.reason }}</span>
-            </li>
-          </ol>
         </div>
       </div>
     </div>
@@ -880,6 +862,7 @@
 definePageMeta({ layout: 'default' })
 
 import { type CalendarDate, parseDate, type DateValue } from '@internationalized/date'
+import { changeSummary } from '~/utils/issueHistory'
 
 const { api } = useApi()
 const { can, hasGroup, user: authUser } = useAuth()
@@ -892,7 +875,7 @@ const selfUserId = computed(() => Number(authUser.value?.id ?? 0))
 type HistoryChange = { field: string; label: string; before: any; after: any }
 type HistoryEntry = { id: number; type: '+' | '~' | '-'; date: string; user: string | null; changes: HistoryChange[] }
 
-const showHistory = ref(false)
+const showHistory = ref(true)
 const historyLoading = ref(false)
 const history = ref<HistoryEntry[]>([])
 
@@ -912,13 +895,6 @@ async function loadHistory() {
 function toggleHistory() {
   showHistory.value = !showHistory.value
   if (showHistory.value && !history.value.length) loadHistory()
-}
-
-function formatValue(v: any): string {
-  if (v === null || v === undefined || v === '') return '空'
-  if (Array.isArray(v)) return v.length ? v.join('、') : '空'
-  if (typeof v === 'object') return JSON.stringify(v)
-  return String(v)
 }
 
 function formatRelative(iso: string): string {
@@ -1613,6 +1589,7 @@ onMounted(async () => {
   // 检查是否有正在运行的 AI 分析，恢复轮询
   checkRunningAnalysis()
   fetchAnalyses()
+  loadHistory()
 })
 
 async function checkRunningAnalysis() {
