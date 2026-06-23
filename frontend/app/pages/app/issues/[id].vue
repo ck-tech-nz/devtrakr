@@ -649,10 +649,12 @@
                 :class="entry.type === '+' ? 'border-emerald-400' : entry.type === '-' ? 'border-rose-400' : 'border-crystal-300 dark:border-crystal-700'"
               >
                 <div class="flex items-center justify-between gap-2">
-                  <span class="text-xs font-medium text-gray-700 dark:text-gray-300">{{ entry.user || '系统' }}</span>
-                  <time class="text-[11px] text-gray-400 dark:text-gray-500" :title="entry.date">{{ formatRelative(entry.date) }}</time>
+                  <span class="text-xs min-w-0 truncate">
+                    <span class="font-medium text-gray-700 dark:text-gray-300">{{ entry.user || '系统' }}</span>
+                    <span class="text-gray-500 dark:text-gray-400 ml-1.5">{{ changeSummary(entry) }}</span>
+                  </span>
+                  <time class="text-[11px] text-gray-400 dark:text-gray-500 shrink-0" :title="entry.date">{{ formatRelative(entry.date) }}</time>
                 </div>
-                <div class="mt-1 text-xs text-gray-600 dark:text-gray-400">{{ changeSummary(entry) }}</div>
               </div>
             </div>
           </div>
