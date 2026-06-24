@@ -726,6 +726,50 @@ def _resolve_fk_display(field_name, value):
     return value
 
 
+# m2m 字段的历史 diff 由 simple_history 以 through-行列表返回,需解析为可读名称
+# (否则前端拿到对象列表只能显示 [object Object])。
+M2M_DISPLAY_FIELDS = {"helpers", "attachments", "github_issues"}
+
+
+def _resolve_m2m_display(field_name, rows):
+    """m2m 历史 diff 的 through-行列表 → 可读名称列表。
+
+    rows 形如 [{'issue': 158, 'user': 12}, ...](diff_against 默认 foreign_keys_are_objs=False,
+    值为关联对象 PK)。协助人显示昵称(name or username),附件显示文件名,GitHub Issue 显示编号。
+    """
+    if not rows:
+        return []
+    try:
+        target_model = Issue._meta.get_field(field_name).related_model
+    except Exception:
+        return [str(r) for r in rows]
+    source_name = Issue._meta.model_name  # through 行里指向 issue 自身的键名,需跳过
+    pks = []
+    for row in rows:
+        if isinstance(row, dict):
+            pk = next((v for k, v in row.items() if k != source_name), None)
+        else:
+            pk = getattr(row, "pk", row)
+        if pk is not None:
+            pks.append(pk)
+    objs = {o.pk: o for o in target_model._default_manager.filter(pk__in=pks)}
+
+    def display(pk):
+        o = objs.get(pk)
+        if o is None:
+            return f"#{pk}"  # 关联对象已删除,退回编号
+        if field_name == "helpers":
+            return o.name or o.username
+        if field_name == "attachments":
+            return getattr(o, "file_name", None) or f"#{pk}"
+        if field_name == "github_issues":
+            gid = getattr(o, "github_id", None)
+            return f"#{gid}" if gid is not None else f"#{pk}"
+        return str(o)
+
+    return [display(pk) for pk in pks]
+
+
 class IssueHistoryView(APIView):
     """GET /api/issues/{id}/history/ — 字段更新历史 (仅管理员)."""
     permission_classes = [IsAuthenticated]
@@ -767,8 +811,12 @@ class IssueHistoryView(APIView):
                         fname = change.field
                         if fname in ("updated_at", "id"):
                             continue
-                        old_v = _resolve_fk_display(fname, change.old)
-                        new_v = _resolve_fk_display(fname, change.new)
+                        if fname in M2M_DISPLAY_FIELDS:
+                            old_v = _resolve_m2m_display(fname, change.old)
+                            new_v = _resolve_m2m_display(fname, change.new)
+                        else:
+                            old_v = _resolve_fk_display(fname, change.old)
+                            new_v = _resolve_fk_display(fname, change.new)
                         entry["changes"].append({
                             "field": fname,
                             "label": FIELD_LABELS.get(fname, fname),

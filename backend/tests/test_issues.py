@@ -147,6 +147,53 @@ class TestIssueDetail:
         assert response.data["resolution_hours"] is None
 
 
+class TestIssueHistory:
+    def test_helpers_change_shows_names_not_objects(self, auth_client, site_settings):
+        # 修改协助人(m2m)后,变更历史应显示昵称,而非 [object Object](原 bug)
+        issue = IssueFactory()
+        h1 = UserFactory(name="协助甲")
+        h2 = UserFactory(name="协助乙")
+        auth_client.patch(f"/api/issues/{issue.pk}/", {"helpers": [h1.pk]}, format="json")
+        auth_client.patch(f"/api/issues/{issue.pk}/", {"helpers": [h1.pk, h2.pk]}, format="json")
+
+        resp = auth_client.get(f"/api/issues/{issue.pk}/history/")
+        assert resp.status_code == 200
+        helper_changes = [
+            c for entry in resp.data for c in entry["changes"] if c["field"] == "helpers"
+        ]
+        assert helper_changes, "应有协助人变更历史"
+        values = [v for c in helper_changes for v in (c["before"], c["after"]) if isinstance(v, list)]
+        flat = [x for lst in values for x in lst]
+        assert "协助甲" in flat and "协助乙" in flat
+        # 解析结果必须是字符串昵称,绝不能是序列化后的对象/字典
+        assert all(isinstance(x, str) for x in flat)
+
+    def test_helpers_falls_back_to_username_when_no_name(self, auth_client, site_settings):
+        issue = IssueFactory()
+        h = UserFactory(name="", username="helper_bot")
+        auth_client.patch(f"/api/issues/{issue.pk}/", {"helpers": [h.pk]}, format="json")
+        resp = auth_client.get(f"/api/issues/{issue.pk}/history/")
+        flat = [x for entry in resp.data for c in entry["changes"] if c["field"] == "helpers"
+                for v in (c["before"], c["after"]) if isinstance(v, list) for x in v]
+        assert "helper_bot" in flat
+
+    def test_attachment_change_shows_filename_not_objects(self, auth_client, auth_user, site_settings):
+        # 附件也是 m2m,且主键为 UUID;变更历史应显示文件名而非 [object Object]
+        from apps.tools.models import Attachment
+        issue = IssueFactory()
+        att = Attachment.objects.create(
+            uploaded_by=auth_user, file_name="设计稿.png", file_key="k1",
+            file_url="http://example.com/1", file_size=123, mime_type="image/png",
+        )
+        issue.attachments.add(att)  # 触发 m2m 历史快照
+
+        resp = auth_client.get(f"/api/issues/{issue.pk}/history/")
+        flat = [x for entry in resp.data for c in entry["changes"] if c["field"] == "attachments"
+                for v in (c["before"], c["after"]) if isinstance(v, list) for x in v]
+        assert "设计稿.png" in flat
+        assert all(isinstance(x, str) for x in flat)
+
+
 class TestIssueCreate:
     def test_create_issue(self, auth_client, site_settings):
         from tests.factories import ProjectFactory

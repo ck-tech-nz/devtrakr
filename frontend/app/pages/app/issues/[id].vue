@@ -156,8 +156,11 @@
               <USelect v-model="form.assignee" :items="assigneeItems" placeholder="选择负责人" value-key="value" @update:model-value="(v: string) => autoSave('assignee', v)" />
             </div>
             <div class="form-row">
-              <label class="text-gray-400 dark:text-gray-500">求助</label>
-              <USelectMenu v-model="form.helpers" :items="helperItems" multiple placeholder="选择协助人" value-key="value" label-key="label" @update:model-value="(v: string[]) => autoSave('helpers', v)" />
+              <div class="flex items-center gap-2">
+                <label class="text-gray-400 dark:text-gray-500">求助</label>
+                <FieldSaveStatus :saving="savingField === 'helpers'" :saved="savedField === 'helpers'" />
+              </div>
+              <USelectMenu v-model="form.helpers" :items="helperItems" multiple placeholder="选择协助人" value-key="value" label-key="label" @update:model-value="onHelpersChange" />
             </div>
           </div>
           <div class="space-y-1.5">
@@ -1015,6 +1018,8 @@ function renderMarkdown(text: string) {
 onUnmounted(() => {
   if (pollTimer) clearInterval(pollTimer)
   if (savedFieldTimer) clearTimeout(savedFieldTimer)
+  // 卸载前若有待发的协助人保存,立即补发,避免快速离开页面丢失改动
+  if (helpersSaveTimer) flushHelpersSave()
 })
 const users = ref<any[]>([])
 // 负责人候选:仅「开发者」用户组成员(求助/@提及等仍用完整 users)
@@ -1431,6 +1436,42 @@ async function autoSave(field: string, rawValue: any) {
     populateForm(issue.value)
   } catch (e) {
     console.error(`Auto-save ${field} failed:`, e)
+  }
+}
+
+// 协助人多选:trailing debounce(后沿防抖)。多选时用户会连续勾选多人,若每勾一次就 PATCH,
+// 既多发请求,又在变更历史里留下多条碎片快照。改为收集改动、静默 HELPERS_SAVE_DELAY 后只发一次。
+const HELPERS_SAVE_DELAY = 800
+let helpersSaveTimer: ReturnType<typeof setTimeout> | null = null
+
+// 协助人集合相对已保存基线是否有变化(顺序无关:仅比较成员集合,避免重排序触发空保存)
+function helpersDirty(): boolean {
+  const cur = [...form.value.helpers].map(String).sort()
+  const base = [...savedForm.value.helpers].map(String).sort()
+  return JSON.stringify(cur) !== JSON.stringify(base)
+}
+
+// v-model 已即时更新 form.helpers(UI 立即反映勾选);这里仅(重新)安排延迟保存
+function onHelpersChange() {
+  if (helpersSaveTimer) clearTimeout(helpersSaveTimer)
+  helpersSaveTimer = setTimeout(flushHelpersSave, HELPERS_SAVE_DELAY)
+}
+
+async function flushHelpersSave() {
+  if (helpersSaveTimer) { clearTimeout(helpersSaveTimer); helpersSaveTimer = null }
+  if (!issue.value || !helpersDirty()) return
+  savingField.value = 'helpers'
+  try {
+    const ids = form.value.helpers.map(Number)
+    await api(`/api/issues/${issue.value.id}/`, { method: 'PATCH', body: { helpers: ids } })
+    savedForm.value.helpers = [...form.value.helpers]
+    ;(issue.value as any).helpers = ids
+    markSaved('helpers')
+    if (showHistory.value) loadHistory() // 历史面板已展开则刷新,立即看到本次变更
+  } catch (e) {
+    console.error('Auto-save helpers failed:', e)
+  } finally {
+    savingField.value = null
   }
 }
 
