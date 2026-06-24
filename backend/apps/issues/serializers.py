@@ -16,7 +16,7 @@ from .models import Issue, IssueStatus, Activity, IssueAssignment, IssueComment,
 User = get_user_model()
 
 # Issue 的 source 字段必须从此白名单中取值,防止前端伪造来源
-ALLOWED_ISSUE_SOURCES = ("ai_wizard", "github", "external_api")
+ALLOWED_ISSUE_SOURCES = ("ai_wizard", "github", "external_api", "dev-workflow")
 # source_meta 序列化后的 JSON 字节上限,防止滥用作为大容量存储
 SOURCE_META_MAX_BYTES = 4096
 

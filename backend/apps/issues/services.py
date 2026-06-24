@@ -180,13 +180,13 @@ def assign_issue(issue, actor, to_user, *, action=AssignmentAction.ASSIGN, reaso
 
 @transaction.atomic
 def claim_issue(issue, actor):
-    """任何项目成员可接单「待分配」→「进行中」,自动成为负责人。"""
+    """任何项目成员可认领「待分配」→「进行中」,自动成为负责人。"""
     if issue.status != IssueStatus.UNASSIGNED.value:
         raise InvalidTransition(
-            f"只有「待分配」可被接单,当前 {issue.status}", current_status=issue.status,
+            f"只有「待分配」可被认领,当前 {issue.status}", current_status=issue.status,
         )
     if not _is_project_member(actor, issue.project):
-        raise PermissionDenied("仅项目成员可接单")
+        raise PermissionDenied("仅项目成员可认领")
 
     event = IssueAssignment.objects.create(
         issue=issue,
@@ -202,7 +202,7 @@ def claim_issue(issue, actor):
 
     Activity.objects.create(
         user=actor, issue=issue, action="claimed",
-        detail=f"{actor.name or actor.username} 接单",
+        detail=f"{actor.name or actor.username} 认领",
     )
     return event
 
@@ -215,7 +215,7 @@ def confirm_issue(issue, actor):
             f"只有「待确认」可被接受,当前 {issue.status}", current_status=issue.status,
         )
     if issue.assignee_id != getattr(actor, "id", None):
-        raise PermissionDenied("仅当前负责人可确认接单")
+        raise PermissionDenied("仅当前负责人可确认认领")
 
     event = IssueAssignment.objects.create(
         issue=issue,
@@ -230,7 +230,7 @@ def confirm_issue(issue, actor):
 
     Activity.objects.create(
         user=actor, issue=issue, action="confirmed",
-        detail="确认接单",
+        detail="确认认领",
     )
     return event
 

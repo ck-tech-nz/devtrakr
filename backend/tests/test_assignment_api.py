@@ -7,7 +7,7 @@ from apps.issues.models import IssueAssignment
 @pytest.mark.django_db
 class TestClaimAPI:
     def test_claim_unassigned(self, auth_client, auth_user):
-        """项目成员接单「待分配」→ 200，状态变为「进行中」。"""
+        """项目成员认领「待分配」→ 200，状态变为「进行中」。"""
         project = ProjectFactory()
         # auth_user needs to be a project member to claim
         ProjectMemberFactory(project=project, user=auth_user)
@@ -19,7 +19,7 @@ class TestClaimAPI:
         assert resp.data["assignee"] == auth_user.pk
 
     def test_claim_outsider_forbidden(self, api_client):
-        """非项目成员接单 → 403。"""
+        """非项目成员认领 → 403。"""
         outsider = UserFactory()
         api_client.force_authenticate(user=outsider)
         issue = IssueFactory(status="待分配", assignee=None)

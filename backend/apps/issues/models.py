@@ -33,7 +33,7 @@ SYSTEM_ASSIGNED_STATUSES = (
 
 
 class AssignmentAction(models.TextChoices):
-    CLAIM = 'claim', '接单'
+    CLAIM = 'claim', '认领'
     ASSIGN = 'assign', '指派'
     AI_ASSIGN = 'ai_assign', 'AI分配'
     TRANSFER = 'transfer', '转单'

@@ -42,7 +42,16 @@
         >
           <span class="font-mono text-gray-400 dark:text-gray-600 mr-2">#{{ task.id }}</span>
           <span class="truncate flex-1">{{ task.title }}</span>
-          <span class="w-1.5 h-1.5 rounded-full ml-2 flex-shrink-0" :class="dotColor(task.status)" />
+          <!-- 分配给我、待我接手:crystal 脉冲点(唯一会呼吸 + 品牌色的圆点),区别于普通状态点 -->
+          <span
+            v-if="task.status === '待确认'"
+            class="relative flex w-1.5 h-1.5 ml-2 flex-shrink-0"
+            title="待我接手"
+          >
+            <span class="absolute inline-flex w-full h-full rounded-full bg-crystal-400 opacity-75 animate-ping" />
+            <span class="relative inline-flex w-1.5 h-1.5 rounded-full bg-crystal-500" />
+          </span>
+          <span v-else class="w-1.5 h-1.5 rounded-full ml-2 flex-shrink-0" :class="dotColor(task.status)" />
         </NuxtLink>
 
         <div v-if="displayTasks.length === 0" class="pl-9 pr-2 py-1.5 text-xs text-gray-400 dark:text-gray-600">

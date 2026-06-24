@@ -288,9 +288,12 @@
         </div>
 
         <!-- 分析记录 -->
-        <div class="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 p-5">
-          <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-4">分析记录</h3>
-          <div class="space-y-4">
+        <div class="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 p-5 space-y-3">
+          <button class="flex items-center justify-between w-full" @click="showAnalysis = !showAnalysis">
+            <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100">分析记录</h3>
+            <UIcon :name="showAnalysis ? 'i-heroicons-chevron-up' : 'i-heroicons-chevron-down'" class="w-4 h-4 text-gray-400" />
+          </button>
+          <div v-if="showAnalysis" class="space-y-4">
             <div class="form-row">
               <div class="flex items-center justify-between h-5">
                 <label>备注</label>
@@ -356,9 +359,12 @@
         </div>
 
         <div class="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 p-5 space-y-3">
-          <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100">关联仓库</h3>
+          <button class="flex items-center justify-between w-full" @click="showRepo = !showRepo">
+            <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100">关联仓库</h3>
+            <UIcon :name="showRepo ? 'i-heroicons-chevron-up' : 'i-heroicons-chevron-down'" class="w-4 h-4 text-gray-400" />
+          </button>
 
-          <div class="space-y-2">
+          <div v-if="showRepo" class="space-y-2">
             <div>
               <div class="text-xs text-gray-500 dark:text-gray-400 mb-1">项目</div>
               <USelect
@@ -388,7 +394,7 @@
             </div>
           </div>
 
-          <div v-if="issueRepo" class="flex items-center gap-2 pt-1">
+          <div v-if="showRepo && issueRepo" class="flex items-center gap-2 pt-1">
             <UIcon name="i-heroicons-code-bracket" class="w-4 h-4 text-gray-400" />
             <NuxtLink :to="`/app/repos/${issueRepo.id}`" class="text-sm text-blue-600 dark:text-blue-400 hover:underline truncate">
               {{ issueRepo.full_name }}
@@ -609,10 +615,27 @@
           </div>
         </div>
 
-        <!-- 更新历史 (仅管理员; 内容为空 + 已加载完成时整张卡隐藏) -->
-        <div v-if="isManager && (historyLoading || history.length)" class="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 p-5 space-y-3">
+        <!-- 分配流转 -->
+        <div v-if="issue?.assignments?.length" class="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 p-5 space-y-3">
+          <button class="flex items-center justify-between w-full" @click="showAssignments = !showAssignments">
+            <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100">分配流转</h3>
+            <UIcon :name="showAssignments ? 'i-heroicons-chevron-up' : 'i-heroicons-chevron-down'" class="w-4 h-4 text-gray-400" />
+          </button>
+          <ol v-if="showAssignments" class="space-y-1.5 text-sm">
+            <li v-for="a in issue.assignments" :key="a.id" class="flex flex-wrap gap-x-2 gap-y-0.5">
+              <span class="text-gray-400 dark:text-gray-500 text-xs">{{ formatAssignmentDate(a.created_at) }}</span>
+              <span class="font-medium text-gray-700 dark:text-gray-300">{{ assignmentActionLabel(a.action) }}</span>
+              <span v-if="a.from_user_name" class="text-gray-500 dark:text-gray-400">from {{ a.from_user_name }}</span>
+              <span class="text-gray-500 dark:text-gray-400">→ {{ a.to_user_name }}</span>
+              <span v-if="a.reason" class="text-gray-400 dark:text-gray-500 italic">— {{ a.reason }}</span>
+            </li>
+          </ol>
+        </div>
+
+        <!-- 变更历史 (仅管理员) -->
+        <div v-if="isManager" class="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 p-5 space-y-3">
           <button class="flex items-center justify-between w-full" @click="toggleHistory">
-            <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100">更新历史</h3>
+            <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100">变更历史</h3>
             <UIcon :name="showHistory ? 'i-heroicons-chevron-up' : 'i-heroicons-chevron-down'" class="w-4 h-4 text-gray-400" />
           </button>
           <div v-if="showHistory" class="space-y-3">
@@ -626,45 +649,15 @@
                 :class="entry.type === '+' ? 'border-emerald-400' : entry.type === '-' ? 'border-rose-400' : 'border-crystal-300 dark:border-crystal-700'"
               >
                 <div class="flex items-center justify-between gap-2">
-                  <span class="text-xs font-medium text-gray-700 dark:text-gray-300">
-                    {{ entry.user || '系统' }}
-                    <span class="text-gray-400 dark:text-gray-500 font-normal ml-1">
-                      {{ entry.type === '+' ? '创建' : entry.type === '-' ? '删除' : '更新' }}
-                    </span>
+                  <span class="text-xs min-w-0 truncate">
+                    <span class="font-medium text-gray-700 dark:text-gray-300">{{ entry.user || '系统' }}</span>
+                    <span class="text-gray-500 dark:text-gray-400 ml-1.5">{{ changeSummary(entry) }}</span>
                   </span>
-                  <time class="text-[11px] text-gray-400 dark:text-gray-500" :title="entry.date">
-                    {{ formatRelative(entry.date) }}
-                  </time>
-                </div>
-                <div v-if="entry.changes.length && entry.changes[0].field !== '_created'" class="mt-1.5 space-y-1">
-                  <div
-                    v-for="change in entry.changes"
-                    :key="change.field"
-                    class="text-xs text-gray-600 dark:text-gray-400"
-                  >
-                    <span class="text-gray-500 dark:text-gray-500">{{ change.label }}：</span>
-                    <span v-if="change.before !== null && change.before !== undefined" class="line-through text-rose-500/80 dark:text-rose-400/80">{{ formatValue(change.before) }}</span>
-                    <span v-if="change.before !== null && change.before !== undefined && change.after !== null && change.after !== undefined" class="text-gray-400 mx-1">→</span>
-                    <span v-if="change.after !== null && change.after !== undefined" class="text-emerald-600 dark:text-emerald-400">{{ formatValue(change.after) }}</span>
-                  </div>
+                  <time class="text-[11px] text-gray-400 dark:text-gray-500 shrink-0" :title="entry.date">{{ formatRelative(entry.date) }}</time>
                 </div>
               </div>
             </div>
           </div>
-        </div>
-
-        <!-- 分配流转 -->
-        <div v-if="issue?.assignments?.length" class="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 p-5 space-y-3">
-          <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100">分配流转</h3>
-          <ol class="space-y-1.5 text-sm">
-            <li v-for="a in issue.assignments" :key="a.id" class="flex flex-wrap gap-x-2 gap-y-0.5">
-              <span class="text-gray-400 dark:text-gray-500 text-xs">{{ formatAssignmentDate(a.created_at) }}</span>
-              <span class="font-medium text-gray-700 dark:text-gray-300">{{ assignmentActionLabel(a.action) }}</span>
-              <span v-if="a.from_user_name" class="text-gray-500 dark:text-gray-400">from {{ a.from_user_name }}</span>
-              <span class="text-gray-500 dark:text-gray-400">→ {{ a.to_user_name }}</span>
-              <span v-if="a.reason" class="text-gray-400 dark:text-gray-500 italic">— {{ a.reason }}</span>
-            </li>
-          </ol>
         </div>
       </div>
     </div>
@@ -852,6 +845,25 @@
         </div>
       </template>
     </UModal>
+
+    <!-- 「进行中」自动认领弹窗 -->
+    <UModal v-model:open="showSelfAssignPrompt">
+      <template #content>
+        <div class="modal-form">
+          <div class="modal-header">
+            <h3>设为进行中</h3>
+            <UButton icon="i-heroicons-x-mark" variant="ghost" color="neutral" size="sm" @click="showSelfAssignPrompt = false" />
+          </div>
+          <div class="modal-body">
+            <p class="text-sm text-gray-700 dark:text-gray-300">该问题还没有负责人，要同时把负责人设为你自己吗？</p>
+          </div>
+          <div class="modal-footer">
+            <UButton variant="outline" color="neutral" @click="confirmSelfAssign(false)">仅修改状态</UButton>
+            <UButton color="primary" @click="confirmSelfAssign(true)">是，由我处理</UButton>
+          </div>
+        </div>
+      </template>
+    </UModal>
   </div>
 
   <div v-else class="text-center py-20 text-sm text-gray-400 dark:text-gray-500">问题不存在</div>
@@ -861,6 +873,7 @@
 definePageMeta({ layout: 'default' })
 
 import { type CalendarDate, parseDate, type DateValue } from '@internationalized/date'
+import { changeSummary } from '~/utils/issueHistory'
 
 const { api } = useApi()
 const { can, hasGroup, user: authUser } = useAuth()
@@ -868,11 +881,17 @@ const isManager = computed(() =>
   hasGroup('管理员') || (authUser.value?.is_superuser ?? false)
 )
 const canEditEstimatedHours = isManager
+const selfUserId = computed(() => Number(authUser.value?.id ?? 0))
 
 type HistoryChange = { field: string; label: string; before: any; after: any }
 type HistoryEntry = { id: number; type: '+' | '~' | '-'; date: string; user: string | null; changes: HistoryChange[] }
 
-const showHistory = ref(false)
+// 侧栏卡默认收起
+const showAnalysis = ref(false)
+const showRepo = ref(false)
+const showAssignments = ref(false)
+
+const showHistory = ref(true)
 const historyLoading = ref(false)
 const history = ref<HistoryEntry[]>([])
 
@@ -892,13 +911,6 @@ async function loadHistory() {
 function toggleHistory() {
   showHistory.value = !showHistory.value
   if (showHistory.value && !history.value.length) loadHistory()
-}
-
-function formatValue(v: any): string {
-  if (v === null || v === undefined || v === '') return '空'
-  if (Array.isArray(v)) return v.length ? v.join('、') : '空'
-  if (typeof v === 'object') return JSON.stringify(v)
-  return String(v)
 }
 
 function formatRelative(iso: string): string {
@@ -1434,7 +1446,11 @@ async function updateField(field: string, value: string) {
   await autoSave(field, value)
 }
 
-// 状态胶囊点击处理（已解决 -> 已关闭 时检查 GitHub）
+// 「进行中」自动认领弹窗状态
+const showSelfAssignPrompt = ref(false)
+const pendingStatus = ref('')
+
+// 状态胶囊点击处理（已解决 -> 已关闭 时检查 GitHub；进行中且无负责人时询问认领）
 function handleStatusClick(newStatus: string) {
   if (newStatus === '已关闭') {
     const hasOpenGH = issue.value?.github_issues?.some((gh: any) => gh.state === 'open')
@@ -1443,7 +1459,30 @@ function handleStatusClick(newStatus: string) {
       return
     }
   }
+  // 改为「进行中」且当前无负责人 → 询问是否同时把负责人设为自己
+  if (newStatus === '进行中' && form.value.assignee === '_none') {
+    pendingStatus.value = newStatus
+    showSelfAssignPrompt.value = true
+    return
+  }
   updateField('status', newStatus)
+}
+
+// 弹窗确认:alsoAssign 为 true 时同时把负责人设为当前用户
+async function confirmSelfAssign(alsoAssign: boolean) {
+  const targetStatus = pendingStatus.value
+  showSelfAssignPrompt.value = false
+  pendingStatus.value = ''
+  if (!issue.value || !targetStatus) return
+  const body: Record<string, any> = { status: targetStatus }
+  if (alsoAssign) body.assignee = selfUserId.value
+  try {
+    await api(`/api/issues/${issue.value.id}/`, { method: 'PATCH', body })
+    issue.value = await api<any>(`/api/issues/${route.params.id}/`)
+    populateForm(issue.value)
+  } catch (e) {
+    console.error('Self-assign status change failed:', e)
+  }
 }
 
 async function closeWithGitHub() {
@@ -1566,6 +1605,7 @@ onMounted(async () => {
   // 检查是否有正在运行的 AI 分析，恢复轮询
   checkRunningAnalysis()
   fetchAnalyses()
+  loadHistory()
 })
 
 async function checkRunningAnalysis() {
@@ -1691,7 +1731,7 @@ function insertAttachmentToDescription(attachment: any) {
 
 function assignmentActionLabel(a: string): string {
   return ({
-    claim: '接单',
+    claim: '认领',
     assign: '指派',
     ai_assign: 'AI 分配',
     transfer: '转单',
