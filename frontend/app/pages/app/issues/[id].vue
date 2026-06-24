@@ -648,13 +648,26 @@
                 class="border-l-2 pl-3 py-1"
                 :class="entry.type === '+' ? 'border-emerald-400' : entry.type === '-' ? 'border-rose-400' : 'border-crystal-300 dark:border-crystal-700'"
               >
+                <!-- 执行人 + 时间 -->
                 <div class="flex items-center justify-between gap-2">
-                  <span class="text-xs min-w-0 truncate">
-                    <span class="font-medium text-gray-700 dark:text-gray-300">{{ entry.user || '系统' }}</span>
-                    <span class="text-gray-500 dark:text-gray-400 ml-1.5">{{ changeSummary(entry) }}</span>
-                  </span>
-                  <time class="text-[11px] text-gray-400 dark:text-gray-500 shrink-0" :title="entry.date">{{ formatRelative(entry.date) }}</time>
+                  <span class="text-xs font-semibold text-gray-700 dark:text-gray-300 min-w-0 truncate">{{ entry.user || '系统' }}</span>
+                  <time class="text-[11px] text-gray-400 dark:text-gray-500 shrink-0" :title="formatFullTime(entry.date)">{{ formatRelative(entry.date) }}</time>
                 </div>
+                <!-- 变更内容(旧值 → 新值) -->
+                <ul class="mt-1 space-y-0.5">
+                  <li v-for="(line, i) in changeLines(entry)" :key="i" class="text-xs leading-relaxed">
+                    <span v-if="line.kind !== 'update'" class="text-gray-500 dark:text-gray-400">
+                      {{ line.kind === 'created' ? '创建问题' : '删除问题' }}
+                    </span>
+                    <template v-else>
+                      <span class="font-medium text-gray-600 dark:text-gray-300">{{ line.label }}</span>
+                      <span class="text-gray-400 dark:text-gray-500">：</span>
+                      <span class="text-gray-400 dark:text-gray-500 break-all">{{ line.before }}</span>
+                      <UIcon name="i-heroicons-arrow-small-right" class="inline-block w-3.5 h-3.5 align-text-bottom mx-0.5 text-gray-300 dark:text-gray-600" />
+                      <span class="text-gray-700 dark:text-gray-200 break-all">{{ line.after }}</span>
+                    </template>
+                  </li>
+                </ul>
               </div>
             </div>
           </div>
@@ -873,7 +886,7 @@
 definePageMeta({ layout: 'default' })
 
 import { type CalendarDate, parseDate, type DateValue } from '@internationalized/date'
-import { changeSummary } from '~/utils/issueHistory'
+import { changeLines } from '~/utils/issueHistory'
 
 const { api } = useApi()
 const { can, hasGroup, user: authUser } = useAuth()
@@ -921,6 +934,11 @@ function formatRelative(iso: string): string {
   if (diff < 86400) return `${Math.floor(diff / 3600)} 小时前`
   if (diff < 86400 * 7) return `${Math.floor(diff / 86400)} 天前`
   return d.toLocaleDateString('zh-CN')
+}
+
+// 鼠标悬停时显示完整本地时间
+function formatFullTime(iso: string): string {
+  return new Date(iso).toLocaleString('zh-CN')
 }
 
 const calendarValue = computed<DateValue | undefined>(() => {
