@@ -88,7 +88,12 @@ class IssueListCreateView(generics.ListCreateAPIView):
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     filterset_fields = ["priority", "status", "assignee", "project", "helpers"]
     search_fields = ["title", "=id"]
-    ordering_fields = ["created_at", "priority", "updated_at"]
+    # status_order 是 get_queryset 注入的注解字段(按工单流转顺序),供列表「状态」列排序;
+    # 「历时」列前端映射到 created_at(方向相反)。其余为真实模型字段。
+    ordering_fields = [
+        "id", "title", "priority", "status_order",
+        "created_at", "estimated_completion", "updated_at",
+    ]
     ordering = ["status_order", "priority", "-created_at"]
 
     def get_serializer_class(self):

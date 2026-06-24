@@ -87,6 +87,13 @@ describe('buildIssueQueryParams', () => {
     expect(p.has('priority')).toBe(false)
     expect(p.has('status')).toBe(false)
     expect(p.has('search')).toBe(false)
+    expect(p.has('ordering')).toBe(false)
+  })
+
+  it('passes ordering through (asc and desc) and omits it when blank', () => {
+    expect(buildIssueQueryParams(base({ ordering: 'title' })).get('ordering')).toBe('title')
+    expect(buildIssueQueryParams(base({ ordering: '-created_at' })).get('ordering')).toBe('-created_at')
+    expect(buildIssueQueryParams(base({ ordering: '' })).has('ordering')).toBe(false)
   })
 })
 

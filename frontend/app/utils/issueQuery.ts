@@ -22,6 +22,8 @@ export interface IssueFilterState {
   filterPriorityTagValue: string | null
   filterReporter: IssueReporterFilter | null
   search: string
+  // DRF OrderingFilter 的 ordering 值(如 'title' / '-created_at');空串表示用后端默认排序
+  ordering?: string
 }
 
 // 纯筛选条件部分(不含分页/状态默认排除),看板按列取数时复用
@@ -50,5 +52,6 @@ export function buildIssueQueryParams(s: IssueFilterState): URLSearchParams {
   if (!s.showCompleted && !s.filterStatus) {
     params.set('exclude_statuses', '已关闭,未计划')
   }
+  if (s.ordering) params.set('ordering', s.ordering)
   return params
 }

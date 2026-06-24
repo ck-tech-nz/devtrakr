@@ -297,12 +297,15 @@
             @update:model-value="(v: boolean) => row.toggleSelected(!!v)"
           />
         </template>
+        <template #id-header>
+          <IssueSortHeader label="ID" :dir="sortDir('id')" @toggle="toggleSort('id')" />
+        </template>
         <template #id-cell="{ row }">
           <NuxtLink :to="`/app/issues/${row.original.id}`" class="text-crystal-500 dark:text-crystal-400 hover:text-crystal-700 dark:hover:text-crystal-300 font-medium">{{ row.original.id }}</NuxtLink>
         </template>
         <template #title-header>
           <div class="title-header">
-            <span>标题</span>
+            <IssueSortHeader label="标题" :dir="sortDir('title')" @toggle="toggleSort('title')" />
             <span
               class="col-resize-handle"
               title="拖动调整列宽，双击复原"
@@ -318,6 +321,9 @@
             <EditableCell class="min-w-0" :value="row.original.title" @dblclick="cancelRowClick" @save="(v: string) => inlineUpdate(row.original.id, 'title', v)" />
           </div>
         </template>
+        <template #priority-header>
+          <IssueSortHeader label="优先级" :dir="sortDir('priority')" @toggle="toggleSort('priority')" />
+        </template>
         <template #priority-cell="{ row }">
           <!-- data-priority 供行级 :has() 选择器按优先级给整行着色 -->
           <UBadge
@@ -329,6 +335,9 @@
             :title="`筛选优先级：${priorityLabel(row.original.priority)}`"
             @click.stop="filterByPriority(row.original)"
           >{{ priorityLabel(row.original.priority) }}</UBadge>
+        </template>
+        <template #status-header>
+          <IssueSortHeader label="状态" :dir="sortDir('status')" @toggle="toggleSort('status')" />
         </template>
         <template #status-cell="{ row }">
           <StatusCell
@@ -354,6 +363,9 @@
         <template #solution-cell="{ row }">
           <EditableCell :value="row.original.solution" :placeholder="row.original.ai_solution" @dblclick="cancelRowClick" @save="(v: string) => inlineUpdate(row.original.id, 'solution', v)" />
         </template>
+        <template #created_at-header>
+          <IssueSortHeader label="历时" :dir="sortDir('created_at')" @toggle="toggleSort('created_at')" />
+        </template>
         <template #created_at-cell="{ row }">
           <div class="duration-cell">
             <div class="duration-bar">
@@ -370,6 +382,9 @@
               {{ issueDuration(row.original).label }}
             </span>
           </div>
+        </template>
+        <template #estimated_completion-header>
+          <IssueSortHeader label="要求完成日期" :dir="sortDir('estimated_completion')" @toggle="toggleSort('estimated_completion')" />
         </template>
         <template #estimated_completion-cell="{ row }">
           {{ row.original.estimated_completion ? row.original.estimated_completion.slice(5) : '-' }}
@@ -778,6 +793,44 @@ const totalPages = computed(() => Math.max(1, Math.ceil(totalCount.value / pageS
 
 const showGHColumn = ref(false)
 
+// 列表排序:点击表头三态切换(无 → 升 → 降 → 无)。数据为后端分页,排序须走后端
+// (否则只排当前页),通过 DRF OrderingFilter 的 ordering 参数实现。
+// 列 → 后端字段映射;invert 表示该列的「升/降」与后端字段方向相反:
+//   历时(created_at)越长 ⇔ created_at 越早,故「历时升序」= created_at 降序。
+const SORT_FIELDS: Record<string, { field: string; invert?: boolean }> = {
+  id: { field: 'id' },
+  title: { field: 'title' },
+  priority: { field: 'priority' },
+  status: { field: 'status_order' },
+  created_at: { field: 'created_at', invert: true },
+  estimated_completion: { field: 'estimated_completion' },
+}
+
+const sortBy = ref<{ key: string; dir: 'asc' | 'desc' } | null>(null)
+
+// 当前列的排序方向,供表头组件渲染指示图标
+function sortDir(key: string): 'asc' | 'desc' | null {
+  return sortBy.value?.key === key ? sortBy.value.dir : null
+}
+
+function toggleSort(key: string) {
+  if (sortBy.value?.key !== key) {
+    sortBy.value = { key, dir: 'asc' }
+  } else if (sortBy.value.dir === 'asc') {
+    sortBy.value = { key, dir: 'desc' }
+  } else {
+    sortBy.value = null
+  }
+}
+
+const ordering = computed(() => {
+  if (!sortBy.value) return ''
+  const cfg = SORT_FIELDS[sortBy.value.key]
+  if (!cfg) return ''
+  const ascending = cfg.invert ? sortBy.value.dir === 'desc' : sortBy.value.dir === 'asc'
+  return (ascending ? '' : '-') + cfg.field
+})
+
 const columns = computed(() => {
   const cols = [
     { id: 'select', header: '', cell: '' },
@@ -966,6 +1019,7 @@ async function fetchIssues() {
       filterPriorityTagValue: filterPriorityTag.value?.value ?? null,
       filterReporter: filterReporter.value,
       search: searchQuery.value,
+      ordering: ordering.value,
     })
 
     const data = await api<any>(`/api/issues/?${params.toString()}`)
@@ -1092,6 +1146,13 @@ watch(filterPriority, (v) => {
 })
 
 watch([filterAssignee, filterPriority, filterStatus, filterReporter, filterHandler, filterPriorityTag], () => {
+  page.value = 1
+  rowSelection.value = {}
+  fetchIssues()
+})
+
+// 排序变化回到第 1 页重新取数(后端排序,跨全部分页生效)
+watch(sortBy, () => {
   page.value = 1
   rowSelection.value = {}
   fetchIssues()

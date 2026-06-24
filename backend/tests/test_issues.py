@@ -75,6 +75,27 @@ class TestIssueList:
         results = response.data["results"]
         assert results[0]["priority"] == "P0"
 
+    def test_ordering_by_id(self, auth_client, site_settings):
+        a = IssueFactory()
+        b = IssueFactory()
+        asc = auth_client.get("/api/issues/?ordering=id").data["results"]
+        assert [r["id"] for r in asc] == [a.pk, b.pk]
+        desc = auth_client.get("/api/issues/?ordering=-id").data["results"]
+        assert [r["id"] for r in desc] == [b.pk, a.pk]
+
+    def test_ordering_by_title(self, auth_client, site_settings):
+        IssueFactory(title="乙问题")
+        IssueFactory(title="甲问题")
+        titles = [r["title"] for r in auth_client.get("/api/issues/?ordering=title").data["results"]]
+        assert titles == sorted(titles)
+
+    def test_ordering_by_status_order(self, auth_client, site_settings):
+        # status_order 是注解字段:按工单流转顺序(待分配=1 在 进行中=3 之前)排序
+        IssueFactory(status="进行中")
+        IssueFactory(status="待分配")
+        statuses = [r["status"] for r in auth_client.get("/api/issues/?ordering=status_order").data["results"]]
+        assert statuses == ["待分配", "进行中"]
+
     def test_search_by_number(self, auth_client, site_settings):
         issue = IssueFactory(title="某个问题")
         response = auth_client.get(f"/api/issues/?search={issue.pk}")
