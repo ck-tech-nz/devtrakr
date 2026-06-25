@@ -1713,8 +1713,9 @@ const ATTACHMENT_ALLOWED_TYPES = new Set([
   'application/vnd.openxmlformats-officedocument.presentationml.presentation',
   'text/plain', 'text/markdown', 'text/csv', 'application/json',
   'application/zip', 'application/x-zip-compressed',
+  'text/html',
 ])
-const ATTACHMENT_EXTENSION_FALLBACK = new Set(['md', 'txt', 'csv', 'json', 'zip'])
+const ATTACHMENT_EXTENSION_FALLBACK = new Set(['md', 'txt', 'csv', 'json', 'zip', 'html', 'htm'])
 const ATTACHMENT_MAX_IMAGE_SIZE = 5 * 1024 * 1024
 const ATTACHMENT_MAX_FILE_SIZE = 20 * 1024 * 1024
 

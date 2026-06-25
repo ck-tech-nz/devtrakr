@@ -69,7 +69,7 @@
         <input
           ref="fileInputRef"
           type="file"
-          accept="image/png,image/jpeg,image/gif,image/webp,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation,text/plain,text/markdown,text/csv,application/json,application/zip,application/x-zip-compressed,.md,.txt,.csv,.json,.zip"
+          accept="image/png,image/jpeg,image/gif,image/webp,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation,text/plain,text/markdown,text/csv,application/json,application/zip,application/x-zip-compressed,.md,.txt,.csv,.json,.zip,text/html,.html,.htm"
           multiple
           class="hidden"
           @change="handleFileSelect"
@@ -409,8 +409,10 @@ const ALLOWED_TYPES = new Set([
   'text/plain', 'text/markdown', 'text/csv', 'application/json',
   // Archive
   'application/zip', 'application/x-zip-compressed',
+  // HTML
+  'text/html',
 ])
-const EXTENSION_FALLBACK = new Set(['md', 'txt', 'csv', 'json', 'zip'])
+const EXTENSION_FALLBACK = new Set(['md', 'txt', 'csv', 'json', 'zip', 'html', 'htm'])
 const MAX_IMAGE_SIZE = 5 * 1024 * 1024
 const MAX_FILE_SIZE = 20 * 1024 * 1024
 
