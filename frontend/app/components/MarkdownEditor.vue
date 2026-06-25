@@ -87,29 +87,7 @@
     />
   </div>
 
-  <!-- Hover preview for .md attachments -->
-  <Teleport to="body">
-    <div
-      v-if="mdHover.visible"
-      class="md-hover-preview"
-      :style="{ top: mdHover.top + 'px', left: mdHover.left + 'px' }"
-      @mouseenter="cancelHideMdPreview"
-      @mouseleave="hideMdPreview"
-    >
-      <div class="md-hover-header">
-        <span class="md-hover-title" :title="mdHover.filename">{{ mdHover.filename }}</span>
-        <a
-          class="md-hover-download"
-          :href="mdHover.url"
-          :download="mdHover.filename"
-          target="_blank"
-          rel="noopener noreferrer"
-        >下载</a>
-      </div>
-      <div v-if="mdHover.loading" class="md-hover-loading">加载中...</div>
-      <div v-else class="markdown-body md-hover-body" v-html="mdHover.content" />
-    </div>
-  </Teleport>
+  <FileCardHoverPopup :hover="fileHover" @enter="onPopupEnter" @leave="onPopupLeave" />
 </template>
 
 <script setup lang="ts">
@@ -272,122 +250,15 @@ const renderedHtml = computed(() => {
     .replace(/<input class="task-list-item-checkbox"type="checkbox">/g, '<span class="md-checkbox"></span>')
 })
 
-// --- .md hover preview ---
-
 const previewRef = ref<HTMLElement | null>(null)
 useInlineLinkPreviews(previewRef, () => renderedHtml.value)
-const mdHover = ref<{ visible: boolean; loading: boolean; content: string; top: number; left: number; url: string; filename: string }>({
-  visible: false, loading: false, content: '', top: 0, left: 0, url: '', filename: '',
-})
-const mdCache = new Map<string, string>()
-const MD_FETCH_CAP = 200 * 1024
-let showTimer: ReturnType<typeof setTimeout> | null = null
-let hideTimer: ReturnType<typeof setTimeout> | null = null
 
-async function fetchMdContent(url: string): Promise<string> {
-  if (mdCache.has(url)) return mdCache.get(url)!
-  try {
-    const res = await fetch(url)
-    if (!res.ok) throw new Error(`HTTP ${res.status}`)
-    const reader = res.body?.getReader()
-    if (!reader) {
-      const text = await res.text()
-      const capped = text.length > MD_FETCH_CAP ? text.slice(0, MD_FETCH_CAP) + '\n\n...(已截断)' : text
-      mdCache.set(url, capped)
-      return capped
-    }
-    const decoder = new TextDecoder()
-    let received = ''
-    while (received.length < MD_FETCH_CAP) {
-      const { done, value } = await reader.read()
-      if (done) break
-      received += decoder.decode(value, { stream: true })
-    }
-    if (received.length >= MD_FETCH_CAP) received = received.slice(0, MD_FETCH_CAP) + '\n\n...(已截断)'
-    mdCache.set(url, received)
-    return received
-  } catch {
-    const fallback = '加载失败'
-    mdCache.set(url, fallback)
-    return fallback
-  }
-}
-
-function showMdPreview(el: HTMLAnchorElement) {
-  if (hideTimer) { clearTimeout(hideTimer); hideTimer = null }
-  if (showTimer) clearTimeout(showTimer)
-  // Start prefetch immediately so the file is in cache by the time the
-  // popup opens. Users who click-to-download within the 500ms delay
-  // navigate before the popup ever appears (no wasted UI work).
-  void fetchMdContent(el.href)
-  showTimer = setTimeout(async () => {
-    const rect = el.getBoundingClientRect()
-    const popupHeight = Math.min(window.innerHeight * 0.7, 640)
-    const popupWidth = Math.min(window.innerWidth - 32, 720)
-    const wantBelow = rect.bottom + popupHeight + 8 < window.innerHeight
-    const top = wantBelow
-      ? rect.bottom + window.scrollY + 4
-      : Math.max(8 + window.scrollY, rect.top + window.scrollY - popupHeight - 4)
-    // Clamp left so the popup stays in the viewport
-    const rawLeft = rect.left + window.scrollX
-    const left = Math.min(rawLeft, window.scrollX + window.innerWidth - popupWidth - 16)
-    const filename = el.getAttribute('download') || (el.textContent || '').trim() || el.href.split('/').pop() || 'file.md'
-    mdHover.value = {
-      visible: true,
-      loading: true,
-      content: '',
-      top,
-      left: Math.max(window.scrollX + 8, left),
-      url: el.href,
-      filename,
-    }
-    const text = await fetchMdContent(el.href)
-    if (mdHover.value.visible) {
-      mdHover.value.loading = false
-      mdHover.value.content = md.render(text)
-    }
-  }, 500)
-}
-
-function hideMdPreview() {
-  if (showTimer) { clearTimeout(showTimer); showTimer = null }
-  if (hideTimer) clearTimeout(hideTimer)
-  hideTimer = setTimeout(() => {
-    mdHover.value.visible = false
-  }, 150)
-}
-
-function cancelHideMdPreview() {
-  if (hideTimer) { clearTimeout(hideTimer); hideTimer = null }
-}
-
-function attachMdHoverHandlers() {
-  if (!previewRef.value) return
-  const cards = previewRef.value.querySelectorAll<HTMLAnchorElement>('a.md-file-card.md-file-text')
-  cards.forEach((card) => {
-    if (!card.href.toLowerCase().endsWith('.md')) return
-    if (card.dataset.mdHoverBound === '1') return
-    card.dataset.mdHoverBound = '1'
-    card.addEventListener('mouseenter', () => showMdPreview(card))
-    card.addEventListener('mouseleave', hideMdPreview)
-  })
-}
-
-function maybeAttachMdHoverHandlers() {
-  if (mode.value !== 'preview') return
-  nextTick(attachMdHoverHandlers)
-}
-
-// Attach on mount: covers the case where the component is created with
-// mode=preview and modelValue already populated, so neither watch dep
-// ever changes after setup.
-onMounted(maybeAttachMdHoverHandlers)
-watch([renderedHtml, mode], maybeAttachMdHoverHandlers, { flush: 'post' })
-
-onBeforeUnmount(() => {
-  if (showTimer) clearTimeout(showTimer)
-  if (hideTimer) clearTimeout(hideTimer)
-})
+// 文件卡片悬停预览(.md / .html)— 仅预览模式下绑定
+const { hover: fileHover, onPopupEnter, onPopupLeave } = useFileCardHoverPreview(
+  previewRef,
+  () => renderedHtml.value,
+  { enabled: () => mode.value === 'preview' },
+)
 
 const IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp'])
 // Mirror this allowlist with backend/apps/tools/views.py (ALLOWED_TYPES + EXTENSION_FALLBACK).
@@ -847,79 +718,4 @@ async function uploadFiles(files: File[]) {
 :root.dark .markdown-body .md-file-archive .md-file-ext { background: #4b5563; color: #f3f4f6; }
 :root.dark .markdown-body .md-file-html .md-file-ext { background: #3b2f5e; color: #d6c7ff; }
 
-/* Hover preview popup for .md attachments */
-.md-hover-preview {
-  position: absolute;
-  width: min(720px, calc(100vw - 32px));
-  max-height: min(640px, 70vh);
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-  background: #ffffff;
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.12), 0 4px 10px rgba(0, 0, 0, 0.06);
-  z-index: 9999;
-  font-size: 14px;
-  line-height: 1.6;
-  color: #1f2937;
-}
-.md-hover-preview .md-hover-header {
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 10px 16px;
-  border-bottom: 1px solid #e5e7eb;
-  background: #f9fafb;
-  border-radius: 8px 8px 0 0;
-}
-.md-hover-preview .md-hover-title {
-  flex: 1;
-  min-width: 0;
-  font-weight: 600;
-  font-size: 13px;
-  color: #1f2937;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.md-hover-preview .md-hover-download {
-  flex-shrink: 0;
-  font-size: 12px;
-  font-weight: 500;
-  padding: 4px 10px;
-  border-radius: 4px;
-  background: #6366f1;
-  color: #ffffff;
-  text-decoration: none;
-  transition: background 0.15s;
-}
-.md-hover-preview .md-hover-download:hover {
-  background: #4f46e5;
-  text-decoration: none;
-}
-.md-hover-preview .md-hover-loading {
-  color: #9ca3af;
-  font-size: 13px;
-  padding: 16px 20px;
-}
-.md-hover-preview .md-hover-body {
-  flex: 1;
-  overflow: auto;
-  padding: 16px 20px;
-  word-wrap: break-word;
-}
-:root.dark .md-hover-preview {
-  background: #1f2937;
-  border-color: #374151;
-  color: #e5e7eb;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5), 0 4px 10px rgba(0, 0, 0, 0.3);
-}
-:root.dark .md-hover-preview .md-hover-header {
-  background: #111827;
-  border-bottom-color: #374151;
-}
-:root.dark .md-hover-preview .md-hover-title { color: #e5e7eb; }
-:root.dark .md-hover-preview .md-hover-loading { color: #6b7280; }
 </style>
