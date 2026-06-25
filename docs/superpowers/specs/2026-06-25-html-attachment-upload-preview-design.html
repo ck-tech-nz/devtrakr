@@ -1,0 +1,213 @@
+<!doctype html>
+<html lang="zh-hans">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>设计稿 · HTML 附件上传与卡片悬停预览</title>
+<style>
+  :root{
+    --bg:#0f1216; --panel:#171b22; --panel2:#1d222b; --line:#2a313c;
+    --ink:#e6e9ef; --mut:#9aa4b2; --acc:#8b5cf6; --acc2:#a78bfa;
+    --ok:#34d399; --warn:#fbbf24; --danger:#f87171; --code:#0b0e12;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font:15px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;}
+  .wrap{max-width:880px;margin:0 auto;padding:48px 24px 96px}
+  header.doc{border-bottom:1px solid var(--line);padding-bottom:24px;margin-bottom:8px}
+  .kicker{color:var(--acc2);font-size:12px;letter-spacing:.14em;text-transform:uppercase;font-weight:700}
+  h1{font-size:30px;line-height:1.25;margin:.4em 0 .3em}
+  .meta{color:var(--mut);font-size:13px}
+  .meta b{color:var(--ink);font-weight:600}
+  h2{font-size:20px;margin:2.4em 0 .6em;padding-left:12px;border-left:3px solid var(--acc)}
+  h3{font-size:15.5px;margin:1.6em 0 .4em;color:var(--acc2)}
+  p{margin:.6em 0}
+  code{background:var(--code);border:1px solid var(--line);border-radius:5px;padding:.1em .42em;
+    font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:#d6c7ff}
+  pre{background:var(--code);border:1px solid var(--line);border-radius:10px;padding:16px 18px;overflow-x:auto;margin:1em 0}
+  pre code{background:none;border:0;padding:0;color:#cdd4df;display:block}
+  .tok-c{color:#5d6675}.tok-k{color:#c792ea}.tok-s{color:#c3e88d}.tok-a{color:#82aaff}
+  ul,ol{margin:.5em 0;padding-left:1.4em}li{margin:.3em 0}
+  table{border-collapse:collapse;width:100%;margin:1em 0;font-size:13.5px}
+  th,td{border:1px solid var(--line);padding:8px 11px;text-align:left;vertical-align:top}
+  th{background:var(--panel2);color:var(--acc2);font-weight:600}
+  td code{font-size:12px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px 20px;margin:1em 0}
+  .callout{border-radius:12px;padding:14px 18px;margin:1.1em 0;border:1px solid}
+  .callout.sec{background:rgba(248,113,113,.07);border-color:rgba(248,113,113,.4)}
+  .callout.dec{background:rgba(139,92,246,.08);border-color:rgba(139,92,246,.4)}
+  .callout.ok{background:rgba(52,211,153,.07);border-color:rgba(52,211,153,.4)}
+  .callout h4{margin:0 0 .35em;font-size:13px;letter-spacing:.06em;text-transform:uppercase}
+  .callout.sec h4{color:var(--danger)}.callout.dec h4{color:var(--acc2)}.callout.ok h4{color:var(--ok)}
+  .tag{display:inline-block;font-size:11px;font-weight:700;letter-spacing:.05em;padding:.18em .55em;border-radius:5px;vertical-align:middle}
+  .tag.be{background:#14532d;color:#bbf7d0}.tag.fe{background:#1e3a5f;color:#bfdbfe}.tag.html{background:#3b2f5e;color:#d6c7ff}
+  figure{margin:1.4em 0;text-align:center}
+  figcaption{color:var(--mut);font-size:12.5px;margin-top:8px}
+  .fileref{color:var(--acc2);font-family:ui-monospace,monospace;font-size:12.5px}
+  .x{color:var(--danger)}.chk{color:var(--ok)}
+  hr{border:0;border-top:1px solid var(--line);margin:2.4em 0}
+  .small{font-size:13px;color:var(--mut)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="doc">
+  <div class="kicker">设计稿 · Design Spec</div>
+  <h1>HTML 附件上传 + 文件卡片悬停预览</h1>
+  <p class="meta"><b>日期</b> 2026-06-25 · <b>项目</b> DevTrack · <b>范围</b> 描述 / 评论正文(Markdown 渲染路径) · <b>状态</b> 待评审</p>
+</header>
+
+<h2>1 · 背景与目标</h2>
+<p>用户向 Issue 描述区上传 HTML 文件时被拒绝,提示 <code>不支持的文件类型: text/html</code>。这类 HTML 多为"图文并茂的事实文档"(如根因梳理稿),既要能上传,也要能在正文里<b>直接预览</b>,而不必下载后才能看。</p>
+<p>本设计交付两件事:</p>
+<ol>
+  <li><b>放行 HTML 上传</b> —— 把 <code>text/html</code>(及 <code>.html/.htm</code> 扩展名兜底)加入上传白名单。</li>
+  <li><b>HTML 文件卡片 + 悬停预览</b> —— HTML 像其它文档一样渲染成文件卡片;鼠标悬停时,弹出<b>沙箱 iframe</b> 实时渲染完整 HTML。</li>
+</ol>
+
+<div class="callout dec">
+  <h4>已确认决策</h4>
+  <p><b>① 预览形态:悬停弹出预览。</b> 卡片外观与现有文件卡片一致(图标 + 文件名 + 徽章),悬停时弹层用沙箱 iframe 渲染完整 HTML —— 复用现有 <code>.md</code> 悬停预览的交互范式。</p>
+  <p><b>② iframe 隔离:<code>sandbox="allow-scripts"</code>(不带 <code>allow-same-origin</code>)。</b> 脚本运行在 null 源,无法访问父页面、Cookie、本地存储,因此 JS 驱动的图表等仍能渲染,而风险被隔离。</p>
+  <p><b>③ 共享重构:抽出共享 composable。</b> 现有 <code>.md</code> 悬停预览只存在于描述编辑器;评论区(<span class="fileref">MarkdownView.vue</span>)完全没有。抽成共享逻辑后,评论区顺带获得 <code>.md</code> 与 <code>.html</code> 悬停预览。</p>
+</div>
+
+<h2>2 · 现状梳理</h2>
+<table>
+  <thead><tr><th>关注点</th><th>现状</th><th>位置</th></tr></thead>
+  <tbody>
+    <tr><td>上传白名单</td><td><code>text/html</code> 不在其中 → 被拒</td><td><span class="fileref">backend/apps/tools/services.py</span> · 三处前端镜像</td></tr>
+    <tr><td>对象存储</td><td>MinIO;公网 URL 带 <code>Content-Disposition: attachment</code>,扩展名→MIME 由服务端推导(不信任客户端)</td><td><span class="fileref">backend/apps/tools/storage.py</span></td></tr>
+    <tr><td>文件卡片渲染</td><td>非图片附件按扩展名分类渲染为卡片(pdf/word/excel/ppt/text/archive)</td><td><span class="fileref">useMentionMarkdown.ts</span> <code>FILE_EXT_CATEGORY</code></td></tr>
+    <tr><td><code>.md</code> 悬停预览</td><td>仅<b>描述编辑器预览页</b>有;评论区<span class="x">无</span></td><td><span class="fileref">MarkdownEditor.vue</span> L275–390</td></tr>
+    <tr><td>描述 / 评论渲染</td><td>描述走 <code>MarkdownEditor</code>(预览模式);评论走 <code>MarkdownView</code></td><td><span class="fileref">[id].vue</span> · <span class="fileref">IssueComments.vue</span></td></tr>
+  </tbody>
+</table>
+
+<h2>3 · 后端改动 <span class="tag be">BACKEND</span></h2>
+<p>仅放行上传,<b>不</b>改对象存储的 MIME 映射(见安全说明)。</p>
+<h3>3.1 上传白名单</h3>
+<p><span class="fileref">backend/apps/tools/services.py</span>:</p>
+<pre><code><span class="tok-c"># ALLOWED_TYPES 增加</span>
+<span class="tok-s">"text/html"</span>,
+<span class="tok-c"># EXTENSION_FALLBACK 增加(兜底个别浏览器上报空/异常 MIME)</span>
+<span class="tok-s">"html"</span>, <span class="tok-s">"htm"</span>,</code></pre>
+
+<div class="callout sec">
+  <h4>安全:为什么不改 <code>storage.py</code> 的 EXT_TO_MIME</h4>
+  <p><span class="fileref">storage.py</span> 已注释警告:绝不能让上传文件以 <code>text/html</code> 从公网 URL 提供 —— 否则任何人拿到公网链接即可触发存储型 XSS。因此:</p>
+  <ul>
+    <li>HTML 在 MinIO 仍以 <code>application/octet-stream</code> + <code>attachment</code> 下发 → 直接访问公网链接只会<b>下载</b>,不会渲染。</li>
+    <li>预览改走<b>"前端 fetch 文本 → 沙箱 iframe <code>srcdoc</code>"</b>,完全不依赖公网 URL 的 content-type,从而既能预览又不暴露可渲染的 XSS 入口。</li>
+    <li>数据库 <code>mime_type</code> 字段记录客户端上报的 <code>text/html</code>(仅作元数据,不影响下发);卡片分类按 URL 扩展名判定,与之解耦。</li>
+  </ul>
+</div>
+
+<h2>4 · 前端改动</h2>
+
+<h3>4.1 白名单同步 <span class="tag fe">FRONTEND</span></h3>
+<p>三处镜像的白名单同步加 <code>text/html</code> 与 <code>html/htm</code>:</p>
+<ul>
+  <li><span class="fileref">MarkdownEditor.vue</span> 的 <code>ALLOWED_TYPES</code> / <code>EXTENSION_FALLBACK</code> 及 <code>&lt;input accept&gt;</code></li>
+  <li><span class="fileref">pages/app/issues/[id].vue</span> 的镜像常量(关联附件面板用)</li>
+</ul>
+
+<h3>4.2 HTML 文件卡片 <span class="tag fe">FRONTEND</span></h3>
+<ul>
+  <li><span class="fileref">useMentionMarkdown.ts</span> <code>FILE_EXT_CATEGORY</code> 增加 <code>html:'html'</code>、<code>htm:'html'</code></li>
+  <li>卡片样式新增 <code>.md-file-html</code>(🌐 图标 + 紫色 <code>HTML</code> 徽章),在 <span class="fileref">MarkdownEditor.vue</span> 与 <span class="fileref">MarkdownView.vue</span> 两处 CSS 同步(与现有六类保持一致)</li>
+</ul>
+
+<h3>4.3 悬停预览:抽共享逻辑 <span class="tag fe">FRONTEND</span></h3>
+<p>把 <span class="fileref">MarkdownEditor.vue</span> 现有的 <code>.md</code> 悬停预览(<code>mdHover</code> 状态、fetch+缓存、show/hide 定时、弹层定位、卡片绑定)抽出为可复用单元:</p>
+<table>
+  <thead><tr><th>新单元</th><th>职责</th><th>依赖</th></tr></thead>
+  <tbody>
+    <tr><td><code>useFileCardHoverPreview(rootRef, htmlGetter)</code><br><span class="small">composable</span></td><td>对 <code>.md</code> 与 <code>.html/.htm</code> 卡片绑定 hover;管理 fetch+缓存+定时+定位;暴露响应式 <code>hover</code> 状态</td><td>—</td></tr>
+    <tr><td><code>FileCardHoverPopup.vue</code><br><span class="small">component</span></td><td>teleport 弹层。<code>.md</code> → markdown 渲染;<code>.html/.htm</code> → <code>&lt;iframe srcdoc sandbox="allow-scripts"&gt;</code></td><td>上面的 <code>hover</code> 状态</td></tr>
+  </tbody>
+</table>
+<p><span class="fileref">MarkdownEditor.vue</span> 与 <span class="fileref">MarkdownView.vue</span> 都引用这套,移除 MarkdownEditor 里原有的内联 <code>.md</code> 悬停代码。</p>
+<div class="callout ok">
+  <h4>副带收益</h4>
+  <p>评论区(<span class="fileref">MarkdownView.vue</span>)此前对任何文件卡片都没有悬停预览;抽共享后,评论区的 <code>.md</code> 与 <code>.html</code> 卡片同样获得预览,消除了描述区与评论区的体验割裂。</p>
+</div>
+
+<h3>4.4 iframe 渲染细节</h3>
+<ul>
+  <li><b>取内容</b>:沿用现有 <code>fetchMdContent</code> 的跨源 fetch(MinIO 公网 URL,CORS 已放行),读 <code>.text()</code> 作为 <code>srcdoc</code>。</li>
+  <li><b>隔离</b>:<code>sandbox="allow-scripts"</code>,<b>不</b>加 <code>allow-same-origin</code> → 脚本在 null 源,无法触达父页面 / Cookie / 存储。</li>
+  <li><b>大小上限</b>:渲染上限约 2MB。HTML <b>不能截断</b>(截断会破坏标签结构),超限时弹层改提示"文件较大,请下载后查看"。</li>
+  <li><b>点击行为</b>:保持与其它文件卡片一致 —— 点击即下载(<code>attachment</code>);悬停才是预览入口。</li>
+</ul>
+
+<h2>5 · 数据流</h2>
+<figure>
+<svg viewBox="0 0 820 260" width="100%" role="img" aria-label="HTML 预览数据流图">
+  <defs>
+    <marker id="ar" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto">
+      <path d="M0,0 L7,3 L0,6 Z" fill="#8b5cf6"/>
+    </marker>
+    <style>
+      .b{fill:#1d222b;stroke:#2a313c}
+      .t{fill:#e6e9ef;font:13px -apple-system,sans-serif}
+      .tm{fill:#9aa4b2;font:11px ui-monospace,monospace}
+      .ln{stroke:#8b5cf6;stroke-width:1.6;fill:none;marker-end:url(#ar)}
+    </style>
+  </defs>
+  <rect class="b" x="10"  y="100" width="150" height="58" rx="10"/>
+  <text class="t"  x="85" y="124" text-anchor="middle">文件卡片</text>
+  <text class="tm" x="85" y="143" text-anchor="middle">.html / .htm</text>
+
+  <rect class="b" x="200" y="100" width="170" height="58" rx="10"/>
+  <text class="t"  x="285" y="124" text-anchor="middle">hover composable</text>
+  <text class="tm" x="285" y="143" text-anchor="middle">500ms 定时 + 缓存</text>
+
+  <rect class="b" x="410" y="20"  width="170" height="58" rx="10"/>
+  <text class="t"  x="495" y="44" text-anchor="middle">fetch(MinIO URL)</text>
+  <text class="tm" x="495" y="63" text-anchor="middle">.text() ≤ 2MB</text>
+
+  <rect class="b" x="410" y="180" width="170" height="58" rx="10"/>
+  <text class="t"  x="495" y="204" text-anchor="middle">定位 + 弹层</text>
+  <text class="tm" x="495" y="223" text-anchor="middle">teleport popup</text>
+
+  <rect class="b" x="630" y="100" width="180" height="58" rx="10"/>
+  <text class="t"  x="720" y="120" text-anchor="middle">&lt;iframe srcdoc&gt;</text>
+  <text class="tm" x="720" y="138" text-anchor="middle">sandbox=allow-scripts</text>
+  <text class="tm" x="720" y="152" text-anchor="middle">(null 源,无 same-origin)</text>
+
+  <path class="ln" d="M160,129 L196,129"/>
+  <path class="ln" d="M370,118 L406,58"/>
+  <path class="ln" d="M370,140 L406,200"/>
+  <path class="ln" d="M580,49 C610,60 605,95 628,118"/>
+  <path class="ln" d="M580,209 C610,198 605,163 628,140"/>
+</svg>
+<figcaption>悬停 → composable 取文本并定位 → 弹层内用沙箱 iframe 渲染。文本经 fetch 注入 srcdoc,不依赖公网 URL 的 content-type。</figcaption>
+</figure>
+
+<h2>6 · 测试</h2>
+<ul>
+  <li><b>后端 pytest</b>(<span class="fileref">backend/tests/</span>):
+    <ul>
+      <li>HTML 上传通过校验(<code>text/html</code> + <code>.html</code> 扩展名兜底)</li>
+      <li>存储后 <code>mime_type</code> 记录正确</li>
+      <li>公网下发仍为 <code>octet-stream</code> + <code>attachment</code>(回归保护安全约定)</li>
+    </ul>
+  </li>
+  <li><b>前端</b>:纯交互逻辑,靠 <code>npx nuxi typecheck</code> + 手动验证(上传 HTML → 卡片出现 → 悬停渲染 → 含脚本的 HTML 在 null 源运行而不触达父页面)。</li>
+</ul>
+
+<h2>7 · 不在本次范围</h2>
+<ul>
+  <li><span class="x">✗</span> 右侧"关联附件"面板的 HTML 卡片/预览(用户已明确只要描述/评论正文)</li>
+  <li><span class="x">✗</span> 点击卡片在新标签/模态框打开渲染视图(用户选了"悬停预览",非"点击打开")</li>
+  <li><span class="x">✗</span> HTML 内容的服务端净化/改写(靠 sandbox iframe 隔离,不做内容改写)</li>
+</ul>
+
+<hr>
+<p class="small">本设计稿按项目约定输出为自包含 HTML。评审通过后进入实现计划(writing-plans)。</p>
+
+</div>
+</body>
+</html>
