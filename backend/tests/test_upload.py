@@ -98,6 +98,35 @@ class TestImageUpload:
         response = auth_client.post(self.URL, {"file": f}, format="multipart")
         assert response.status_code == 200
 
+    @patch("apps.tools.storage.upload_image")
+    def test_html_upload_succeeds(self, mock_upload, auth_client):
+        from apps.tools.models import Attachment
+        mock_upload.return_value = (
+            "http://minio:9000/devtrack-uploads/2026/06/25/abc.html",
+            "2026/06/25/abc.html",
+        )
+        f = SimpleUploadedFile(
+            "root-cause.html",
+            b"<!doctype html><h1>hi</h1>",
+            content_type="text/html",
+        )
+        response = auth_client.post(self.URL, {"file": f}, format="multipart")
+        assert response.status_code == 200
+        assert response.data["filename"] == "root-cause.html"
+        att = Attachment.objects.get(id=response.data["id"])
+        assert att.mime_type == "text/html"
+
+    @patch("apps.tools.storage.upload_image")
+    def test_htm_with_empty_type_succeeds_via_extension(self, mock_upload, auth_client):
+        """个别浏览器对 .htm 上报空 content_type — 靠扩展名兜底放行。"""
+        mock_upload.return_value = (
+            "http://minio:9000/devtrack-uploads/2026/06/25/abc.htm",
+            "2026/06/25/abc.htm",
+        )
+        f = SimpleUploadedFile("page.htm", b"<html></html>", content_type="")
+        response = auth_client.post(self.URL, {"file": f}, format="multipart")
+        assert response.status_code == 200
+
 
 @pytest.mark.django_db
 class TestImageUploadDedup:
@@ -193,3 +222,13 @@ class TestImageUploadDedup:
         )
         att = Attachment.objects.get(id=r.data["id"])
         assert att.content_hash == expected
+
+
+class TestStorageMimeSafety:
+    """安全约定: HTML 绝不能以 text/html 从公网 URL 下发, 否则公网链接 = 存储型 XSS。
+    storage 按扩展名推导 Content-Type; html/htm 必须落到 octet-stream(走默认兜底)。"""
+
+    def test_html_never_served_as_text_html(self):
+        from apps.tools import storage
+        assert storage.EXT_TO_MIME.get("html", "application/octet-stream") == "application/octet-stream"
+        assert storage.EXT_TO_MIME.get("htm", "application/octet-stream") == "application/octet-stream"

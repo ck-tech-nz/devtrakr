@@ -14,6 +14,8 @@ const FILE_EXT_CATEGORY: Record<string, string> = {
   md: 'text',
   json: 'text',
   zip: 'archive',
+  html: 'html',
+  htm: 'html',
 }
 
 function stripQueryAndHash(url: string): string {

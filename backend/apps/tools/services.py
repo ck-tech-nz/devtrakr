@@ -29,6 +29,8 @@ ALLOWED_TYPES = {
     "text/markdown",
     "text/csv",
     "application/json",
+    # HTML
+    "text/html",
     # Archive
     "application/zip",
     "application/x-zip-compressed",
@@ -37,7 +39,7 @@ ALLOWED_TYPES = {
 # Extensions that are allowed even when the browser reports an unusual MIME type
 # (e.g. some browsers report .md as text/plain or empty).
 EXTENSION_FALLBACK = {
-    "md", "txt", "csv", "json", "zip",
+    "md", "txt", "csv", "json", "zip", "html", "htm",
 }
 
 

@@ -1,5 +1,6 @@
 <template>
   <div ref="rootEl" class="markdown-view" v-html="html" />
+  <FileCardHoverPopup :hover="fileHover" @enter="onPopupEnter" @leave="onPopupLeave" />
 </template>
 
 <script setup lang="ts">
@@ -19,6 +20,8 @@ const html = computed(() => {
 
 const rootEl = ref<HTMLElement | null>(null)
 useInlineLinkPreviews(rootEl, () => html.value)
+// 文件卡片悬停预览(.md / .html)— 评论正文此前无预览,经此获得
+const { hover: fileHover, onPopupEnter, onPopupLeave } = useFileCardHoverPreview(rootEl, () => html.value)
 </script>
 
 <style>
@@ -145,6 +148,7 @@ useInlineLinkPreviews(rootEl, () => html.value)
 .markdown-view .md-file-ppt .md-file-icon::before { content: '📽'; }
 .markdown-view .md-file-text .md-file-icon::before { content: '📄'; }
 .markdown-view .md-file-archive .md-file-icon::before { content: '📦'; }
+.markdown-view .md-file-html .md-file-icon::before { content: '🌐'; }
 
 .markdown-view .md-file-pdf .md-file-ext { background: #fee2e2; color: #b91c1c; }
 .markdown-view .md-file-word .md-file-ext { background: #dbeafe; color: #1d4ed8; }
@@ -152,6 +156,7 @@ useInlineLinkPreviews(rootEl, () => html.value)
 .markdown-view .md-file-ppt .md-file-ext { background: #ffedd5; color: #c2410c; }
 .markdown-view .md-file-text .md-file-ext { background: #f3f4f6; color: #4b5563; }
 .markdown-view .md-file-archive .md-file-ext { background: #e5e7eb; color: #374151; }
+.markdown-view .md-file-html .md-file-ext { background: #ede9fe; color: #6d28d9; }
 
 :root.dark .markdown-view .md-file-card {
   background: #1f2937;
@@ -172,6 +177,7 @@ useInlineLinkPreviews(rootEl, () => html.value)
 :root.dark .markdown-view .md-file-ppt .md-file-ext { background: #7c2d12; color: #fed7aa; }
 :root.dark .markdown-view .md-file-text .md-file-ext { background: #374151; color: #e5e7eb; }
 :root.dark .markdown-view .md-file-archive .md-file-ext { background: #4b5563; color: #f3f4f6; }
+:root.dark .markdown-view .md-file-html .md-file-ext { background: #3b2f5e; color: #d6c7ff; }
 
 /* Task list (todo) styles */
 .markdown-view ul.contains-task-list { padding-left: 1.5em; list-style: none; margin: 0.5em 0; }

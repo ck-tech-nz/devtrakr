@@ -106,7 +106,7 @@ git push -f origin main:env/prod     # Deploy to production
 - User groups are defined in `sync_page_perms` management command — run after migrations
 - Frontend language is Chinese (zh-hans)
 - create skills in ENGLISH, but code comments and UI text in CHINESE
-- 写给用户阅读的文档(说明、设计稿、报告、总结等交付物)一律输出为 HTML 文件,不要用 Markdown。此约定不适用于代码仓库内既有的 `.md` 文件(如 CLAUDE.md、skills、README)
+- 写给用户阅读的文档(说明、设计稿、报告、总结等交付物)一律输出为自包含的 HTML 文件(内联 CSS/JS、不依赖外部资源、可单文件直接打开),做到图文并茂。不要用 Markdown。此约定不适用于代码仓库内既有的 `.md` 文件(如 CLAUDE.md、skills、README)
 - For runtime/deprecation warnings, only resolve via dependency upgrades or upstream fixes; do not silence warnings (for example via `NODE_OPTIONS --disable-warning`) and do not downgrade only to hide warnings. If it cannot be solved safely, report it explicitly.
 
 ## gstack
