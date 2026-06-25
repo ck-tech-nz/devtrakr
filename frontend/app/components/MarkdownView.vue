@@ -1,5 +1,6 @@
 <template>
   <div ref="rootEl" class="markdown-view" v-html="html" />
+  <FileCardHoverPopup :hover="fileHover" @enter="onPopupEnter" @leave="onPopupLeave" />
 </template>
 
 <script setup lang="ts">
@@ -19,6 +20,8 @@ const html = computed(() => {
 
 const rootEl = ref<HTMLElement | null>(null)
 useInlineLinkPreviews(rootEl, () => html.value)
+// 文件卡片悬停预览(.md / .html)— 评论正文此前无预览,经此获得
+const { hover: fileHover, onPopupEnter, onPopupLeave } = useFileCardHoverPreview(rootEl, () => html.value)
 </script>
 
 <style>
