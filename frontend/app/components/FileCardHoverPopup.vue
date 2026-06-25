@@ -3,7 +3,13 @@
     <div
       v-if="hover.visible"
       class="fc-hover-preview"
-      :style="{ top: hover.top + 'px', left: hover.left + 'px' }"
+      :style="{
+        left: hover.left + 'px',
+        top: hover.top != null ? hover.top + 'px' : 'auto',
+        bottom: hover.bottom != null ? hover.bottom + 'px' : 'auto',
+        height: hover.kind === 'html' && !hover.tooLarge ? hover.maxHeight + 'px' : 'auto',
+        maxHeight: hover.maxHeight + 'px',
+      }"
       @mouseenter="emit('enter')"
       @mouseleave="emit('leave')"
     >
@@ -42,9 +48,8 @@ const emit = defineEmits<{ enter: []; leave: [] }>()
 
 <style>
 .fc-hover-preview {
-  position: absolute;
+  position: fixed;
   width: min(720px, calc(100vw - 32px));
-  max-height: min(640px, 70vh);
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -93,7 +98,7 @@ const emit = defineEmits<{ enter: []; leave: [] }>()
 .fc-hover-preview .fc-hover-iframe {
   flex: 1;
   width: 100%;
-  min-height: 320px;
+  min-height: 0;
   border: 0;
   background: #ffffff;
 }

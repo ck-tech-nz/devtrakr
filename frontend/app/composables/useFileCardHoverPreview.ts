@@ -9,8 +9,12 @@ export interface FileHoverState {
   content: string   // 渲染后的 markdown HTML (kind==='md')
   rawHtml: string   // 原始 HTML 源码,用于 iframe srcdoc (kind==='html')
   tooLarge: boolean // HTML 超过内联渲染上限
-  top: number
+  // 定位(视口坐标,position:fixed)。放在卡片下方时设 top、上方时设 bottom,
+  // 让弹层紧贴卡片对应边缘;maxHeight 按所在侧可用空间收口。
+  top: number | null
+  bottom: number | null
   left: number
+  maxHeight: number
   url: string
   filename: string
 }
@@ -36,7 +40,7 @@ export function useFileCardHoverPreview(
   const hover = ref<FileHoverState>({
     visible: false, loading: false, kind: 'md',
     content: '', rawHtml: '', tooLarge: false,
-    top: 0, left: 0, url: '', filename: '',
+    top: 0, bottom: null, left: 0, maxHeight: 0, url: '', filename: '',
   })
 
   const cache = new Map<string, string>() // url -> 已拉取文本(按 kind 的上限封顶)
@@ -87,20 +91,26 @@ export function useFileCardHoverPreview(
     // 预取:在弹层出现前就开始拉,500ms 内点击下载的用户不会产生无用 UI。
     void fetchText(el.href, ceiling)
     showTimer = setTimeout(async () => {
+      // 视口坐标(position:fixed)。选可用空间更大的一侧放置,并紧贴卡片对应边缘:
+      // 下方 → top 贴卡片底边;上方 → bottom 贴卡片顶边。高度按该侧可用空间收口,
+      // 不再预留固定高度,避免弹层与卡片之间出现空隙。
       const rect = el.getBoundingClientRect()
-      const popupHeight = Math.min(window.innerHeight * 0.7, 640)
+      const margin = 8
+      const gap = 4
       const popupWidth = Math.min(window.innerWidth - 32, 720)
-      const wantBelow = rect.bottom + popupHeight + 8 < window.innerHeight
-      const top = wantBelow
-        ? rect.bottom + window.scrollY + 4
-        : Math.max(8 + window.scrollY, rect.top + window.scrollY - popupHeight - 4)
-      const rawLeft = rect.left + window.scrollX
-      const left = Math.min(rawLeft, window.scrollX + window.innerWidth - popupWidth - 16)
+      const cap = Math.min(window.innerHeight * 0.7, 640)
+      const spaceBelow = window.innerHeight - rect.bottom - margin
+      const spaceAbove = rect.top - margin
+      const placeBelow = spaceBelow >= spaceAbove
+      const left = Math.max(margin, Math.min(rect.left, window.innerWidth - popupWidth - margin))
+      const maxHeight = Math.max(160, Math.min(cap, (placeBelow ? spaceBelow : spaceAbove) - gap))
       const filename = el.getAttribute('download') || (el.textContent || '').trim() || el.href.split('/').pop() || 'file'
       hover.value = {
         visible: true, loading: true, kind,
         content: '', rawHtml: '', tooLarge: false,
-        top, left: Math.max(window.scrollX + 8, left),
+        top: placeBelow ? rect.bottom + gap : null,
+        bottom: placeBelow ? null : window.innerHeight - rect.top + gap,
+        left, maxHeight,
         url: el.href, filename,
       }
       const text = await fetchText(el.href, ceiling)
