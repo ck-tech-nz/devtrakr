@@ -816,6 +816,7 @@ async function uploadFiles(files: File[]) {
 .markdown-body .md-file-ppt .md-file-icon::before { content: '📽'; }
 .markdown-body .md-file-text .md-file-icon::before { content: '📄'; }
 .markdown-body .md-file-archive .md-file-icon::before { content: '📦'; }
+.markdown-body .md-file-html .md-file-icon::before { content: '🌐'; }
 
 .markdown-body .md-file-pdf .md-file-ext { background: #fee2e2; color: #b91c1c; }
 .markdown-body .md-file-word .md-file-ext { background: #dbeafe; color: #1d4ed8; }
@@ -823,6 +824,7 @@ async function uploadFiles(files: File[]) {
 .markdown-body .md-file-ppt .md-file-ext { background: #ffedd5; color: #c2410c; }
 .markdown-body .md-file-text .md-file-ext { background: #f3f4f6; color: #4b5563; }
 .markdown-body .md-file-archive .md-file-ext { background: #e5e7eb; color: #374151; }
+.markdown-body .md-file-html .md-file-ext { background: #ede9fe; color: #6d28d9; }
 
 :root.dark .markdown-body .md-file-card {
   background: #1f2937;
@@ -843,6 +845,7 @@ async function uploadFiles(files: File[]) {
 :root.dark .markdown-body .md-file-ppt .md-file-ext { background: #7c2d12; color: #fed7aa; }
 :root.dark .markdown-body .md-file-text .md-file-ext { background: #374151; color: #e5e7eb; }
 :root.dark .markdown-body .md-file-archive .md-file-ext { background: #4b5563; color: #f3f4f6; }
+:root.dark .markdown-body .md-file-html .md-file-ext { background: #3b2f5e; color: #d6c7ff; }
 
 /* Hover preview popup for .md attachments */
 .md-hover-preview {
