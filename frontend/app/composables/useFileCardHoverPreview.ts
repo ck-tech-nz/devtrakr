@@ -62,6 +62,9 @@ export function useFileCardHoverPreview(
         if (done) break
         received += decoder.decode(value, { stream: true })
       }
+      // 命中上限后提前结束读取:取消 reader,避免浏览器继续在后台缓冲剩余响应体
+      await reader.cancel()
+      received += decoder.decode() // flush 解码器尾部残留的多字节字符
       cache.set(url, received)
       return received
     } catch {
