@@ -22,10 +22,10 @@
           color="error"
           variant="outline"
           size="sm"
+          title="删除"
+          aria-label="删除"
           @click="showDeleteConfirm = true"
-        >
-          删除
-        </UButton>
+        />
       </div>
     </div>
 
@@ -62,9 +62,12 @@
       <!-- Sidebar -->
       <div class="space-y-4">
         <div class="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 p-5 space-y-3">
-          <div class="flex items-center justify-between">
-            <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100">AI 分析</h3>
-            <div class="flex items-center gap-2">
+          <div class="flex items-center justify-between gap-2">
+            <button class="flex items-center gap-1.5 min-w-0 flex-1 text-left" @click="togglePanel('ai')">
+              <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100">AI 分析</h3>
+              <UIcon :name="panelOpen.ai ? 'i-heroicons-chevron-up' : 'i-heroicons-chevron-down'" class="w-4 h-4 text-gray-400 shrink-0" />
+            </button>
+            <div class="flex items-center gap-2 shrink-0">
               <ServiceStatusDot :online="isOnline('ai')" />
               <UButton
                 v-if="issue.repo"
@@ -78,6 +81,7 @@
             </div>
           </div>
 
+          <div v-if="panelOpen.ai" class="space-y-3">
           <!-- 运行状态 -->
           <div v-if="aiAnalyzing" class="space-y-2">
             <div class="flex items-center gap-2">
@@ -120,9 +124,16 @@
             </div>
           </div>
           <p v-else-if="!aiAnalyzing && issue.repo && issueRepo?.clone_status === 'cloned'" class="text-sm text-gray-400 dark:text-gray-500">暂无分析记录</p>
+          </div>
         </div>
 
+        <!-- 属性: 优先级 / 状态 / 负责人 / 求助 / 标签 -->
         <div class="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 p-5 space-y-4">
+          <button class="flex items-center justify-between w-full" @click="togglePanel('attrs')">
+            <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100">属性</h3>
+            <UIcon :name="panelOpen.attrs ? 'i-heroicons-chevron-up' : 'i-heroicons-chevron-down'" class="w-4 h-4 text-gray-400" />
+          </button>
+          <div v-if="panelOpen.attrs" class="space-y-4">
           <!-- 优先级 & 状态 -->
           <div class="space-y-1.5">
             <label class="text-xs font-medium text-gray-400 dark:text-gray-500">优先级</label>
@@ -221,9 +232,14 @@
               <span v-if="!form.labels.length" class="text-xs text-gray-400 dark:text-gray-500">无标签</span>
             </div>
           </div>
+          </div>
         </div>
         <div class="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 p-5 space-y-3">
-          <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100">信息</h3>
+          <button class="flex items-center justify-between w-full" @click="togglePanel('info')">
+            <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100">信息</h3>
+            <UIcon :name="panelOpen.info ? 'i-heroicons-chevron-up' : 'i-heroicons-chevron-down'" class="w-4 h-4 text-gray-400" />
+          </button>
+          <div v-if="panelOpen.info">
           <!-- 宽度足够时两列并排;不够时"预计完成"日历自动换行独占一行 -->
           <div class="flex flex-wrap gap-4">
             <!-- 左列: 元信息 + 工时 -->
@@ -289,15 +305,16 @@
               />
             </div>
           </div>
+          </div>
         </div>
 
         <!-- 分析记录 -->
         <div class="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 p-5 space-y-3">
-          <button class="flex items-center justify-between w-full" @click="showAnalysis = !showAnalysis">
+          <button class="flex items-center justify-between w-full" @click="togglePanel('analysis')">
             <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100">分析记录</h3>
-            <UIcon :name="showAnalysis ? 'i-heroicons-chevron-up' : 'i-heroicons-chevron-down'" class="w-4 h-4 text-gray-400" />
+            <UIcon :name="panelOpen.analysis ? 'i-heroicons-chevron-up' : 'i-heroicons-chevron-down'" class="w-4 h-4 text-gray-400" />
           </button>
-          <div v-if="showAnalysis" class="space-y-4">
+          <div v-if="panelOpen.analysis" class="space-y-4">
             <div class="form-row">
               <div class="flex items-center justify-between h-5">
                 <label>备注</label>
@@ -324,12 +341,16 @@
 
         <!-- 关联附件 -->
         <div class="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 p-5 space-y-3">
-          <div class="flex items-center justify-between">
-            <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100">关联附件</h3>
-            <UButton size="xs" variant="soft" icon="i-heroicons-paper-clip" @click="attachmentInputRef?.click()">添加</UButton>
+          <div class="flex items-center justify-between gap-2">
+            <button class="flex items-center gap-1.5 min-w-0 flex-1 text-left" @click="togglePanel('attachments')">
+              <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100">关联附件</h3>
+              <UIcon :name="panelOpen.attachments ? 'i-heroicons-chevron-up' : 'i-heroicons-chevron-down'" class="w-4 h-4 text-gray-400 shrink-0" />
+            </button>
+            <UButton size="xs" variant="ghost" color="neutral" icon="i-heroicons-plus" title="添加附件" aria-label="添加附件" @click="attachmentInputRef?.click()" />
           </div>
           <input ref="attachmentInputRef" type="file" multiple class="hidden" @change="handleAttachmentSelect" />
 
+          <div v-if="panelOpen.attachments" class="space-y-3">
           <!-- 图片附件：缩略图网格 -->
           <div v-if="imageAttachments.length" class="grid grid-cols-2 gap-2">
             <div
@@ -360,15 +381,16 @@
           </div>
 
           <p v-if="!attachments.length" class="text-xs text-gray-400 dark:text-gray-500">暂无附件</p>
+          </div>
         </div>
 
         <div class="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 p-5 space-y-3">
-          <button class="flex items-center justify-between w-full" @click="showRepo = !showRepo">
+          <button class="flex items-center justify-between w-full" @click="togglePanel('repo')">
             <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100">关联仓库</h3>
-            <UIcon :name="showRepo ? 'i-heroicons-chevron-up' : 'i-heroicons-chevron-down'" class="w-4 h-4 text-gray-400" />
+            <UIcon :name="panelOpen.repo ? 'i-heroicons-chevron-up' : 'i-heroicons-chevron-down'" class="w-4 h-4 text-gray-400" />
           </button>
 
-          <div v-if="showRepo" class="space-y-2">
+          <div v-if="panelOpen.repo" class="space-y-2">
             <div>
               <div class="text-xs text-gray-500 dark:text-gray-400 mb-1">项目</div>
               <USelect
@@ -398,7 +420,7 @@
             </div>
           </div>
 
-          <div v-if="showRepo && issueRepo" class="flex items-center gap-2 pt-1">
+          <div v-if="panelOpen.repo && issueRepo" class="flex items-center gap-2 pt-1">
             <UIcon name="i-heroicons-code-bracket" class="w-4 h-4 text-gray-400" />
             <NuxtLink :to="`/app/repos/${issueRepo.id}`" class="text-sm text-blue-600 dark:text-blue-400 hover:underline truncate">
               {{ issueRepo.full_name }}
@@ -411,8 +433,11 @@
 
         <!-- 关联 Issues — 自动 (AI 创建时去重命中) + 手动; 常显以便空列表时也能点 + 添加 -->
         <div class="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 p-5 space-y-3">
-          <div class="flex items-center justify-between">
-            <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100">关联 Issues</h3>
+          <div class="flex items-center justify-between gap-2">
+            <button class="flex items-center gap-1.5 min-w-0 flex-1 text-left" @click="togglePanel('related')">
+              <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100">关联 Issues</h3>
+              <UIcon :name="panelOpen.related ? 'i-heroicons-chevron-up' : 'i-heroicons-chevron-down'" class="w-4 h-4 text-gray-400 shrink-0" />
+            </button>
             <UButton
               v-if="!relatedSearchOpen"
               size="xs"
@@ -420,10 +445,11 @@
               color="neutral"
               icon="i-heroicons-plus"
               title="关联其它 issue"
-              @click="openRelatedSearch"
+              @click="panelOpen.related = true; openRelatedSearch()"
             />
           </div>
 
+          <div v-if="panelOpen.related" class="space-y-3">
           <div v-if="relatedIssuesResolved.length" class="space-y-1.5">
             <div
               v-for="r in relatedIssuesResolved"
@@ -486,14 +512,19 @@
               <UButton size="xs" variant="ghost" color="neutral" @click="closeRelatedSearch">取消</UButton>
             </div>
           </div>
+          </div>
         </div>
 
         <div v-if="issue.github_issues?.length" class="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 p-5 space-y-3">
-          <div class="flex items-center justify-between">
-            <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100">GitHub 关联</h3>
+          <div class="flex items-center justify-between gap-2">
+            <button class="flex items-center gap-1.5 min-w-0 flex-1 text-left" @click="togglePanel('github')">
+              <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100">GitHub 关联</h3>
+              <UIcon :name="panelOpen.github ? 'i-heroicons-chevron-up' : 'i-heroicons-chevron-down'" class="w-4 h-4 text-gray-400 shrink-0" />
+            </button>
             <ServiceStatusDot :online="isOnline('github')" />
           </div>
 
+          <div v-if="panelOpen.github" class="space-y-3">
           <!-- 已关联的 GitHub Issues -->
           <div v-if="issue.github_issues?.length" class="space-y-2">
             <div v-for="gh in issue.github_issues" :key="gh.id" class="flex items-center justify-between bg-gray-50 dark:bg-gray-800 rounded-lg px-3 py-2">
@@ -518,11 +549,16 @@
               关联已有 Issue
             </UButton>
           </div>
+          </div>
         </div>
 
         <div v-if="linkedPRs.length" class="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 p-5 space-y-3">
-          <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100">关联 PR</h3>
+          <button class="flex items-center justify-between w-full" @click="togglePanel('pr')">
+            <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100">关联 PR</h3>
+            <UIcon :name="panelOpen.pr ? 'i-heroicons-chevron-up' : 'i-heroicons-chevron-down'" class="w-4 h-4 text-gray-400" />
+          </button>
 
+          <div v-if="panelOpen.pr" class="space-y-3">
           <!-- 建议已解决:仅在有合并 PR 且未完成时显示 -->
           <div v-if="suggestResolved" class="flex items-center justify-between gap-2 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-900 rounded-lg px-3 py-2">
             <span class="text-xs text-emerald-700 dark:text-emerald-300">关联 PR 已合并 · 建议标记为已解决</span>
@@ -555,15 +591,16 @@
               <UIcon name="i-heroicons-arrow-top-right-on-square" class="w-4 h-4 text-gray-400 shrink-0" />
             </a>
           </div>
+          </div>
         </div>
 
         <!-- 外部来源 — 仅当真正来自第三方接口且带有元数据时才显示 (ai_wizard 内部生成不算) -->
         <div v-if="hasExternalSource" class="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 p-5 space-y-3">
-          <button class="flex items-center justify-between w-full" @click="showSourceMeta = !showSourceMeta">
+          <button class="flex items-center justify-between w-full" @click="togglePanel('source')">
             <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100">外部来源</h3>
-            <UIcon :name="showSourceMeta ? 'i-heroicons-chevron-up' : 'i-heroicons-chevron-down'" class="w-4 h-4 text-gray-400" />
+            <UIcon :name="panelOpen.source ? 'i-heroicons-chevron-up' : 'i-heroicons-chevron-down'" class="w-4 h-4 text-gray-400" />
           </button>
-          <div v-if="showSourceMeta && issue.source_meta" class="space-y-2 text-sm">
+          <div v-if="panelOpen.source && issue.source_meta" class="space-y-2 text-sm">
             <div v-if="issue.source" class="flex justify-between">
               <span class="text-gray-500 dark:text-gray-400">来源平台</span>
               <span class="text-gray-900 dark:text-gray-100">{{ issue.source }}</span>
@@ -621,11 +658,11 @@
 
         <!-- 分配流转 -->
         <div v-if="issue?.assignments?.length" class="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 p-5 space-y-3">
-          <button class="flex items-center justify-between w-full" @click="showAssignments = !showAssignments">
+          <button class="flex items-center justify-between w-full" @click="togglePanel('assignments')">
             <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100">分配流转</h3>
-            <UIcon :name="showAssignments ? 'i-heroicons-chevron-up' : 'i-heroicons-chevron-down'" class="w-4 h-4 text-gray-400" />
+            <UIcon :name="panelOpen.assignments ? 'i-heroicons-chevron-up' : 'i-heroicons-chevron-down'" class="w-4 h-4 text-gray-400" />
           </button>
-          <ol v-if="showAssignments" class="space-y-1.5 text-sm">
+          <ol v-if="panelOpen.assignments" class="space-y-1.5 text-sm">
             <li v-for="a in issue.assignments" :key="a.id" class="flex flex-wrap gap-x-2 gap-y-0.5">
               <span class="text-gray-400 dark:text-gray-500 text-xs">{{ formatAssignmentDate(a.created_at) }}</span>
               <span class="font-medium text-gray-700 dark:text-gray-300">{{ assignmentActionLabel(a.action) }}</span>
@@ -638,11 +675,11 @@
 
         <!-- 变更历史 (仅管理员) -->
         <div v-if="isManager" class="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 p-5 space-y-3">
-          <button class="flex items-center justify-between w-full" @click="toggleHistory">
+          <button class="flex items-center justify-between w-full" @click="togglePanel('history')">
             <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100">变更历史</h3>
-            <UIcon :name="showHistory ? 'i-heroicons-chevron-up' : 'i-heroicons-chevron-down'" class="w-4 h-4 text-gray-400" />
+            <UIcon :name="panelOpen.history ? 'i-heroicons-chevron-up' : 'i-heroicons-chevron-down'" class="w-4 h-4 text-gray-400" />
           </button>
-          <div v-if="showHistory" class="space-y-3">
+          <div v-if="panelOpen.history" class="space-y-3">
             <div v-if="historyLoading" class="text-xs text-gray-400 dark:text-gray-500">加载中...</div>
             <p v-else-if="!history.length" class="text-xs text-gray-400 dark:text-gray-500">暂无历史记录</p>
             <div v-else class="space-y-3 max-h-96 overflow-y-auto -mx-1 px-1">
@@ -903,12 +940,6 @@ const selfUserId = computed(() => Number(authUser.value?.id ?? 0))
 type HistoryChange = { field: string; label: string; before: any; after: any }
 type HistoryEntry = { id: number; type: '+' | '~' | '-'; date: string; user: string | null; changes: HistoryChange[] }
 
-// 侧栏卡默认收起
-const showAnalysis = ref(false)
-const showRepo = ref(false)
-const showAssignments = ref(false)
-
-const showHistory = ref(true)
 const historyLoading = ref(false)
 const history = ref<HistoryEntry[]>([])
 
@@ -925,9 +956,28 @@ async function loadHistory() {
   }
 }
 
-function toggleHistory() {
-  showHistory.value = !showHistory.value
-  if (showHistory.value && !history.value.length) loadHistory()
+// 右侧信息栏各卡片折叠状态:持久化到浏览器 localStorage,刷新后保持上次的展开/收起
+type PanelKey = 'ai' | 'attrs' | 'info' | 'analysis' | 'attachments' | 'repo' | 'related' | 'github' | 'pr' | 'source' | 'assignments' | 'history'
+const PANEL_STATE_KEY = 'issue-detail:panels'
+const panelDefaults: Record<PanelKey, boolean> = {
+  ai: true, attrs: true, info: true, analysis: false, attachments: true,
+  repo: false, related: true, github: true, pr: true, source: true,
+  assignments: false, history: true,
+}
+const panelOpen = reactive<Record<PanelKey, boolean>>({ ...panelDefaults })
+if (import.meta.client) {
+  try {
+    const saved = JSON.parse(localStorage.getItem(PANEL_STATE_KEY) || '{}')
+    for (const k of Object.keys(panelDefaults) as PanelKey[]) {
+      if (typeof saved[k] === 'boolean') panelOpen[k] = saved[k]
+    }
+  } catch { /* 损坏的存储忽略,用默认值 */ }
+  watch(panelOpen, v => localStorage.setItem(PANEL_STATE_KEY, JSON.stringify(v)), { deep: true })
+}
+function togglePanel(k: PanelKey) {
+  panelOpen[k] = !panelOpen[k]
+  // 变更历史首次展开时才拉取
+  if (k === 'history' && panelOpen.history && !history.value.length) loadHistory()
 }
 
 function formatRelative(iso: string): string {
@@ -1117,7 +1167,6 @@ const ghCreateError = ref('')
 
 // GitHub 关联
 const showLinkGH = ref(false)
-const showSourceMeta = ref(true)
 
 // 关联 Issues — JSON 字段, 后端 detail serializer 已经 resolved 出 title/status
 type RelatedItem = { id: number; title: string; status: string; priority?: string; kind: string; reason: string; added_at: string }
@@ -1468,7 +1517,7 @@ async function flushHelpersSave() {
     savedForm.value.helpers = [...form.value.helpers]
     ;(issue.value as any).helpers = ids
     markSaved('helpers')
-    if (showHistory.value) loadHistory() // 历史面板已展开则刷新,立即看到本次变更
+    if (panelOpen.history) loadHistory() // 历史面板已展开则刷新,立即看到本次变更
   } catch (e) {
     console.error('Auto-save helpers failed:', e)
   } finally {
