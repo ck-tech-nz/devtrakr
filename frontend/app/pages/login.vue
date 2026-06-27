@@ -2,13 +2,13 @@
   <div class="w-full max-w-sm">
     <div class="text-center mb-8">
       <img src="~/assets/images/logo-icon.svg" alt="DevTrakr" class="w-14 h-14 mx-auto mb-4" />
-      <h1 class="text-2xl font-semibold text-gray-900">DevTrakr</h1>
-      <p class="text-sm text-gray-400 mt-1">项目管理平台</p>
+      <h1 class="text-2xl font-semibold text-gray-900 dark:text-gray-100">DevTrakr</h1>
+      <p class="text-sm text-gray-400 dark:text-gray-500 mt-1">项目管理平台</p>
     </div>
 
-    <form class="bg-white rounded-2xl shadow-xl shadow-gray-200/50 border border-gray-100 p-8" @submit.prevent="handleLogin">
-      <h2 class="text-lg font-semibold text-gray-900 mb-6">登录</h2>
-      <div v-if="registered" class="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg text-sm text-green-700">
+    <form class="bg-white dark:bg-gray-900 rounded-2xl shadow-xl shadow-gray-200/50 dark:shadow-none border border-gray-100 dark:border-gray-800 p-8" @submit.prevent="handleLogin">
+      <h2 class="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-6">登录</h2>
+      <div v-if="registered" class="mb-4 p-3 bg-green-50 dark:bg-green-950 border border-green-200 dark:border-green-900 rounded-lg text-sm text-green-700 dark:text-green-400">
         注册成功，请等待管理员审批后登录
       </div>
       <div class="space-y-4">

@@ -2,12 +2,12 @@
   <div class="w-full max-w-sm">
     <div class="text-center mb-8">
       <img src="~/assets/images/logo-icon.svg" alt="DevTrakr" class="w-14 h-14 mx-auto mb-4" />
-      <h1 class="text-2xl font-semibold text-gray-900">DevTrakr</h1>
-      <p class="text-sm text-gray-400 mt-1">项目管理平台</p>
+      <h1 class="text-2xl font-semibold text-gray-900 dark:text-gray-100">DevTrakr</h1>
+      <p class="text-sm text-gray-400 dark:text-gray-500 mt-1">项目管理平台</p>
     </div>
 
-    <form class="bg-white rounded-2xl shadow-xl shadow-gray-200/50 border border-gray-100 p-8" @submit.prevent="handleRegister">
-      <h2 class="text-lg font-semibold text-gray-900 mb-6">注册</h2>
+    <form class="bg-white dark:bg-gray-900 rounded-2xl shadow-xl shadow-gray-200/50 dark:shadow-none border border-gray-100 dark:border-gray-800 p-8" @submit.prevent="handleRegister">
+      <h2 class="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-6">注册</h2>
       <div class="space-y-4">
         <UFormField label="用户名" required :error="fieldErrors.username">
           <UInput v-model="form.username" placeholder="请输入用户名" icon="i-heroicons-user" size="lg" class="w-full" />
@@ -37,7 +37,7 @@
           <UInput v-model="form.email" type="email" placeholder="请输入邮箱" icon="i-heroicons-envelope" size="lg" class="w-full" />
         </UFormField>
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-2">选择头像</label>
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">选择头像</label>
           <AvatarPicker v-model="form.avatar" />
         </div>
         <p v-if="fieldErrors._global" class="text-sm text-red-500">{{ fieldErrors._global }}</p>
