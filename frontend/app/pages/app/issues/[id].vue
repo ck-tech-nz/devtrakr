@@ -1690,17 +1690,17 @@ async function acceptResolveSuggestion() {
 }
 
 onMounted(async () => {
-  const [issueData, usersData, developersData, settingsData, reposData, projectsData] = await Promise.all([
+  const [issueData, usersData, settingsData, reposData, projectsData] = await Promise.all([
     api<any>(`/api/issues/${route.params.id}/`).catch(() => null),
     api<any[]>('/api/users/choices/').catch(() => []),
-    api<any[]>(`/api/users/choices/?group=${encodeURIComponent('开发者')}`).catch(() => []),
     api<any>('/api/settings/').catch(() => ({ labels: [] })),
     api<any[]>('/api/repos/').catch(() => []),
     api<any>('/api/projects/').catch(() => ({ results: [] })),
   ])
   issue.value = issueData
   users.value = usersData || []
-  developers.value = developersData || []
+  // 「开发者」组从全量 choices 客户端筛出,省去单独的 ?group=开发者 调用
+  developers.value = (usersData || []).filter((u: any) => u.groups?.includes('开发者'))
   labelItems.value = settingsData?.labels || {}
   setPrioritiesFromSettings(settingsData?.priorities)
   setStatusesFromSettings(settingsData?.issue_statuses)

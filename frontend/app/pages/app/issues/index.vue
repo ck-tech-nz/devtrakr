@@ -40,7 +40,7 @@
           >
             只看我的
           </UButton>
-          <USelect :model-value="filterAssignee" :items="filterAssigneeOptions" class="w-28" value-key="value" placeholder="负责人" @update:model-value="(v: string) => filterAssignee = v === '_all' ? '' : v" />
+          <USelect :model-value="filterAssignee" :items="filterAssigneeOptions" class="w-24" value-key="value" placeholder="负责人" @update:model-value="(v: string) => filterAssignee = v === '_all' ? '' : v" />
         </UButtonGroup>
         <!-- 「只看我提出的」与「提出人」同属提出人筛选(按创建人 created_by),合并为一个连体按钮组 -->
         <UButtonGroup size="sm">
@@ -52,11 +52,11 @@
           >
             只看我提出的
           </UButton>
-          <USelect :model-value="filterReporterUser" :items="filterReporterOptions" class="w-28" value-key="value" placeholder="提出人" @update:model-value="(v: string) => setReporterUser(v)" />
+          <USelect :model-value="filterReporterUser" :items="filterReporterOptions" class="w-24" value-key="value" placeholder="提出人" @update:model-value="(v: string) => setReporterUser(v)" />
         </UButtonGroup>
         <PrioritySlider v-model="filterPriority" />
         <div class="relative">
-          <USelect v-model="filterStatus" :items="filterStatusOptions" size="sm" class="w-28" value-key="value" placeholder="状态" />
+          <USelect v-model="filterStatus" :items="filterStatusOptions" size="sm" class="w-24" value-key="value" placeholder="状态" />
           <button v-if="filterStatus" class="filter-clear" @click="filterStatus = ''">
             <UIcon name="i-heroicons-x-mark" class="w-3 h-3" />
           </button>
@@ -113,7 +113,7 @@
           @click="fetchIssues"
         />
         <UButton icon="i-heroicons-plus" size="sm" @click="openCreateModal">
-          <span class="hidden md:inline">新建问题</span>
+          <span class="hidden md:inline">新建</span>
         </UButton>
         <!-- 看板列显示/隐藏编辑器:置于工具栏行尾,仅看板视图显示 -->
         <KanbanColumnEditor
@@ -1333,15 +1333,15 @@ onMounted(async () => {
   labelOptions.value = typeof rawLabels === 'object' && !Array.isArray(rawLabels) ? Object.keys(rawLabels) : rawLabels
   setPrioritiesFromSettings(settingsData?.priorities)
   setStatusesFromSettings(settingsData?.issue_statuses)
-  const [, usersData, developersData, projectsData, reposData] = await Promise.all([
+  const [, usersData, projectsData, reposData] = await Promise.all([
     fetchIssues(),
     api<any[]>('/api/users/choices/').catch(() => []),
-    api<any[]>(`/api/users/choices/?group=${encodeURIComponent('开发者')}`).catch(() => []),
     api<any>('/api/projects/').catch(() => ({ results: [] })),
     api<any>('/api/repos/').catch(() => ({ results: [] })),
   ])
   users.value = usersData || []
-  developers.value = developersData || []
+  // 「开发者」组从全量 choices 客户端筛出,省去单独的 ?group=开发者 调用
+  developers.value = (usersData || []).filter((u: any) => u.groups?.includes('开发者'))
   projects.value = projectsData?.results || projectsData || []
   repos.value = reposData?.results || reposData || []
   // Check AI analysis status for issues with repos
@@ -1349,17 +1349,16 @@ onMounted(async () => {
 })
 
 async function checkAnalyzingIssues() {
-  const issuesWithRepo = issues.value.filter(i => i.repo)
-  const checks = await Promise.all(
-    issuesWithRepo.map(i =>
-      api<any>(`/api/issues/${i.id}/ai-status/`).catch(() => ({ status: 'idle' }))
-    )
-  )
-  const running = new Set<number>()
-  issuesWithRepo.forEach((issue, idx) => {
-    if (checks[idx]?.status === 'running') running.add(issue.id)
-  })
-  analyzingIssueIds.value = running
+  // 批量查询:一次请求拿到所有「正在分析」的工单 id,取代逐条 ai-status 的 N+1
+  const ids = issues.value.filter(i => i.repo).map(i => i.id)
+  if (!ids.length) {
+    analyzingIssueIds.value = new Set()
+    return
+  }
+  const data = await api<{ running_ids: number[] }>(
+    `/api/issues/ai-status/?ids=${ids.join(',')}`
+  ).catch(() => ({ running_ids: [] }))
+  analyzingIssueIds.value = new Set<number>(data.running_ids || [])
 }
 </script>
 
