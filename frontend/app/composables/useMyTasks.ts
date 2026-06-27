@@ -20,34 +20,11 @@ export function useMyTasks() {
     if (!user.value || loading.value) return
     loading.value = true
     try {
-      const uid = user.value.id
-      const fetches: Promise<any>[] = [
-        api<any>(`/api/issues/?assignee=${uid}&status=待分配&page_size=20`),
-        // 分配给我、等我确认(接受)的工单也算我的待办
-        api<any>(`/api/issues/?assignee=${uid}&status=待确认&page_size=20`),
-        api<any>(`/api/issues/?assignee=${uid}&status=进行中&page_size=20`),
-        api<any>(`/api/issues/?helpers=${uid}&status=待分配&page_size=20`),
-        api<any>(`/api/issues/?helpers=${uid}&status=进行中&page_size=20`),
-      ]
-      if (isTester.value) {
-        fetches.push(api<any>(`/api/issues/?status=已发布&page_size=20`))
-      }
-      const results = await Promise.all(fetches)
-      const seen = new Set<number>()
-      const merged: MyTask[] = []
-      let total = 0
-      for (const res of results) {
-        const items = res.results || res || []
-        const prevSize = seen.size
-        for (const item of items) {
-          if (!seen.has(item.id)) { seen.add(item.id); merged.push(item) }
-        }
-        const batchNew = seen.size - prevSize
-        const batchDup = items.length - batchNew
-        total += (res.count ?? items.length) - batchDup
-      }
-      totalCount.value = total
-      tasks.value = merged.slice(0, 20)
+      // 后端聚合:一次查询返回去重后的精确总数与前 20 条
+      // (负责/协助 + 测试组「已发布」口径均在服务端,取代旧的 5~6 个分状态请求)
+      const res = await api<{ count: number; results: MyTask[] }>('/api/issues/my-tasks/')
+      totalCount.value = res.count ?? 0
+      tasks.value = res.results || []
     } catch (e) {
       console.error('Failed to load my tasks:', e)
     } finally {

@@ -25,6 +25,19 @@ class TestUserChoices:
         names = {u["name"] for u in response.data}
         assert names == {"开发A"}
 
+    def test_choices_includes_groups_per_user(self, auth_client):
+        # 每个用户带上所属组名,前端据此自行分组,免去额外的 ?group= 调用
+        dev_group = GroupFactory(name="开发者")
+        tester_group = GroupFactory(name="测试")
+        dev = UserFactory(name="开发A")
+        dev.groups.add(dev_group, tester_group)
+        UserFactory(name="无组C")
+        response = auth_client.get("/api/users/choices/")
+        assert response.status_code == 200
+        by_name = {u["name"]: u for u in response.data}
+        assert set(by_name["开发A"]["groups"]) == {"开发者", "测试"}
+        assert by_name["无组C"]["groups"] == []
+
 
 class TestUserList:
     def test_list_users(self, auth_client):

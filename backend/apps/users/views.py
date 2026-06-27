@@ -88,8 +88,17 @@ class UserChoicesView(APIView):
         group = request.query_params.get("group")
         if group:
             users = users.filter(groups__name=group).distinct()
-        users = users.order_by("name")
-        data = [{"id": u.id, "name": u.name or u.username} for u in users]
+        # 带上每个用户的所属组,前端可据此自行分组(如负责人下拉筛「开发者」),
+        # 免去额外的 ?group= 调用;prefetch 避免逐行查询组
+        users = users.order_by("name").prefetch_related("groups")
+        data = [
+            {
+                "id": u.id,
+                "name": u.name or u.username,
+                "groups": [g.name for g in u.groups.all()],
+            }
+            for u in users
+        ]
         return Response(data)
 
 

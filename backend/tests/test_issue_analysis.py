@@ -233,3 +233,62 @@ class TestAnalysisStatusView:
     def test_not_found(self, auth_client):
         resp = auth_client.get("/api/ai/analysis/99999/status/")
         assert resp.status_code == 404
+
+
+@pytest.mark.django_db
+class TestAIStatusBatchView:
+    """GET /api/issues/ai-status/?ids=1,2,3 — 批量查询 AI 分析运行状态,
+    取代列表页逐条请求 /issues/{id}/ai-status/ 的 N+1。"""
+
+    def test_requires_auth(self, api_client):
+        resp = api_client.get("/api/issues/ai-status/?ids=1")
+        assert resp.status_code in (401, 403)
+
+    def test_returns_only_running_issue_ids(self, auth_client):
+        running = IssueFactory()
+        idle = IssueFactory()
+        AnalysisFactory(
+            issue=running, analysis_type="issue_code_analysis", status="running",
+        )
+        AnalysisFactory(
+            issue=idle, analysis_type="issue_code_analysis", status="done",
+        )
+        resp = auth_client.get(f"/api/issues/ai-status/?ids={running.id},{idle.id}")
+        assert resp.status_code == 200
+        assert resp.data["running_ids"] == [running.id]
+
+    def test_empty_ids_returns_empty(self, auth_client):
+        resp = auth_client.get("/api/issues/ai-status/")
+        assert resp.status_code == 200
+        assert resp.data["running_ids"] == []
+
+    def test_ignores_ids_outside_requested_set(self, auth_client):
+        running = IssueFactory()
+        AnalysisFactory(
+            issue=running, analysis_type="issue_code_analysis", status="running",
+        )
+        # 只问别的 id,不应返回 running 的 id
+        resp = auth_client.get(f"/api/issues/ai-status/?ids={running.id + 999}")
+        assert resp.status_code == 200
+        assert resp.data["running_ids"] == []
+
+    def test_stale_running_times_out_and_excluded(self, auth_client):
+        from django.utils import timezone
+        from datetime import timedelta
+        issue = IssueFactory()
+        stale = AnalysisFactory(
+            issue=issue, analysis_type="issue_code_analysis", status="running",
+        )
+        Analysis.objects.filter(pk=stale.pk).update(
+            created_at=timezone.now() - timedelta(minutes=15)
+        )
+        resp = auth_client.get(f"/api/issues/ai-status/?ids={issue.id}")
+        assert resp.status_code == 200
+        assert resp.data["running_ids"] == []
+        stale.refresh_from_db()
+        assert stale.status == "failed"
+
+    def test_ignores_non_numeric_ids(self, auth_client):
+        resp = auth_client.get("/api/issues/ai-status/?ids=abc,,7")
+        assert resp.status_code == 200
+        assert resp.data["running_ids"] == []

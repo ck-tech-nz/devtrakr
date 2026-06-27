@@ -30,6 +30,7 @@ from .serializers import (
     IssueTransferInputSerializer, IssueAssignInputSerializer,
     IssueCommentSerializer,
     ChatConversationSerializer,
+    MyTaskSerializer,
 )
 from apps.notifications.services import create_comment_mention_notifications
 from .services import claim_issue, confirm_issue, transfer_issue, assign_issue, InvalidTransition
@@ -86,7 +87,9 @@ class IssueListCreateView(generics.ListCreateAPIView):
     )
     permission_classes = [IsAuthenticated, FullDjangoModelPermissions]
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
-    filterset_fields = ["priority", "status", "assignee", "project", "helpers"]
+    # status 不走 DjangoFilterBackend(只支持精确匹配):改在 get_queryset 里按
+    # status__in 处理,以支持看板一次拉取多列(?status=待分配,进行中 或重复 ?status=A&status=B)
+    filterset_fields = ["priority", "assignee", "project", "helpers"]
     search_fields = ["title", "=id"]
     # status_order 是 get_queryset 注入的注解字段(按工单流转顺序),供列表「状态」列排序;
     # 「历时」列前端映射到 created_at(方向相反)。其余为真实模型字段。
@@ -115,6 +118,16 @@ class IssueListCreateView(generics.ListCreateAPIView):
                 output_field=IntegerField(),
             ),
         )
+        # 多状态过滤: 同时支持 ?status=待分配,进行中 与重复 ?status=A&status=B 两种写法
+        # (看板一次拉取多列、其余「负责/协助」等场景按需传单值仍照常工作)
+        status_values = [
+            s.strip()
+            for raw in self.request.query_params.getlist("status")
+            for s in raw.split(",")
+            if s.strip()
+        ]
+        if status_values:
+            qs = qs.filter(status__in=status_values)
         labels = self.request.query_params.get("labels")
         if labels:
             qs = qs.filter(labels__contains=[labels])
@@ -498,6 +511,58 @@ class IssueAIStatusView(APIView):
         if running:
             return Response({"analysis_id": running.id, "status": "running"})
         return Response({"analysis_id": None, "status": "idle"})
+
+
+class IssueAIStatusBatchView(APIView):
+    """批量查询多个 Issue 的 AI 分析运行状态。
+
+    GET /api/issues/ai-status/?ids=1,2,3 → {"running_ids": [1, 5]}
+    取代列表页逐条请求 /issues/{id}/ai-status/ 的 N+1。
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        raw = request.query_params.get("ids", "")
+        ids = [int(p) for p in (s.strip() for s in raw.split(",")) if p.isdigit()]
+        running = IssueAnalysisService().get_running_issue_ids(ids)
+        return Response({"running_ids": sorted(running)})
+
+
+class MyTasksView(APIView):
+    """GET /api/issues/my-tasks/ — 当前用户「我的待办」聚合,一次查询返回。
+
+    取代前端按状态拆成的 5~6 个 /issues/?assignee/helpers 请求。口径:
+      - 我负责(assignee)且状态 ∈ {待分配, 待确认, 进行中}
+      - 我协助(helpers)且状态 ∈ {待分配, 进行中}(协助人不含「待确认」)
+      - 测试组额外: 状态 = 已发布(用于验收关闭)
+    返回去重后的精确总数 count 与前 20 条(优先级 P0→P3、再按最新)。
+    """
+    permission_classes = [IsAuthenticated, FullDjangoModelPermissions]
+    queryset = Issue.objects.none()  # FullDjangoModelPermissions 需要 queryset 定模型
+
+    def get(self, request):
+        user = request.user
+        q = (
+            Q(assignee=user, status__in=[
+                IssueStatus.UNASSIGNED.value,
+                IssueStatus.PENDING_CONFIRMATION.value,
+                IssueStatus.IN_PROGRESS.value,
+            ])
+            | Q(helpers=user, status__in=[
+                IssueStatus.UNASSIGNED.value,
+                IssueStatus.IN_PROGRESS.value,
+            ])
+        )
+        if user.groups.filter(name="测试").exists():
+            q |= Q(status=IssueStatus.PUBLISHED.value)
+        # helpers 是 m2m,OR 连接会产生重复行,distinct 去重;count 取精确并集数
+        qs = Issue.objects.filter(q).distinct()
+        total = qs.count()
+        items = qs.select_related("project").order_by("priority", "-created_at")[:20]
+        return Response({
+            "count": total,
+            "results": MyTaskSerializer(items, many=True).data,
+        })
 
 
 class IssueAnalysesView(APIView):

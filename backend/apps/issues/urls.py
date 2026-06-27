@@ -2,7 +2,8 @@ from django.urls import path
 from .views import (
     IssueListCreateView, IssueDetailView, BatchUpdateView,
     IssueGitHubCreateView, IssueGitHubLinkView, IssueCloseWithGitHubView,
-    IssueAIAnalyzeView, IssueAIStatusView, IssueAnalysesView,
+    IssueAIAnalyzeView, IssueAIStatusView, IssueAIStatusBatchView, IssueAnalysesView,
+    MyTasksView,
     IssueAttachmentsView, IssueCheckDuplicateView, IssueHistoryView,
     IssueAiDraftView, IssueAiDraftReviseView, IssueAiChatView,
     IssueRelatedView,
@@ -14,6 +15,8 @@ from .views import (
 
 urlpatterns = [
     path("", IssueListCreateView.as_view(), name="issue-list"),
+    path("my-tasks/", MyTasksView.as_view(), name="issue-my-tasks"),
+    path("ai-status/", IssueAIStatusBatchView.as_view(), name="issue-ai-status-batch"),
     path("check-duplicate/", IssueCheckDuplicateView.as_view(), name="issue-check-duplicate"),
     path("ai-draft/", IssueAiDraftView.as_view(), name="issue-ai-draft"),
     path("ai-draft/revise/", IssueAiDraftReviseView.as_view(), name="issue-ai-draft-revise"),

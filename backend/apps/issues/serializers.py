@@ -149,6 +149,16 @@ class IssueListSerializer(serializers.ModelSerializer):
         return obj.manager_id == user.id
 
 
+class MyTaskSerializer(serializers.ModelSerializer):
+    """「我的待办」列表项的精简序列化器——只含组件渲染所需字段。"""
+    project_name = serializers.CharField(source="project.name", read_only=True)
+
+    class Meta:
+        model = Issue
+        fields = ["id", "title", "status", "priority", "project_name"]
+        read_only_fields = fields
+
+
 class IssueAssignmentSerializer(serializers.ModelSerializer):
     from_user_name = serializers.SerializerMethodField()
     to_user_name = serializers.SerializerMethodField()

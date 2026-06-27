@@ -23,6 +23,31 @@ class TestIssueList:
         response = auth_client.get("/api/issues/?status=待分配")
         assert response.data["count"] == 1
 
+    def test_filter_by_multiple_statuses_comma(self, auth_client, site_settings):
+        IssueFactory(status="待分配")
+        IssueFactory(status="进行中")
+        IssueFactory(status="已关闭")
+        response = auth_client.get("/api/issues/?status=待分配,进行中")
+        assert response.data["count"] == 2
+        statuses = {r["status"] for r in response.data["results"]}
+        assert statuses == {"待分配", "进行中"}
+
+    def test_filter_by_multiple_statuses_repeated_param(self, auth_client, site_settings):
+        IssueFactory(status="待分配")
+        IssueFactory(status="进行中")
+        IssueFactory(status="已关闭")
+        response = auth_client.get("/api/issues/?status=待分配&status=进行中")
+        assert response.data["count"] == 2
+        statuses = {r["status"] for r in response.data["results"]}
+        assert statuses == {"待分配", "进行中"}
+
+    def test_filter_multiple_statuses_combines_with_priority(self, auth_client, site_settings):
+        IssueFactory(status="待分配", priority="P0")
+        IssueFactory(status="进行中", priority="P0")
+        IssueFactory(status="进行中", priority="P3")
+        response = auth_client.get("/api/issues/?status=待分配,进行中&priority=P0")
+        assert response.data["count"] == 2
+
     def test_filter_by_assignee(self, auth_client, site_settings):
         user = UserFactory()
         IssueFactory(assignee=user)

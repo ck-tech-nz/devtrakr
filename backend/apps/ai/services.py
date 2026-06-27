@@ -357,6 +357,29 @@ class IssueAnalysisService:
             status=Analysis.Status.RUNNING,
         ).first()
 
+    def get_running_issue_ids(self, issue_ids):
+        """批量版 get_running_analysis:返回这批 issue 中仍在运行 AI 分析的 issue_id 集合。
+
+        与单条版语义一致——先把超时(>ANALYSIS_TIMEOUT_MINUTES)的 running 记录置为 failed,
+        再返回剩余仍 running 的 issue_id。供列表页一次性查询多个工单,取代逐条 N+1。
+        """
+        if not issue_ids:
+            return set()
+        cutoff = timezone.now() - timedelta(minutes=ANALYSIS_TIMEOUT_MINUTES)
+        Analysis.objects.filter(
+            issue_id__in=issue_ids,
+            analysis_type="issue_code_analysis",
+            status=Analysis.Status.RUNNING,
+            created_at__lt=cutoff,
+        ).update(status=Analysis.Status.FAILED, error_message="分析超时，请重试")
+        return set(
+            Analysis.objects.filter(
+                issue_id__in=issue_ids,
+                analysis_type="issue_code_analysis",
+                status=Analysis.Status.RUNNING,
+            ).values_list("issue_id", flat=True)
+        )
+
     @classmethod
     def cleanup_stale_analyses(cls):
         cutoff = timezone.now() - timedelta(minutes=ANALYSIS_TIMEOUT_MINUTES)
