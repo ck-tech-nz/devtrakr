@@ -346,7 +346,7 @@
               <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100">关联附件</h3>
               <UIcon :name="panelOpen.attachments ? 'i-heroicons-chevron-up' : 'i-heroicons-chevron-down'" class="w-4 h-4 text-gray-400 shrink-0" />
             </button>
-            <UButton size="xs" variant="ghost" color="neutral" icon="i-heroicons-plus" title="添加附件" aria-label="添加附件" @click="attachmentInputRef?.click()" />
+            <UButton size="xs" variant="soft" color="primary" icon="i-heroicons-plus" title="添加附件" aria-label="添加附件" @click="attachmentInputRef?.click()" />
           </div>
           <input ref="attachmentInputRef" type="file" multiple class="hidden" @change="handleAttachmentSelect" />
 
@@ -441,8 +441,8 @@
             <UButton
               v-if="!relatedSearchOpen"
               size="xs"
-              variant="ghost"
-              color="neutral"
+              variant="soft"
+              color="primary"
               icon="i-heroicons-plus"
               title="关联其它 issue"
               @click="panelOpen.related = true; openRelatedSearch()"
