@@ -2,8 +2,8 @@
   <!-- 看板模式定高(学 GitHub Projects):页面不滚动,列内独立滚动;手机端改为单列竖排,整页滚动 -->
   <div :class="viewMode === 'kanban' && !isMobile ? 'h-full min-h-0 flex flex-col gap-6' : 'space-y-6'">
     <MyPendingTasks />
-    <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-      <h1 class="text-xl md:text-2xl font-semibold text-gray-900 dark:text-gray-100">问题跟踪</h1>
+    <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-end">
+      <!-- 工具栏控件整体居右 -->
       <div class="flex items-center justify-between md:justify-end gap-2 md:gap-3">
         <!-- 移动端:搜索常驻 + 其余筛选条件折叠进底部抽屉(见下方 UDrawer),避免窄屏工具栏拥挤 -->
         <UInput v-model="searchQuery" placeholder="搜索标题或编号" icon="i-heroicons-magnifying-glass" size="sm" class="flex-1 min-w-0 md:hidden" />

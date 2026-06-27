@@ -1,5 +1,7 @@
 <template>
-  <div v-if="totalCount > 0" class="mb-6 bg-gray-50/70 dark:bg-gray-800/40 rounded-xl p-4 border border-gray-100 dark:border-gray-800">
+  <!-- 间距交由父容器统一控制(列表 space-y-6 / 看板 flex gap-6);此处不加 mb-6,
+       否则在看板的 flex 布局下外边距不折叠会与 gap 叠加,导致筛选行上方间距比列表模式多一截 -->
+  <div v-if="totalCount > 0" class="bg-gray-50/70 dark:bg-gray-800/40 rounded-xl p-4 border border-gray-100 dark:border-gray-800">
     <div
       class="flex items-center justify-between cursor-pointer select-none"
       :class="collapsed ? '' : 'mb-3'"
