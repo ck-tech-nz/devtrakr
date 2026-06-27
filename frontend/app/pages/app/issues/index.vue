@@ -1,6 +1,6 @@
 <template>
-  <!-- 看板模式定高(学 GitHub Projects):页面不滚动,列内独立滚动 -->
-  <div :class="viewMode === 'kanban' ? 'h-full min-h-0 flex flex-col gap-6' : 'space-y-6'">
+  <!-- 看板模式定高(学 GitHub Projects):页面不滚动,列内独立滚动;手机端改为单列竖排,整页滚动 -->
+  <div :class="viewMode === 'kanban' && !isMobile ? 'h-full min-h-0 flex flex-col gap-6' : 'space-y-6'">
     <MyPendingTasks />
     <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
       <h1 class="text-xl md:text-2xl font-semibold text-gray-900 dark:text-gray-100">问题跟踪</h1>

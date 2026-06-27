@@ -1,8 +1,8 @@
 <template>
   <div
     class="grid gap-4"
-    :class="scrollable ? 'h-full min-h-0 auto-rows-[minmax(0,1fr)]' : ''"
-    :style="{ gridTemplateColumns: `repeat(${columns.length}, minmax(0, 1fr))` }"
+    :class="scrollable && !isMobile ? 'h-full min-h-0 auto-rows-[minmax(0,1fr)]' : ''"
+    :style="gridStyle"
   >
     <div
       v-for="col in columns"
@@ -10,7 +10,7 @@
       class="rounded-xl p-4 transition-colors bg-gray-50 dark:bg-gray-800 border border-gray-200/80 dark:border-gray-700"
       :class="[
         draggable && dragOverTarget === col.key ? 'ring-2 ring-crystal-300 dark:ring-crystal-700' : '',
-        scrollable ? 'flex flex-col min-h-0 overflow-hidden' : '',
+        scrollable && !isMobile ? 'flex flex-col min-h-0 overflow-hidden' : '',
       ]"
       @dragover.prevent="draggable && onDragOver(col.key)"
       @dragleave="draggable && onDragLeave()"
@@ -25,7 +25,7 @@
       </div>
       <div
         class="space-y-2"
-        :class="scrollable ? 'flex-1 min-h-0 overflow-y-auto overscroll-contain pr-0.5 -mr-1' : ''"
+        :class="scrollable && !isMobile ? 'flex-1 min-h-0 overflow-y-auto overscroll-contain pr-0.5 -mr-1' : ''"
         @scroll.passive="scrollable && onColumnScroll($event, col)"
       >
         <div
@@ -92,6 +92,12 @@ const emit = defineEmits<{
   drop: [payload: { itemId: string | number; fromColumn: string; toColumn: string }]
   loadMore: [columnKey: string]
 }>()
+
+// 手机端:列宽不够并排,改为单列竖向堆叠(一个状态占一行),整页随内容滚动
+const { isMobile } = useMobile()
+const gridStyle = computed(() => ({
+  gridTemplateColumns: isMobile.value ? '1fr' : `repeat(${props.columns.length}, minmax(0, 1fr))`,
+}))
 
 const { draggingId, dragOverTarget, onDragStart, onDragEnd, onDragOver, onDragLeave } = useDragDrop<string | number>()
 
