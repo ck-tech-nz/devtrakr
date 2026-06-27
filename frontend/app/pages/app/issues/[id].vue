@@ -36,11 +36,11 @@
           <div class="space-y-4">
             <!-- 标题 -->
             <div class="form-row">
-              <div class="flex items-center justify-between">
+              <div class="flex items-center justify-between h-5">
                 <label>标题</label>
-                <UButton v-if="isFieldDirty('title')" size="xs" variant="soft" :loading="savingField === 'title'" @click="saveField('title')">保存</UButton>
+                <FieldSaveStatus :saving="savingField === 'title'" :saved="savedField === 'title'" />
               </div>
-              <UInput v-model="form.title" />
+              <UInput v-model="form.title" @blur="handleBlurSave('title')" />
             </div>
 
             <!-- 描述 -->
@@ -1455,7 +1455,7 @@ async function saveField(field: keyof typeof form.value) {
 
 // 文本框失焦自动保存：描述/备注/原因分析/解决方案，仅在有改动时提交。
 // 只更新该字段的基线（不整表 refetch），避免覆盖其它正在编辑中的字段。
-async function handleBlurSave(field: 'description' | 'remark' | 'cause' | 'solution') {
+async function handleBlurSave(field: 'title' | 'description' | 'remark' | 'cause' | 'solution') {
   if (!issue.value || !isFieldDirty(field)) return
   savingField.value = field
   try {

@@ -1,20 +1,18 @@
 <template>
   <div v-if="totalCount > 0" class="mb-6 bg-gray-50/70 dark:bg-gray-800/40 rounded-xl p-4 border border-gray-100 dark:border-gray-800">
     <div
-      class="flex items-center justify-between"
-      :class="collapsed ? 'cursor-pointer' : 'mb-3'"
-      @click="collapsed && (collapsed = false)"
+      class="flex items-center justify-between cursor-pointer select-none"
+      :class="collapsed ? '' : 'mb-3'"
+      @click="collapsed = !collapsed"
     >
       <h2 class="text-sm font-medium text-gray-500 dark:text-gray-400">
         我的待办
         <span class="ml-1.5 text-xs bg-crystal-50 dark:bg-crystal-950 text-crystal-600 dark:text-crystal-400 px-1.5 py-0.5 rounded-full">{{ totalCount }}</span>
       </h2>
-      <button
-        class="text-xs text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
-        @click.stop="collapsed = !collapsed"
-      >
-        {{ collapsed ? '展开' : '收起' }}
-      </button>
+      <UIcon
+        :name="collapsed ? 'i-heroicons-chevron-down' : 'i-heroicons-chevron-up'"
+        class="w-4 h-4 text-gray-400 dark:text-gray-500"
+      />
     </div>
     <transition name="slide">
       <div v-show="!collapsed" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
@@ -22,7 +20,7 @@
           v-for="task in tasks"
           :key="task.id"
           :to="`/app/issues/${task.id}`"
-          class="group block bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 rounded-lg p-3.5 hover:border-crystal-200 dark:hover:border-crystal-800 hover:shadow-sm transition-all"
+          class="group flex flex-col h-full bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 rounded-lg p-3.5 hover:border-crystal-200 dark:hover:border-crystal-800 hover:shadow-sm transition-all"
         >
           <div class="flex items-center justify-between mb-2">
             <span class="text-xs text-gray-400 dark:text-gray-500 font-mono">#{{ task.id }}</span>
@@ -39,7 +37,7 @@
           <p class="text-sm text-gray-900 dark:text-gray-100 font-medium line-clamp-2 group-hover:text-crystal-600 dark:group-hover:text-crystal-400 transition-colors">
             {{ task.title }}
           </p>
-          <div class="flex items-center justify-between mt-2.5">
+          <div class="flex items-center justify-between mt-auto pt-2.5">
             <span
               v-if="task.status === '待确认'"
               class="text-[11px] font-medium px-1.5 py-0.5 rounded-full bg-crystal-500 text-white"
@@ -73,8 +71,18 @@
 
 <script setup lang="ts">
 const { tasks, totalCount, load, closeIssue, isTester } = useMyTasks()
-const collapsed = ref(false)
 const closingId = ref<number | null>(null)
+
+// 折叠状态:持久化到浏览器 localStorage,刷新后保持上次的展开/收起
+const COLLAPSE_KEY = 'my-pending-tasks:collapsed'
+const collapsed = ref(false)
+if (import.meta.client) {
+  try {
+    const saved = localStorage.getItem(COLLAPSE_KEY)
+    if (saved === '0' || saved === '1') collapsed.value = saved === '1'
+  } catch { /* 损坏的存储忽略,用默认值 */ }
+  watch(collapsed, v => localStorage.setItem(COLLAPSE_KEY, v ? '1' : '0'))
+}
 
 function statusColor(status: string) {
   if (status === '待分配') return 'warning'
