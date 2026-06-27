@@ -4,10 +4,28 @@
     <MyPendingTasks />
     <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
       <h1 class="text-xl md:text-2xl font-semibold text-gray-900 dark:text-gray-100">问题跟踪</h1>
-      <div class="flex items-center justify-between md:justify-end gap-3">
-        <!-- 筛选控件:常驻显示,不自动隐藏 -->
-        <!-- 「查看全部」控制列表视图是否含已完成工单;看板视图改用「列编辑器」按状态列显隐 -->
-        <label v-if="viewMode === 'table'" class="flex items-center gap-1.5 cursor-pointer select-none">
+      <div class="flex items-center justify-between md:justify-end gap-2 md:gap-3">
+        <!-- 移动端:搜索常驻 + 其余筛选条件折叠进底部抽屉(见下方 UDrawer),避免窄屏工具栏拥挤 -->
+        <UInput v-model="searchQuery" placeholder="搜索标题或编号" icon="i-heroicons-magnifying-glass" size="sm" class="flex-1 min-w-0 md:hidden" />
+        <UButton
+          class="md:hidden shrink-0"
+          icon="i-heroicons-adjustments-horizontal"
+          size="sm"
+          variant="outline"
+          color="neutral"
+          @click="filterOpen = true"
+        >
+          筛选
+          <UBadge v-if="activeFilterCount" color="primary" variant="solid" class="ml-1 rounded-full px-1.5 min-w-[1.125rem] justify-center leading-none">
+            {{ activeFilterCount }}
+          </UBadge>
+        </UButton>
+
+        <!-- 桌面端筛选控件:常驻内联(display:contents 融入工具栏);移动端隐藏,改由上方「筛选」抽屉操作 -->
+        <div class="hidden md:contents">
+          <!-- 筛选控件:常驻显示,不自动隐藏 -->
+          <!-- 「查看全部」控制列表视图是否含已完成工单;看板视图改用「列编辑器」按状态列显隐 -->
+          <label v-if="viewMode === 'table'" class="flex items-center gap-1.5 cursor-pointer select-none">
           <span class="text-sm text-gray-500 dark:text-gray-400">查看全部</span>
           <USwitch v-model="showCompleted" size="lg" />
         </label>
@@ -66,6 +84,7 @@
             <UIcon name="i-heroicons-x-mark" class="w-3 h-3" />
           </button>
         </UBadge>
+        </div>
 
         <!-- 始终可见:视图切换 / 刷新 / 新建 -->
         <div class="flex items-center bg-gray-100 dark:bg-gray-800 rounded-lg p-0.5">
@@ -105,6 +124,118 @@
         />
       </div>
     </div>
+
+    <!-- 移动端筛选抽屉:聚合处理人/提出人/优先级/状态等筛选,搜索框仍常驻工具栏 -->
+    <UDrawer
+      :open="filterOpen"
+      title="筛选"
+      description="筛选问题列表"
+      :ui="{
+        content: 'bg-white/90 dark:bg-slate-900/90 backdrop-blur-[20px] backdrop-saturate-[180%]',
+        overlay: 'bg-black/30',
+        title: 'sr-only',
+        description: 'sr-only',
+      }"
+      @update:open="filterOpen = $event"
+    >
+      <template #content>
+        <div class="px-4 pt-1 pb-4 space-y-5">
+          <div class="flex items-center justify-between">
+            <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">筛选</h3>
+            <UButton v-if="activeFilterCount" variant="ghost" color="neutral" size="xs" @click="clearAllFilters">
+              清除全部
+            </UButton>
+          </div>
+
+          <!-- 查看全部(仅列表视图):是否含已完成工单 -->
+          <label v-if="viewMode === 'table'" class="flex items-center justify-between gap-3 cursor-pointer select-none">
+            <span class="text-sm text-gray-700 dark:text-gray-300">查看全部(含已完成)</span>
+            <USwitch v-model="showCompleted" size="lg" />
+          </label>
+
+          <!-- 处理人:只看我的 + 负责人下拉 -->
+          <div class="space-y-2">
+            <span class="block text-xs font-medium text-gray-500 dark:text-gray-400">处理人</span>
+            <div class="flex items-stretch gap-2">
+              <UButton
+                class="flex-1 justify-center"
+                icon="i-heroicons-user"
+                :variant="onlyMine ? 'solid' : 'outline'"
+                :color="onlyMine ? 'primary' : 'neutral'"
+                @click="onlyMine = !onlyMine"
+              >
+                只看我的
+              </UButton>
+              <USelect :model-value="filterAssignee" :items="filterAssigneeOptions" class="flex-1" value-key="value" placeholder="负责人" @update:model-value="(v: string) => filterAssignee = v === '_all' ? '' : v" />
+            </div>
+          </div>
+
+          <!-- 提出人:只看我提出的 + 提出人下拉 -->
+          <div class="space-y-2">
+            <span class="block text-xs font-medium text-gray-500 dark:text-gray-400">提出人</span>
+            <div class="flex items-stretch gap-2">
+              <UButton
+                class="flex-1 justify-center"
+                icon="i-heroicons-user-circle"
+                :variant="onlyMineReported ? 'solid' : 'outline'"
+                :color="onlyMineReported ? 'primary' : 'neutral'"
+                @click="onlyMineReported = !onlyMineReported"
+              >
+                只看我提出的
+              </UButton>
+              <USelect :model-value="filterReporterUser" :items="filterReporterOptions" class="flex-1" value-key="value" placeholder="提出人" @update:model-value="(v: string) => setReporterUser(v)" />
+            </div>
+          </div>
+
+          <!-- 优先级 -->
+          <div class="space-y-2">
+            <span class="block text-xs font-medium text-gray-500 dark:text-gray-400">优先级</span>
+            <PrioritySlider v-model="filterPriority" class="!w-full" />
+          </div>
+
+          <!-- 状态 -->
+          <div class="space-y-2">
+            <span class="block text-xs font-medium text-gray-500 dark:text-gray-400">状态</span>
+            <div class="relative">
+              <USelect v-model="filterStatus" :items="filterStatusOptions" size="sm" class="w-full" value-key="value" placeholder="全部状态" />
+              <button v-if="filterStatus" class="filter-clear" @click="filterStatus = ''">
+                <UIcon name="i-heroicons-x-mark" class="w-3 h-3" />
+              </button>
+            </div>
+          </div>
+
+          <!-- 已应用的上下文筛选(点击列表单元格触发):处理人/优先级/提出人 -->
+          <div v-if="filterHandler || filterPriorityTag || filterReporter" class="flex flex-wrap gap-2">
+            <UBadge v-if="filterHandler" variant="subtle" size="md" class="filter-chip">
+              <span>处理人：{{ filterHandler.label }}</span>
+              <button class="ml-1 flex items-center" aria-label="清除处理人筛选" @click="filterHandler = null">
+                <UIcon name="i-heroicons-x-mark" class="w-3 h-3" />
+              </button>
+            </UBadge>
+            <UBadge
+              v-if="filterPriorityTag" :color="priorityColor(filterPriorityTag.value)" variant="subtle" size="md"
+              :class="priorityBadgeClass(filterPriorityTag.value)" :style="priorityBadgeStyle(filterPriorityTag.value)"
+            >
+              <span>优先级：{{ filterPriorityTag.label }}</span>
+              <button class="ml-1 flex items-center" aria-label="清除优先级筛选" @click="filterPriorityTag = null">
+                <UIcon name="i-heroicons-x-mark" class="w-3 h-3" />
+              </button>
+            </UBadge>
+            <UBadge v-if="filterReporter" variant="subtle" size="md" class="filter-chip">
+              <span>提出人：{{ filterReporter.label }}</span>
+              <button class="ml-1 flex items-center" aria-label="清除提出人筛选" @click="filterReporter = null">
+                <UIcon name="i-heroicons-x-mark" class="w-3 h-3" />
+              </button>
+            </UBadge>
+          </div>
+
+          <UButton block size="lg" class="mt-1" @click="filterOpen = false">
+            完成
+          </UButton>
+        </div>
+        <div style="height: env(safe-area-inset-bottom)" />
+      </template>
+    </UDrawer>
 
     <!-- Create Issue Modal -->
     <UModal :open="showCreateModal" title="新建问题" :ui="{ content: 'sm:max-w-[960px]' }" @update:open="onCreateModalUpdate">
@@ -541,6 +672,28 @@ const filterPriorityTag = ref<{ value: string; label: string } | null>(null)
 const onlyMine = ref(false)
 // 「只看我提出的」：等价于 created_by=当前用户;与提出人下拉互斥
 const onlyMineReported = ref(false)
+
+// 移动端筛选抽屉开关 + 已激活筛选计数(处理人/提出人/优先级/状态四组),供「筛选」按钮角标显示
+const filterOpen = ref(false)
+const activeFilterCount = computed(() => {
+  let n = 0
+  if (onlyMine.value || filterAssignee.value || filterHandler.value) n++
+  if (onlyMineReported.value || filterReporter.value) n++
+  if (filterPriority.value || filterPriorityTag.value) n++
+  if (filterStatus.value) n++
+  return n
+})
+// 一键清除全部筛选(搜索框常驻不受影响);互斥 watcher 自动收尾,批处理后仅触发一次取数
+function clearAllFilters() {
+  onlyMine.value = false
+  filterAssignee.value = ''
+  onlyMineReported.value = false
+  filterReporter.value = null
+  filterHandler.value = null
+  filterPriority.value = ''
+  filterPriorityTag.value = null
+  filterStatus.value = ''
+}
 
 const rowSelection = ref<Record<string, boolean>>({})
 const showBatchDeleteConfirm = ref(false)
