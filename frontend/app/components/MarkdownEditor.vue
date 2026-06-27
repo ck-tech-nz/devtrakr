@@ -9,7 +9,7 @@
     @drop.prevent="handleDrop"
   >
     <!-- Tab bar + toolbar -->
-    <div class="flex items-center border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
+    <div class="flex items-center border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 rounded-t-xl">
       <button
         class="px-4 py-2 text-sm font-medium transition-colors"
         :class="mode === 'edit'
@@ -64,7 +64,7 @@
         @select="insertMention"
       />
       <!-- Bottom bar -->
-      <div class="flex items-center gap-2 px-4 py-2 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
+      <div class="flex items-center gap-2 px-4 py-2 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 rounded-b-xl">
         <span class="text-xs text-gray-400 dark:text-gray-500">支持 Markdown 格式 · 粘贴、拖放或点击上传图片和文件</span>
         <input
           ref="fileInputRef"
@@ -81,7 +81,7 @@
     <div
       ref="previewRef"
       v-show="mode === 'preview'"
-      class="markdown-body p-4 bg-white dark:bg-gray-900 text-sm"
+      class="markdown-body p-4 bg-white dark:bg-gray-900 text-sm rounded-b-xl"
       :style="{ minHeight: editorMinHeight }"
       v-html="renderedHtml"
     />
