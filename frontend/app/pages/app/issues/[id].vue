@@ -545,7 +545,7 @@
             <UButton size="xs" variant="outline" color="neutral" icon="i-heroicons-plus" @click="showCreateGH = true" block>
               创建 GitHub Issue
             </UButton>
-            <UButton size="xs" variant="outline" color="neutral" icon="i-heroicons-link" @click="showLinkGH = true" block>
+            <UButton size="xs" variant="outline" color="neutral" icon="i-heroicons-link" @click="openLinkGH" block>
               关联已有 Issue
             </UButton>
           </div>
@@ -1072,10 +1072,10 @@ onUnmounted(() => {
   // 卸载前若有待发的协助人保存,立即补发,避免快速离开页面丢失改动
   if (helpersSaveTimer) flushHelpersSave()
 })
-const users = ref<any[]>([])
-// 负责人候选:仅「开发者」用户组成员(求助/@提及等仍用完整 users)
-const developers = ref<any[]>([])
-const labelItems = ref<Record<string, { foreground: string; background: string; description: string }>>({})
+// 站点参照数据走 useReferenceData 会话级缓存(用户/开发者/项目/仓库/站点设置),
+// 与问题列表页共享,避免每次进详情页重复拉取;developers 仅取「开发者」组。
+const { siteSettings, users, developers, projects, repos, ensureSettings, ensureUsers, ensureProjects, ensureRepos } = useReferenceData()
+const labelItems = computed<Record<string, { foreground: string; background: string; description: string }>>(() => siteSettings.value?.labels || {})
 
 const showLabelPicker = ref(false)
 const labelSearchQuery = ref('')
@@ -1116,7 +1116,8 @@ async function saveLabelEdit() {
       description: editForm.value.description,
     }
     const res = await api<any>('/api/settings/labels/', { method: 'PATCH', body: { labels: updated } })
-    labelItems.value = res.labels
+    // 写回共享缓存,问题列表等其它页面同步生效
+    siteSettings.value = { ...(siteSettings.value || {}), labels: res.labels }
     editingLabel.value = null
     addingLabel.value = false
   } catch (e) {
@@ -1132,7 +1133,8 @@ async function deleteLabel(name: string) {
     const updated = { ...labelItems.value }
     delete updated[name]
     const res = await api<any>('/api/settings/labels/', { method: 'PATCH', body: { labels: updated } })
-    labelItems.value = res.labels
+    // 写回共享缓存,问题列表等其它页面同步生效
+    siteSettings.value = { ...(siteSettings.value || {}), labels: res.labels }
   } catch (e) {
     console.error('Delete label failed:', e)
   } finally {
@@ -1146,8 +1148,6 @@ const filteredLabelNames = computed(() => {
   const q = labelSearchQuery.value.toLowerCase()
   return names.filter(n => n.toLowerCase().includes(q) || labelItems.value[n]?.description.toLowerCase().includes(q))
 })
-const repos = ref<any[]>([])
-const projects = ref<any[]>([])
 const allGHIssues = ref<any[]>([])
 const linkedPRs = ref<PullRequestRow[]>([])
 const suggestResolved = ref(false)
@@ -1666,8 +1666,17 @@ async function unlinkGitHubIssue(ghId: number) {
   }
 }
 
+// 关联弹窗用的 GitHub Issues 全量列表(后端无分页,返回整表)。改为打开「关联已有 Issue」
+// 弹窗时才懒加载,并加 once 守卫,避免每次进详情页都全量拉取一份多数用不到的数据。
+const ghIssuesLoaded = ref(false)
 async function fetchGHIssues() {
+  if (ghIssuesLoaded.value) return
   allGHIssues.value = await api<any[]>('/api/repos/github-issues/').catch(() => []) || []
+  ghIssuesLoaded.value = true
+}
+function openLinkGH() {
+  showLinkGH.value = true
+  fetchGHIssues()
 }
 
 async function fetchLinkedPRs() {
@@ -1690,26 +1699,21 @@ async function acceptResolveSuggestion() {
 }
 
 onMounted(async () => {
-  const [issueData, usersData, settingsData, reposData, projectsData] = await Promise.all([
+  // 具体 issue 必拉;用户/设置/仓库/项目走 useReferenceData 会话级缓存,与列表页共享,
+  // 重复进入详情页不再重复请求。
+  const [issueData] = await Promise.all([
     api<any>(`/api/issues/${route.params.id}/`).catch(() => null),
-    api<any[]>('/api/users/choices/').catch(() => []),
-    api<any>('/api/settings/').catch(() => ({ labels: [] })),
-    api<any[]>('/api/repos/').catch(() => []),
-    api<any>('/api/projects/').catch(() => ({ results: [] })),
+    ensureUsers(),
+    ensureSettings(),
+    ensureRepos(),
+    ensureProjects(),
   ])
   issue.value = issueData
-  users.value = usersData || []
-  // 「开发者」组从全量 choices 客户端筛出,省去单独的 ?group=开发者 调用
-  developers.value = (usersData || []).filter((u: any) => u.groups?.includes('开发者'))
-  labelItems.value = settingsData?.labels || {}
-  setPrioritiesFromSettings(settingsData?.priorities)
-  setStatusesFromSettings(settingsData?.issue_statuses)
-  repos.value = reposData?.results || reposData || []
-  projects.value = (projectsData as any)?.results || projectsData || []
+  setPrioritiesFromSettings(siteSettings.value?.priorities)
+  setStatusesFromSettings(siteSettings.value?.issue_statuses)
   if (issueData) populateForm(issueData)
   loading.value = false
-  // 异步加载 GitHub Issues 列表（用于关联弹窗）
-  fetchGHIssues()
+  // GitHub Issues 全量列表改为打开「关联已有 Issue」弹窗时懒加载(见 openLinkGH)
   fetchLinkedPRs()
   // 检查是否有正在运行的 AI 分析，恢复轮询
   checkRunningAnalysis()

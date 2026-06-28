@@ -703,12 +703,13 @@ const loading = ref(true)
 const issues = ref<any[]>([])
 const analyzingIssueIds = ref<Set<number>>(new Set())
 const totalCount = ref(0)
-const users = ref<any[]>([])
-// 负责人候选:仅「开发者」用户组成员(提出人/求助等仍用完整 users)
-const developers = ref<any[]>([])
-const labelOptions = ref<string[]>([])
-const projects = ref<any[]>([])
-const repos = ref<any[]>([])
+// 站点参照数据(用户/开发者/项目/仓库/站点设置)走 useReferenceData 会话级缓存,
+// 避免每次进页面重复拉取;developers 仅取「开发者」组(口径同原页面)。
+const { siteSettings, users, developers, projects, repos, ensureSettings, ensureUsers, ensureProjects, ensureRepos } = useReferenceData()
+const labelOptions = computed<string[]>(() => {
+  const raw = siteSettings.value?.labels || {}
+  return typeof raw === 'object' && !Array.isArray(raw) ? Object.keys(raw) : raw
+})
 
 // Create issue modal state
 const { confirm: showConfirm } = useDialog()
@@ -1327,23 +1328,18 @@ onUnmounted(() => {
 
 onMounted(async () => {
   loadTitleColWidth()
-  // 站点设置先行:看板初次 reset 依赖 kanbanStatusKeys,必须先拿到状态禁用配置才能排除被禁用的列
-  const settingsData = await api<any>('/api/settings/').catch(() => ({ labels: [] }))
-  const rawLabels = settingsData?.labels || {}
-  labelOptions.value = typeof rawLabels === 'object' && !Array.isArray(rawLabels) ? Object.keys(rawLabels) : rawLabels
-  setPrioritiesFromSettings(settingsData?.priorities)
-  setStatusesFromSettings(settingsData?.issue_statuses)
-  const [, usersData, projectsData, reposData] = await Promise.all([
+  // 站点设置先行:看板初次 reset 依赖 kanbanStatusKeys,必须先拿到状态禁用配置才能排除被禁用的列。
+  // 参照数据全部走 useReferenceData 会话级缓存(首次拉取、整会话复用),避免每次进页面重复请求。
+  await ensureSettings()
+  setPrioritiesFromSettings(siteSettings.value?.priorities)
+  setStatusesFromSettings(siteSettings.value?.issue_statuses)
+  // issues 与其余参照数据并行;表格视图不依赖站点设置,缓存命中时这几项几乎零开销。
+  await Promise.all([
     fetchIssues(),
-    api<any[]>('/api/users/choices/').catch(() => []),
-    api<any>('/api/projects/').catch(() => ({ results: [] })),
-    api<any>('/api/repos/').catch(() => ({ results: [] })),
+    ensureUsers(),
+    ensureProjects(),
+    ensureRepos(),
   ])
-  users.value = usersData || []
-  // 「开发者」组从全量 choices 客户端筛出,省去单独的 ?group=开发者 调用
-  developers.value = (usersData || []).filter((u: any) => u.groups?.includes('开发者'))
-  projects.value = projectsData?.results || projectsData || []
-  repos.value = reposData?.results || reposData || []
   // Check AI analysis status for issues with repos
   checkAnalyzingIssues()
 })
