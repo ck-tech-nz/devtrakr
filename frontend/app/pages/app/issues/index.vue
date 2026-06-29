@@ -40,7 +40,7 @@
           >
             只看我的
           </UButton>
-          <USelect :model-value="filterAssignee" :items="filterAssigneeOptions" class="w-24" value-key="value" placeholder="负责人" @update:model-value="(v: string) => filterAssignee = v === '_all' ? '' : v" />
+          <USelect :model-value="filterAssignee" :items="filterAssigneeOptions" :class="['w-24', filterAssignee ? 'filter-select-active' : '']" value-key="value" placeholder="负责人" @update:model-value="(v: string) => filterAssignee = v === '_all' ? '' : v" />
         </UButtonGroup>
         <!-- 「只看我提出的」与「提出人」同属提出人筛选(按创建人 created_by),合并为一个连体按钮组 -->
         <UButtonGroup size="sm">
@@ -52,7 +52,7 @@
           >
             只看我提出的
           </UButton>
-          <USelect :model-value="filterReporterUser" :items="filterReporterOptions" class="w-24" value-key="value" placeholder="提出人" @update:model-value="(v: string) => setReporterUser(v)" />
+          <USelect :model-value="filterReporterUser" :items="filterReporterOptions" :class="['w-24', filterReporterUser ? 'filter-select-active' : '']" value-key="value" placeholder="提出人" @update:model-value="(v: string) => setReporterUser(v)" />
         </UButtonGroup>
         <PrioritySlider v-model="filterPriority" />
         <div class="relative">
@@ -78,7 +78,8 @@
             <UIcon name="i-heroicons-x-mark" class="w-3 h-3" />
           </button>
         </UBadge>
-        <UBadge v-if="filterReporter" variant="subtle" size="md" class="filter-chip shrink-0">
+        <!-- 下拉选中的提出人由下拉框高亮表示,这里只为「自由文本」提出人(点击单元格触发,下拉无法表示)保留可清除标签 -->
+        <UBadge v-if="filterReporter && filterReporter.type === 'reporter'" variant="subtle" size="md" class="filter-chip shrink-0">
           <span>提出人：{{ filterReporter.label }}</span>
           <button class="ml-1 flex items-center" aria-label="清除提出人筛选" @click="filterReporter = null">
             <UIcon name="i-heroicons-x-mark" class="w-3 h-3" />
@@ -166,7 +167,7 @@
               >
                 只看我的
               </UButton>
-              <USelect :model-value="filterAssignee" :items="filterAssigneeOptions" class="flex-1" value-key="value" placeholder="负责人" @update:model-value="(v: string) => filterAssignee = v === '_all' ? '' : v" />
+              <USelect :model-value="filterAssignee" :items="filterAssigneeOptions" :class="['flex-1', filterAssignee ? 'filter-select-active' : '']" value-key="value" placeholder="负责人" @update:model-value="(v: string) => filterAssignee = v === '_all' ? '' : v" />
             </div>
           </div>
 
@@ -183,7 +184,7 @@
               >
                 只看我提出的
               </UButton>
-              <USelect :model-value="filterReporterUser" :items="filterReporterOptions" class="flex-1" value-key="value" placeholder="提出人" @update:model-value="(v: string) => setReporterUser(v)" />
+              <USelect :model-value="filterReporterUser" :items="filterReporterOptions" :class="['flex-1', filterReporterUser ? 'filter-select-active' : '']" value-key="value" placeholder="提出人" @update:model-value="(v: string) => setReporterUser(v)" />
             </div>
           </div>
 
@@ -205,7 +206,7 @@
           </div>
 
           <!-- 已应用的上下文筛选(点击列表单元格触发):处理人/优先级/提出人 -->
-          <div v-if="filterHandler || filterPriorityTag || filterReporter" class="flex flex-wrap gap-2">
+          <div v-if="filterHandler || filterPriorityTag || (filterReporter && filterReporter.type === 'reporter')" class="flex flex-wrap gap-2">
             <UBadge v-if="filterHandler" variant="subtle" size="md" class="filter-chip">
               <span>处理人：{{ filterHandler.label }}</span>
               <button class="ml-1 flex items-center" aria-label="清除处理人筛选" @click="filterHandler = null">
@@ -221,7 +222,7 @@
                 <UIcon name="i-heroicons-x-mark" class="w-3 h-3" />
               </button>
             </UBadge>
-            <UBadge v-if="filterReporter" variant="subtle" size="md" class="filter-chip">
+            <UBadge v-if="filterReporter && filterReporter.type === 'reporter'" variant="subtle" size="md" class="filter-chip">
               <span>提出人：{{ filterReporter.label }}</span>
               <button class="ml-1 flex items-center" aria-label="清除提出人筛选" @click="filterReporter = null">
                 <UIcon name="i-heroicons-x-mark" class="w-3 h-3" />
@@ -656,18 +657,54 @@ function onTitleResizeDown(e: PointerEvent) {
 const page = ref(1)
 const pageSize = 15
 
-// Filters：初始值从 URL query 读取，使外部链接（如首页统计卡片）可预填筛选条件
-const filterAssignee = ref<string>(typeof route.query.assignee === 'string' ? route.query.assignee : '')
-const filterPriority = ref<string>(typeof route.query.priority === 'string' ? route.query.priority : '')
-const filterStatus = ref<string>(typeof route.query.status === 'string' ? route.query.status : '')
+// 筛选条件持久化:负责人/提出人/优先级/状态(含点击徽章触发的处理人标签、优先级标签)存浏览器
+// localStorage,刷新后恢复。URL query 仍优先(首页统计卡片等外链可预填);「只看我的/只看我提出的」
+// 高亮不直接持久化,改在 onMounted 按当前登录用户重新判定(localStorage 跨账号共享,避免错配)。
+type ReporterFilter = { type: 'reporter' | 'created_by' | 'reporter_display_user'; value: string; label: string }
+type PersistedFilters = {
+  assignee?: string
+  status?: string
+  priority?: string
+  priorityTag?: { value: string; label: string } | null
+  handler?: { id: string; label: string } | null
+  reporter?: ReporterFilter | null
+}
+const FILTERS_KEY = 'issues:filters'
+function loadPersistedFilters(): PersistedFilters {
+  if (typeof localStorage === 'undefined') return {}
+  try {
+    const raw = localStorage.getItem(FILTERS_KEY)
+    return raw ? (JSON.parse(raw) as PersistedFilters) : {}
+  } catch {
+    return {}
+  }
+}
+function persistFilters() {
+  if (typeof localStorage === 'undefined') return
+  const snapshot: PersistedFilters = {
+    assignee: filterAssignee.value,
+    status: filterStatus.value,
+    priority: filterPriority.value,
+    priorityTag: filterPriorityTag.value,
+    handler: filterHandler.value,
+    reporter: filterReporter.value,
+  }
+  localStorage.setItem(FILTERS_KEY, JSON.stringify(snapshot))
+}
+const persistedFilters = loadPersistedFilters()
+
+// Filters：取值优先级 URL query → localStorage 持久值 → 默认空;外部链接(如首页统计卡片)可预填
+const filterAssignee = ref<string>(typeof route.query.assignee === 'string' ? route.query.assignee : (persistedFilters.assignee ?? ''))
+const filterPriority = ref<string>(typeof route.query.priority === 'string' ? route.query.priority : (persistedFilters.priority ?? ''))
+const filterStatus = ref<string>(typeof route.query.status === 'string' ? route.query.status : (persistedFilters.status ?? ''))
 const searchQuery = ref<string>(typeof route.query.search === 'string' ? route.query.search : '')
 // 提出人筛选：点击非空 reporter 按文本匹配(type 'reporter');下拉/按钮/空 reporter 行
 // 按「显示的提出人=某用户」匹配(type 'reporter_display_user',含 reporter 空回退创建人)
-const filterReporter = ref<{ type: 'reporter' | 'created_by' | 'reporter_display_user'; value: string; label: string } | null>(null)
+const filterReporter = ref<ReporterFilter | null>(persistedFilters.reporter ?? null)
 // 处理人筛选：点击状态徽章触发，按 assignee 筛选，以独立标签展示
-const filterHandler = ref<{ id: string; label: string } | null>(null)
+const filterHandler = ref<{ id: string; label: string } | null>(persistedFilters.handler ?? null)
 // 优先级筛选：点击优先级徽章触发，以独立标签展示
-const filterPriorityTag = ref<{ value: string; label: string } | null>(null)
+const filterPriorityTag = ref<{ value: string; label: string } | null>(persistedFilters.priorityTag ?? null)
 // 「只看我的」：等价于 assignee=当前用户;与负责人下拉互斥
 const onlyMine = ref(false)
 // 「只看我提出的」：等价于 created_by=当前用户;与提出人下拉互斥
@@ -1300,6 +1337,7 @@ watch(filterPriority, (v) => {
 })
 
 watch([filterAssignee, filterPriority, filterStatus, filterReporter, filterHandler, filterPriorityTag], () => {
+  persistFilters()
   page.value = 1
   rowSelection.value = {}
   fetchIssues()
@@ -1333,6 +1371,14 @@ onMounted(async () => {
   await ensureSettings()
   setPrioritiesFromSettings(siteSettings.value?.priorities)
   setStatusesFromSettings(siteSettings.value?.issue_statuses)
+  // 恢复「只看我的/只看我提出的」按钮高亮:localStorage 跨账号共享,按当前登录用户重新判定,
+  // 避免换账号后高亮错配(实际筛选值已随 filterAssignee/filterReporter 持久化恢复)。
+  if (filterAssignee.value && filterAssignee.value === String(selfUserId.value)) {
+    onlyMine.value = true
+  }
+  if (filterReporter.value?.type === 'reporter_display_user' && filterReporter.value.value === String(selfUserId.value)) {
+    onlyMineReported.value = true
+  }
   // issues 与其余参照数据并行;表格视图不依赖站点设置,缓存命中时这几项几乎零开销。
   await Promise.all([
     fetchIssues(),
@@ -1434,6 +1480,18 @@ async function checkAnalyzingIssues() {
   background-color: color-mix(in oklab, var(--color-crystal-950) 60%, transparent);
   color: var(--color-crystal-300);
   box-shadow: inset 0 0 0 1px var(--color-crystal-800);
+}
+/* 负责人/提出人下拉:选中非「全部」时以品牌色 crystal 高亮(与筛选标签同色系,避开 primary 绿)。
+ * class 经 props.class 落在 USelect 触发按钮上,但按钮在子组件内,须用 :deep 才能命中(同本文件 .form-row :deep)。 */
+:deep(.filter-select-active) {
+  background-color: var(--color-crystal-100);
+  color: var(--color-crystal-700);
+  box-shadow: inset 0 0 0 1px var(--color-crystal-400);
+}
+:root.dark :deep(.filter-select-active) {
+  background-color: color-mix(in oklab, var(--color-crystal-900) 45%, transparent);
+  color: var(--color-crystal-200);
+  box-shadow: inset 0 0 0 1px var(--color-crystal-700);
 }
 .filter-clear {
   position: absolute;
