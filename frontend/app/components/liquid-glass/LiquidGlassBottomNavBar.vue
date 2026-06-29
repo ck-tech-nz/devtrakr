@@ -7,6 +7,7 @@ interface NavItem {
   id: string
   label: string
   icon?: string // SVG path content or iconify class name (e.g. "i-heroicons-xxx")
+  badge?: number // 可选:在图标右上角显示的未读数(>0 才渲染)
 }
 
 // Props
@@ -345,7 +346,17 @@ const handlePointerUp = (e: PointerEvent | TouchEvent | MouseEvent) => {
   }, 280)
 }
 
-const handleItemClick = (item: NavItem) => {
+// 触屏 tap 会先派发 touchstart,浏览器随后再合成一次 mousedown(兼容事件)。
+// 本函数同时绑定到 touchstart 与 mousedown,若不去重,一次 tap 会触发两次 ——
+// 对「开关」类命令 Tab(如消息面板)会被开→关而闪现。touchstart 后短时间内吞掉紧随的 mousedown。
+let suppressMouse = false
+const handleItemClick = (item: NavItem, e?: Event) => {
+    if (e?.type === 'touchstart') {
+      suppressMouse = true
+      setTimeout(() => { suppressMouse = false }, 700)
+    } else if (e?.type === 'mousedown' && suppressMouse) {
+      return
+    }
     internalValue.value = item.id
     emit('update:modelValue', item.id)
 
@@ -421,13 +432,13 @@ onUnmounted(() => {
       
       <!-- Click Targets (Z-Index 30: Below Thumb but above background) -->
       <div class="absolute inset-0 flex z-30">
-          <div 
-             v-for="item in items" 
+          <div
+             v-for="item in items"
              :key="item.id"
              class="h-full cursor-pointer"
              :style="{ width: `${itemWidth}px` }"
-             @mousedown="handleItemClick(item)"
-             @touchstart.passive="handleItemClick(item)"
+             @mousedown="handleItemClick(item, $event)"
+             @touchstart.passive="handleItemClick(item, $event)"
           ></div>
       </div>
 
@@ -500,16 +511,21 @@ onUnmounted(() => {
                transform: internalValue === item.id && hasSelection ? 'scale(1.05)' : 'scale(1)',
             }"
          >
-             <UIcon
-               v-if="item.icon"
-               :name="item.icon"
-               :style="{
-                color: internalValue === item.id ? `${props.color}` : undefined,
-                width: `${dimensions.iconSize}px`,
-                height: `${dimensions.iconSize}px`,
-               }"
-               class="mb-1 transition-colors"
-             />
+             <span v-if="item.icon" class="relative mb-1">
+               <UIcon
+                 :name="item.icon"
+                 :style="{
+                  color: internalValue === item.id ? `${props.color}` : undefined,
+                  width: `${dimensions.iconSize}px`,
+                  height: `${dimensions.iconSize}px`,
+                 }"
+                 class="block transition-colors"
+               />
+               <span
+                 v-if="item.badge && item.badge > 0"
+                 class="absolute -top-1.5 -right-2 min-w-[16px] h-4 px-1 rounded-full bg-red-500 text-white text-[10px] font-semibold leading-none flex items-center justify-center"
+               >{{ item.badge > 99 ? '99+' : item.badge }}</span>
+             </span>
              <span
                class="leading-none text-center truncate transition-colors"
                :class="internalValue === item.id ? 'font-semibold' : 'font-medium text-gray-500 dark:text-gray-400'"

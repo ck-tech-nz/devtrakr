@@ -62,4 +62,9 @@ watch(() => props.event, (ev) => {
 .ct-msg { font-size: 13px; color: #64748b; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .chat-toast-enter-active, .chat-toast-leave-active { transition: all .3s ease; }
 .chat-toast-enter-from, .chat-toast-leave-to { opacity: 0; transform: translateY(20px); }
+
+/* 手机端:全宽并坐落在底部栏之上,避免溢出与遮挡 */
+@media (max-width: 767px) {
+  .chat-toast { left: 12px; right: 12px; width: auto; bottom: calc(86px + env(safe-area-inset-bottom)); }
+}
 </style>

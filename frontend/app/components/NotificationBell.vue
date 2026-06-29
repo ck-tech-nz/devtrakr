@@ -25,9 +25,10 @@
       leave-from-class="opacity-100 translate-y-0"
       leave-to-class="opacity-0 translate-y-1"
     >
+      <!-- 手机(max-md):锚定到视口、贴 header 下方、左右留 8px 的全宽面板,避免被铃铛右对齐挤出屏外 -->
       <div
         v-if="open"
-        class="absolute right-0 top-full mt-2 w-80 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg z-50 overflow-hidden"
+        class="absolute right-0 top-full mt-2 w-80 max-md:fixed max-md:left-2 max-md:right-2 max-md:top-16 max-md:w-auto max-md:mt-0 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg z-50 overflow-hidden"
       >
         <!-- Header -->
         <div class="flex items-center justify-between px-4 py-3 border-b border-gray-100 dark:border-gray-800">

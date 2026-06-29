@@ -9,7 +9,8 @@
     @drop.prevent="handleDrop"
   >
     <!-- Tab bar + toolbar -->
-    <div class="flex items-center border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 rounded-t-xl">
+    <!-- flex-wrap:窄屏(手机)放不下时,工具栏整体折到第二行,避免横向溢出 -->
+    <div class="flex flex-wrap items-center border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 rounded-t-xl">
       <button
         class="px-4 py-2 text-sm font-medium transition-colors"
         :class="mode === 'edit'
@@ -30,7 +31,8 @@
       </button>
 
       <!-- Formatting toolbar -->
-      <div v-show="mode === 'edit'" class="flex items-center gap-0.5 ml-auto pr-2">
+      <!-- 手机:basis-full 独占一行 + flex-wrap 按钮可再折行;桌面(md+):basis-auto + ml-auto 右对齐回到标签行 -->
+      <div v-show="mode === 'edit'" class="flex flex-wrap items-center gap-0.5 pr-2 pb-1 basis-full md:basis-auto md:pb-0 md:ml-auto">
         <button v-for="btn in toolbarButtons" :key="btn.title" :title="btn.title" class="toolbar-btn" @mousedown.prevent @click="btn.action">
           <UIcon :name="btn.icon" class="w-4 h-4" />
         </button>

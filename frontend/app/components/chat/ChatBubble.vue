@@ -1,10 +1,8 @@
 <script setup lang="ts">
 const chat = useChat()
-const { conversations, unreadTotal, activeIssueId, messages, lastIncoming } = chat
+// open/view 上提到 useChat:手机端底部栏「消息」Tab 与此 FAB 共用同一面板
+const { conversations, unreadTotal, activeIssueId, messages, lastIncoming, open, view } = chat
 const { user } = useAuth()
-
-const open = ref(false)
-const view = ref<'list' | 'thread'>('list')
 const meId = computed(() => (user.value ? Number(user.value.id) : null))
 const activeTitle = computed(() => conversations.value.find(c => c.issue_id === activeIssueId.value)?.issue_title || '消息')
 
@@ -13,9 +11,13 @@ function onClickOutside(e: MouseEvent) {
   // 用 composedPath 而非 contains(target):返回按钮点击后会因 v-if 立即从 DOM 移除,
   // contains(已脱离的 target) 会误判为"点击外部"而关掉弹窗;composedPath 在事件派发时
   // 已固定路径,即使节点随后被移除仍包含 rootEl。
-  if (open.value && rootEl.value && !e.composedPath().includes(rootEl.value)) {
-    open.value = false
-  }
+  if (!open.value || !rootEl.value) return
+  const path = e.composedPath()
+  if (path.includes(rootEl.value)) return
+  // 手机端「消息」Tab 触发 toggleChat 是在 mousedown/touchstart,而随后的 click 会冒泡到此处;
+  // 跳过来自底部栏的点击,避免点击穿透把刚打开的面板立刻关掉(开关交给底部栏的 toggleChat)。
+  if (path.some(el => el instanceof HTMLElement && el.dataset.mobileTabbar !== undefined)) return
+  open.value = false
 }
 onMounted(() => {
   chat.loadConversations()
@@ -144,4 +146,11 @@ function onPreviewOpen(id: number) { open.value = true; openConv(id) }
 .cc-title { font-weight: 700; font-size: 13.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cc-snip { font-size: 13px; color: #64748b; margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cc-unread { align-self: center; min-width: 19px; height: 19px; padding: 0 5px; border-radius: 10px; background: var(--ui-primary,#2f55ea); color: #fff; font-size: 11px; font-weight: 800; display: grid; place-items: center; }
+
+/* 手机端:入口改由底部栏「消息」Tab 承担,隐藏 FAB;面板与预览条改为全宽并坐落在底部栏之上 */
+@media (max-width: 767px) {
+  .chat-fab { display: none; }
+  /* bottom = 栏体≈58 + mb-3(12) + ~16 间隙 + 安全区 */
+  .chat-panel { left: 12px; right: 12px; width: auto; bottom: calc(86px + env(safe-area-inset-bottom)); height: min(584px, calc(100vh - 180px)); }
+}
 </style>

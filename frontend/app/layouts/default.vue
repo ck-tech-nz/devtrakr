@@ -5,7 +5,8 @@
       <AppSidebar />
       <div class="flex-1 flex flex-col min-w-0 overflow-hidden">
         <AppHeader />
-        <main class="flex-1 overflow-y-auto overscroll-contain p-3 md:p-6 lg:p-8 pb-20 md:pb-6 lg:pb-8">
+        <!-- 手机底部留白需容纳固定的玻璃底栏(栏体≈58 + mb-3 + 安全区),否则分页等底部内容被遮挡 -->
+        <main class="flex-1 overflow-y-auto overscroll-contain p-3 md:p-6 lg:p-8 pb-[calc(7rem+env(safe-area-inset-bottom))] md:pb-6 lg:pb-8">
           <slot />
         </main>
         <AppFooter />

@@ -22,6 +22,10 @@ export function useChat() {
   const activeIssueId = useState<number | null>('chat-active', () => null)
   const messages = useState<ChatComment[]>('chat-messages', () => [])
   const lastIncoming = useState<ChatIncoming | null>('chat-last-incoming', () => null)
+  // 面板开关与视图状态上提到 useState:手机端底部栏「消息」Tab 与桌面端 FAB 共享同一面板
+  const open = useState<boolean>('chat-open', () => false)
+  const view = useState<'list' | 'thread'>('chat-view', () => 'list')
+  function toggleChat() { open.value = !open.value }
 
   function recomputeTotal() {
     unreadTotal.value = conversations.value.reduce((s, c) => s + (c.unread_count || 0), 0)
@@ -135,7 +139,7 @@ export function useChat() {
     ws = null
   }
 
-  return { conversations, unreadTotal, activeIssueId, messages, lastIncoming,
+  return { conversations, unreadTotal, activeIssueId, messages, lastIncoming, open, view, toggleChat,
            loadConversations, openConversation, markRead, sendReply, handleIncoming,
            connect, disconnect }
 }
