@@ -1,6 +1,9 @@
 <template>
   <div class="flex flex-col gap-2.5 w-32 select-none" title="按优先级筛选">
     <div class="relative">
+      <!-- 可见轨道独立成层并以 top:50% 居中,与玻璃 thumb 共用同一垂直基准对齐;
+           原生 range 的可见轨道并不落在 input 盒子的几何中心,直接用 input 背景会让轨道偏高 -->
+      <div class="priority-track" :style="{ background: trackGradient }" aria-hidden="true" />
       <input
         type="range"
         min="0"
@@ -8,7 +11,6 @@
         step="1"
         :value="index"
         class="priority-range"
-        :style="{ background: trackGradient }"
         aria-label="优先级筛选"
         @input="onInput"
       >
@@ -19,8 +21,8 @@
         tabindex="-1"
         class="priority-thumb"
         :style="{ left: thumbLeft, '--thumb-color': STOPS[index]?.cssColor }"
-        :bezel-depth="0.35"
-        :bezel-width="0.35"
+        :bezel-depth="0.05"
+        :bezel-width="0.1"
         :blur="0.5"
         :saturation="160"
       />
@@ -92,12 +94,27 @@ function onInput(e: Event) {
 </script>
 
 <style scoped>
+/* 可见轨道:绝对定位 + top:50% 居中,与玻璃 thumb 同一垂直中心,规避原生轨道偏高 */
+.priority-track {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 100%;
+  height: 6px;
+  transform: translateY(-50%);
+  border-radius: 9999px;
+  pointer-events: none;
+}
+/* input 仅保留交互(透明),可见外观交给上方 .priority-track 与叠加的 .priority-thumb */
 .priority-range {
+  position: relative;
   appearance: none;
   -webkit-appearance: none;
   display: block;
   width: 100%;
   height: 6px;
+  margin: 0;
+  background: transparent;
   border-radius: 9999px;
   cursor: pointer;
 }
