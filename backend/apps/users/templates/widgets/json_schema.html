@@ -1,7 +1,7 @@
-<div id="json-widget-{{ widget.json_name }}" class="mt-1">
+<div id="json-widget-{{ widget.json_name }}" class="mt-1" data-original="{{ widget.value_json }}">
   {% for field in widget.fields %}
-  <div class="flex items-center mb-3 gap-3">
-    <label class="min-w-[140px] font-normal text-sm text-gray-500 dark:text-gray-400"
+  <div class="flex items-start mb-3 gap-3">
+    <label class="min-w-[140px] mt-2 font-normal text-sm text-gray-500 dark:text-gray-400"
            for="id_{{ widget.json_name }}__{{ field.key }}">
       {{ field.label }}
     </label>
@@ -13,7 +13,7 @@
              {% if field.value %}checked{% endif %}
              data-json-field="{{ field.key }}"
              data-json-type="boolean"
-             class="rounded border-gray-300 text-primary-600 shadow-sm focus:ring-primary-500 dark:border-gray-600 dark:bg-gray-900" />
+             class="mt-2 rounded border-gray-300 text-primary-600 shadow-sm focus:ring-primary-500 dark:border-gray-600 dark:bg-gray-900" />
 
     {% elif field.type == "select" %}
       <select id="id_{{ widget.json_name }}__{{ field.key }}"
@@ -35,6 +35,15 @@
              data-json-type="number"
              class="border border-gray-300 rounded-md px-3 py-2 w-[120px] text-sm shadow-sm focus:border-primary-500 focus:ring-primary-500 dark:bg-gray-900 dark:border-gray-600 dark:text-gray-200" />
 
+    {% elif field.type == "json" %}
+      <textarea id="id_{{ widget.json_name }}__{{ field.key }}"
+                name="{{ widget.json_name }}__{{ field.key }}"
+                rows="3"
+                spellcheck="false"
+                data-json-field="{{ field.key }}"
+                data-json-type="json"
+                class="font-mono whitespace-pre border border-gray-300 rounded-md px-3 py-2 w-[420px] text-xs shadow-sm focus:border-primary-500 focus:ring-primary-500 dark:bg-gray-900 dark:border-gray-600 dark:text-gray-200">{{ field.value }}</textarea>
+
     {% else %}
       <input type="text"
              id="id_{{ widget.json_name }}__{{ field.key }}"
@@ -47,7 +56,8 @@
   </div>
   {% endfor %}
 
-  <input type="hidden" name="{{ widget.json_name }}" id="id_{{ widget.json_name }}" value="" />
+  <!-- 初始化为完整原值:即便禁用 JS,提交也是原样保存、不丢未列出的键 -->
+  <input type="hidden" name="{{ widget.json_name }}" id="id_{{ widget.json_name }}" value="{{ widget.value_json }}" />
 </div>
 
 <script>
@@ -56,7 +66,11 @@
   var hidden = document.getElementById('id_{{ widget.json_name }}');
 
   function collect() {
+    // 以完整原值为底,仅覆盖 schema 列出的字段,保留未列出的键(避免保存时丢设置)
     var result = {};
+    try { result = JSON.parse(container.getAttribute('data-original') || '{}') || {}; }
+    catch (e) { result = {}; }
+
     var inputs = container.querySelectorAll('[data-json-field]');
     for (var i = 0; i < inputs.length; i++) {
       var el = inputs[i];
@@ -65,7 +79,14 @@
       if (type === 'boolean') {
         result[key] = el.checked;
       } else if (type === 'number') {
-        result[key] = el.value ? parseFloat(el.value) : 0;
+        result[key] = el.value !== '' ? parseFloat(el.value) : null;
+      } else if (type === 'json') {
+        var t = (el.value || '').trim();
+        if (t === '') { result[key] = null; }
+        else {
+          try { result[key] = JSON.parse(t); }
+          catch (e) { /* 非法 JSON:保留原值,不破坏其它设置 */ }
+        }
       } else {
         result[key] = el.value;
       }

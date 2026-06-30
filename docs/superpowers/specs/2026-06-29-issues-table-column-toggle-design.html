@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="zh-hans">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>列表视图「显示/隐藏列」选择器 — 设计稿</title>
+<style>
+  :root{
+    --bg:#f6f7f9; --card:#fff; --ink:#1f2430; --muted:#6b7280; --line:#e5e7eb;
+    --crystal:#6366f1; --crystal-weak:#eef0ff; --ok:#16a34a; --warn:#d97706; --del:#dc2626;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",Segoe UI,sans-serif;
+    line-height:1.65;font-size:15px;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:920px;margin:0 auto;padding:40px 24px 80px}
+  header.doc{border-bottom:2px solid var(--ink);padding-bottom:16px;margin-bottom:8px}
+  header.doc h1{font-size:24px;margin:0 0 6px}
+  header.doc .meta{color:var(--muted);font-size:13px}
+  h2{font-size:18px;margin:34px 0 10px;padding-left:10px;border-left:4px solid var(--crystal)}
+  h3{font-size:15px;margin:20px 0 6px;color:#374151}
+  p{margin:8px 0}
+  code{font-family:var(--mono);font-size:.86em;background:#eef0f3;padding:1.5px 6px;border-radius:5px}
+  pre{background:#0f1117;color:#e6e8ee;border-radius:10px;padding:16px 18px;overflow:auto;font-family:var(--mono);font-size:12.5px;line-height:1.55}
+  pre .c{color:#7d8590}
+  pre .k{color:#ff7b72}
+  pre .s{color:#a5d6ff}
+  pre .f{color:#d2a8ff}
+  table{border-collapse:collapse;width:100%;margin:10px 0;font-size:13.5px}
+  th,td{border:1px solid var(--line);padding:7px 10px;text-align:left;vertical-align:top}
+  th{background:#f0f1f4;font-weight:600}
+  .tag{display:inline-block;font-size:11px;padding:1px 7px;border-radius:999px;font-weight:600;line-height:1.5}
+  .tag.lock{background:#f3f4f6;color:#6b7280;border:1px solid #e5e7eb}
+  .tag.def{background:#dcfce7;color:#166534}
+  .tag.hid{background:#fff7ed;color:#9a3412}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;align-items:start}
+  @media(max-width:680px){.grid{grid-template-columns:1fr}}
+  ul{margin:8px 0;padding-left:22px}
+  li{margin:4px 0}
+  .note{background:var(--crystal-weak);border:1px solid #d9dcff;border-radius:10px;padding:12px 16px;margin:14px 0;font-size:13.5px}
+  /* ---- popover mockup ---- */
+  .mock{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px;box-shadow:0 1px 3px rgba(0,0,0,.06)}
+  .mock h4{margin:0 0 12px;font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+  .pop{width:230px;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:#fff;box-shadow:0 8px 24px rgba(15,17,23,.12);font-size:13.5px}
+  .pop .hd{padding:8px 12px;border-bottom:1px solid #f0f1f4}
+  .pop .hd .t{font-weight:600;font-size:12.5px}
+  .pop .hd .s{font-size:11px;color:#9ca3af}
+  .pop .grp{padding:4px 0}
+  .pop .divider{height:1px;background:#f0f1f4;margin:2px 0}
+  .row{display:flex;align-items:center;gap:9px;padding:7px 12px}
+  .row:hover{background:#f8f9fb}
+  .row.locked{opacity:.55;cursor:not-allowed}
+  .row.locked:hover{background:transparent}
+  .ck{width:15px;height:15px;border-radius:4px;display:flex;align-items:center;justify-content:center;flex:0 0 auto;font-size:11px;color:#fff}
+  .ck.on{background:var(--crystal)}
+  .ck.off{border:1.5px solid #cbd2dc;background:#fff}
+  .ck.lock{background:#b8bdc7}
+  .row .lab{flex:1}
+  .row .must{font-size:10.5px;color:#9ca3af;background:#f3f4f6;border-radius:5px;padding:1px 6px}
+  .btnbar{display:flex;align-items:center;gap:8px;background:#eef0f3;border-radius:9px;padding:5px 10px;font-size:13px;color:#6b7280;width:max-content}
+  .iconbtn{width:30px;height:30px;border-radius:7px;border:1px solid var(--line);background:#fff;display:flex;align-items:center;justify-content:center;color:#4b5563}
+  footer{margin-top:50px;border-top:1px solid var(--line);padding-top:14px;color:var(--muted);font-size:12px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="doc">
+    <h1>列表视图「显示/隐藏列」选择器</h1>
+    <div class="meta">DevTrack · 问题跟踪 · 列表(表格)视图 &nbsp;|&nbsp; 设计稿 &nbsp;|&nbsp; 2026-06-29 &nbsp;|&nbsp; 状态:已确认,待实现</div>
+  </header>
+
+  <h2>目标</h2>
+  <p>在问题跟踪的<strong>列表视图</strong>工具栏增加一个「显示/隐藏表格列」按钮(弹出式),让用户自由控制表格列的显隐。<code>ID</code>、<code>标题</code>、<code>状态</code> 三列恒显(锁定),其余列可切换。当前显示的列集合即为默认值,用户的选择持久化到浏览器。</p>
+
+  <h2>交互与外观</h2>
+  <p>完全镜像现有的看板列编辑器 <code>KanbanColumnEditor.vue</code>(同一图标 <code>i-heroicons-view-columns</code>、同一 <code>UPopover</code> 模式),置于工具栏行尾。看板编辑器 <code>v-if="viewMode==='kanban'"</code>,本组件 <code>v-if="viewMode==='table'"</code>,二者互斥共用同一位置。</p>
+  <div class="grid">
+    <div class="mock">
+      <h4>工具栏行尾(列表视图)</h4>
+      <div class="btnbar" style="margin-bottom:14px">
+        <span>看板</span><span style="background:#fff;color:#111;border-radius:6px;padding:2px 10px;box-shadow:0 1px 2px rgba(0,0,0,.08)">列表</span>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <div class="iconbtn">⟳</div>
+        <div style="background:var(--crystal);color:#fff;border-radius:7px;padding:6px 12px;font-size:13px">＋ 新建</div>
+        <div class="iconbtn" style="border-color:var(--crystal);color:var(--crystal)">▥</div>
+      </div>
+      <p style="font-size:11.5px;color:#9ca3af;margin-top:10px">最右侧 ▥ 即新按钮(列编辑器)。</p>
+    </div>
+    <div class="mock">
+      <h4>点击后弹出</h4>
+      <div class="pop">
+        <div class="hd"><div class="t">表格列</div><div class="s">勾选 = 显示该列</div></div>
+        <div class="grp">
+          <div class="row locked"><span class="ck lock">✓</span><span class="lab">ID</span><span class="must">必显</span></div>
+          <div class="row locked"><span class="ck lock">✓</span><span class="lab">标题</span><span class="must">必显</span></div>
+          <div class="row locked"><span class="ck lock">✓</span><span class="lab">状态</span><span class="must">必显</span></div>
+        </div>
+        <div class="divider"></div>
+        <div class="grp">
+          <div class="row"><span class="ck on">✓</span><span class="lab">原因分析</span></div>
+          <div class="row"><span class="ck on">✓</span><span class="lab">解决方案</span></div>
+          <div class="row"><span class="ck on">✓</span><span class="lab">优先级</span></div>
+          <div class="row"><span class="ck on">✓</span><span class="lab">提出人</span></div>
+          <div class="row"><span class="ck on">✓</span><span class="lab">历时</span></div>
+          <div class="row"><span class="ck on">✓</span><span class="lab">要求完成日期</span></div>
+          <div class="row"><span class="ck off"></span><span class="lab">GitHub Issues</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <h2>列清单</h2>
+  <table>
+    <thead><tr><th>列 key</th><th>表头</th><th>属性</th><th>默认</th></tr></thead>
+    <tbody>
+      <tr><td><code>id</code></td><td>ID</td><td><span class="tag lock">锁定</span></td><td>显示</td></tr>
+      <tr><td><code>title</code></td><td>标题</td><td><span class="tag lock">锁定</span></td><td>显示</td></tr>
+      <tr><td><code>status</code></td><td>状态</td><td><span class="tag lock">锁定</span></td><td>显示</td></tr>
+      <tr><td><code>cause</code></td><td>原因分析</td><td>可切换</td><td><span class="tag def">显示</span></td></tr>
+      <tr><td><code>solution</code></td><td>解决方案</td><td>可切换</td><td><span class="tag def">显示</span></td></tr>
+      <tr><td><code>priority</code></td><td>优先级</td><td>可切换</td><td><span class="tag def">显示</span></td></tr>
+      <tr><td><code>reporter</code></td><td>提出人</td><td>可切换</td><td><span class="tag def">显示</span></td></tr>
+      <tr><td><code>created_at</code></td><td>历时</td><td>可切换</td><td><span class="tag def">显示</span></td></tr>
+      <tr><td><code>estimated_completion</code></td><td>要求完成日期</td><td>可切换</td><td><span class="tag def">显示</span></td></tr>
+      <tr><td><code>github_issues</code></td><td>GitHub Issues</td><td>可切换</td><td><span class="tag hid">隐藏</span></td></tr>
+    </tbody>
+  </table>
+  <p>选择器内列锁定列分组在顶部(灰显、已勾选、不可点),其余按表格顺序排列。<code>select</code>(行选择复选框)列不参与配置,始终保留。</p>
+
+  <h2>持久化</h2>
+  <ul>
+    <li>localStorage,沿用 <code>issues:*</code> 命名 → key <code>issues:hidden-columns</code>。</li>
+    <li>存「<strong>被隐藏</strong>列 key 的数组」(JSON),与看板编辑器的 hidden 语义一致 —— 未来新增列默认可见,无需迁移已存偏好。</li>
+    <li>默认值(未存或解析失败) = <code>['github_issues']</code>,使开箱状态等于当前显示(GitHub Issues 默认隐藏,其余全显)。</li>
+    <li>解析异常或 SSR 无 <code>localStorage</code> 时回退默认,沿用现有 <code>loadPersistedFilters()</code> 的 try/catch 写法。</li>
+  </ul>
+
+  <h2>父组件改动 <code>app/pages/app/issues/index.vue</code></h2>
+  <h3>1) 列元数据(静态有序数组)</h3>
+<pre><span class="c">// 表格列定义:按既有表格顺序排列;locked 列恒显,其余可经列编辑器切换显隐</span>
+<span class="k">const</span> TABLE_COLUMNS = [
+  { key:<span class="s">'id'</span>, label:<span class="s">'ID'</span>, locked:<span class="k">true</span> },
+  { key:<span class="s">'title'</span>, label:<span class="s">'标题'</span>, locked:<span class="k">true</span> },
+  { key:<span class="s">'cause'</span>, label:<span class="s">'原因分析'</span> },
+  { key:<span class="s">'solution'</span>, label:<span class="s">'解决方案'</span> },
+  { key:<span class="s">'priority'</span>, label:<span class="s">'优先级'</span> },
+  { key:<span class="s">'status'</span>, label:<span class="s">'状态'</span>, locked:<span class="k">true</span> },
+  { key:<span class="s">'reporter'</span>, label:<span class="s">'提出人'</span> },
+  { key:<span class="s">'created_at'</span>, label:<span class="s">'历时'</span> },
+  { key:<span class="s">'estimated_completion'</span>, label:<span class="s">'要求完成日期'</span> },
+  { key:<span class="s">'github_issues'</span>, label:<span class="s">'GitHub Issues'</span> },
+]</pre>
+  <p class="note"><strong>单一数组,既有顺序:</strong>该数组即真实表格列顺序(标题→原因分析→解决方案→优先级→状态→…),<code>columns</code> computed 直接顺序遍历它生成表格,<strong>不改变现有视觉布局</strong>。<code>状态</code> 虽是锁定列但仍排在原位置。编辑器仅在<em>展示</em>时按 <code>locked</code> 标记把三个锁定列分组到顶部,不影响表格顺序。</p>
+
+  <h3>2) <code>columns</code> computed 改为按隐藏集过滤</h3>
+<pre><span class="k">const</span> <span class="f">columns</span> = computed(() => {
+  <span class="k">const</span> cols = [{ id:<span class="s">'select'</span>, header:<span class="s">''</span>, cell:<span class="s">''</span> }]
+  <span class="k">for</span> (<span class="k">const</span> c <span class="k">of</span> TABLE_COLUMNS) {              <span class="c">// 既有表格顺序</span>
+    <span class="k">if</span> (!c.locked && hiddenColumns.value.includes(c.key)) <span class="k">continue</span>
+    cols.push({ accessorKey: c.key, header: c.label })
+  }
+  <span class="k">return</span> cols
+})</pre>
+  <p>替换原本的静态列数组 + <code>showGHColumn</code> 条件。锁定列即使误入 hidden 数组也始终渲染。</p>
+
+  <h3>3) 持久化的 ref + watch</h3>
+<pre><span class="k">const</span> HIDDEN_COLUMNS_KEY = <span class="s">'issues:hidden-columns'</span>
+<span class="k">function</span> <span class="f">loadHiddenColumns</span>(): string[] {
+  <span class="k">if</span> (<span class="k">typeof</span> localStorage === <span class="s">'undefined'</span>) <span class="k">return</span> [<span class="s">'github_issues'</span>]
+  <span class="k">try</span> { <span class="k">const</span> raw = localStorage.getItem(HIDDEN_COLUMNS_KEY)
+    <span class="k">return</span> raw ? JSON.parse(raw) : [<span class="s">'github_issues'</span>] }
+  <span class="k">catch</span> { <span class="k">return</span> [<span class="s">'github_issues'</span>] }
+}
+<span class="k">const</span> hiddenColumns = ref&lt;string[]&gt;(loadHiddenColumns())
+watch(hiddenColumns, (v) => {
+  <span class="k">if</span> (<span class="k">typeof</span> localStorage !== <span class="s">'undefined'</span>)
+    localStorage.setItem(HIDDEN_COLUMNS_KEY, JSON.stringify(v))
+})</pre>
+
+  <h3>4) 工具栏挂载组件</h3>
+<pre>&lt;<span class="f">TableColumnEditor</span>
+  v-if=<span class="s">"viewMode === 'table'"</span>
+  :columns=<span class="s">"TABLE_COLUMNS"</span>
+  :hidden=<span class="s">"hiddenColumns"</span>
+  @update:hidden=<span class="s">"(v) => hiddenColumns = v"</span>
+/&gt;</pre>
+
+  <h2>新组件 <code>app/components/issue/TableColumnEditor.vue</code></h2>
+  <ul>
+    <li>Props:<code>columns: {key,label,locked?}[]</code>、<code>hidden: string[]</code>、<code>size?</code>。</li>
+    <li>Emit:<code>update:hidden(string[])</code>。</li>
+    <li><code>UPopover</code> + <code>UButton</code>(<code>i-heroicons-view-columns</code>,<code>variant="ghost"</code>,<code>color="neutral"</code>,<code>title</code>/<code>aria-label</code>="显示/隐藏表格列")。</li>
+    <li>渲染:锁定列分组(灰显、勾选、不可点、「必显」标签)→ 分隔线 → 可切换列(点击切换勾选)。</li>
+    <li>切换逻辑:可见则把 key 加入 hidden 副本,隐藏则移除,<code>emit('update:hidden', next)</code>。</li>
+  </ul>
+
+  <h2>移除项</h2>
+  <ul>
+    <li>表格上方的独立 GitHub Issues <code>USwitch</code> 块(<code>index.vue</code> 表头那一行)。</li>
+    <li><code>showGHColumn</code> ref 及其在 <code>columns</code> 中的引用。</li>
+  </ul>
+
+  <h2>非目标 / 边界</h2>
+  <ul>
+    <li>不做列拖拽排序(YAGNI),列顺序固定。</li>
+    <li>不做「至少保留一列」守卫 —— 锁定列恒显,表格永不为空。</li>
+    <li>隐藏列的 <code>#xxx-cell</code> / <code>#xxx-header</code> 插槽在该列不在 <code>columns</code> 时自动不渲染,无副作用;标题列拖拽列宽不受影响(标题恒显)。</li>
+    <li>偏好存浏览器(localStorage),不同步到服务器/不跨设备 —— 符合需求「记录在浏览器」。</li>
+  </ul>
+
+  <h2>验证</h2>
+  <ul>
+    <li><code>npx nuxi typecheck</code> 通过(无前端单测框架,组件为展示型,不做 TDD)。</li>
+    <li>浏览器验证:列表视图出现按钮 → 勾选/取消即时增删列 → 刷新后保持 → 锁定列不可取消 → 切到看板视图按钮消失。</li>
+  </ul>
+
+  <footer>DevTrack 内部设计稿 · 由 brainstorming 流程生成 · 实现完成后可归档</footer>
+</div>
+</body>
+</html>

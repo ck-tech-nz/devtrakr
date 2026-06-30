@@ -75,16 +75,12 @@
 const { tasks, totalCount, load, closeIssue, isTester } = useMyTasks()
 const closingId = ref<number | null>(null)
 
-// 折叠状态:持久化到浏览器 localStorage,刷新后保持上次的展开/收起
-const COLLAPSE_KEY = 'my-pending-tasks:collapsed'
-const collapsed = ref(false)
-if (import.meta.client) {
-  try {
-    const saved = localStorage.getItem(COLLAPSE_KEY)
-    if (saved === '0' || saved === '1') collapsed.value = saved === '1'
-  } catch { /* 损坏的存储忽略,用默认值 */ }
-  watch(collapsed, v => localStorage.setItem(COLLAPSE_KEY, v ? '1' : '0'))
-}
+// 折叠状态:按账号存服务端用户设置(useUserSettings),换用户登录回到各自默认(展开)
+const { settings, update: updateSettings } = useUserSettings()
+const collapsed = computed({
+  get: () => settings.value.pending_tasks_collapsed,
+  set: (v: boolean) => updateSettings('pending_tasks_collapsed', v),
+})
 
 function statusColor(status: string) {
   if (status === '待分配') return 'warning'

@@ -34,9 +34,9 @@
 // 共用同一个 5s 轮询,不再各自打接口
 const { monitors } = useUptimeMonitors()
 
-const dismissedSignature = ref<string>('')
-
-const DISMISS_KEY = 'vigil_dismissed_signature_v1'
+// 「已忽略」签名按账号存服务端用户设置(useUserSettings),换用户登录回到各自默认(空→重新看到公告)
+const { settings, update: updateSettings } = useUserSettings()
+const dismissedSignature = computed(() => settings.value.system_alert_dismissed)
 
 const activeMonitors = computed(() =>
   monitors.value.filter(
@@ -73,17 +73,8 @@ const primaryLink = computed(() => {
 })
 
 function dismiss() {
-  dismissedSignature.value = signature.value
-  if (typeof localStorage !== 'undefined') {
-    localStorage.setItem(DISMISS_KEY, signature.value)
-  }
+  updateSettings('system_alert_dismissed', signature.value)
 }
-
-onMounted(() => {
-  if (typeof localStorage !== 'undefined') {
-    dismissedSignature.value = localStorage.getItem(DISMISS_KEY) || ''
-  }
-})
 </script>
 
 <style scoped>

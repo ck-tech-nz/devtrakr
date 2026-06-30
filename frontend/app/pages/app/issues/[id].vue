@@ -956,23 +956,21 @@ async function loadHistory() {
   }
 }
 
-// 右侧信息栏各卡片折叠状态:持久化到浏览器 localStorage,刷新后保持上次的展开/收起
+// 右侧信息栏各卡片折叠状态:按账号存服务端用户设置(useUserSettings),换用户登录回到各自默认
 type PanelKey = 'ai' | 'attrs' | 'info' | 'analysis' | 'attachments' | 'repo' | 'related' | 'github' | 'pr' | 'source' | 'assignments' | 'history'
-const PANEL_STATE_KEY = 'issue-detail:panels'
 const panelDefaults: Record<PanelKey, boolean> = {
   ai: true, attrs: true, info: true, analysis: false, attachments: true,
   repo: false, related: true, github: true, pr: true, source: true,
   assignments: false, history: true,
 }
 const panelOpen = reactive<Record<PanelKey, boolean>>({ ...panelDefaults })
-if (import.meta.client) {
-  try {
-    const saved = JSON.parse(localStorage.getItem(PANEL_STATE_KEY) || '{}')
-    for (const k of Object.keys(panelDefaults) as PanelKey[]) {
-      if (typeof saved[k] === 'boolean') panelOpen[k] = saved[k]
-    }
-  } catch { /* 损坏的存储忽略,用默认值 */ }
-  watch(panelOpen, v => localStorage.setItem(PANEL_STATE_KEY, JSON.stringify(v)), { deep: true })
+const { settings, update: updateSettings } = useUserSettings()
+{
+  const saved = settings.value.issue_detail_panels || {}
+  for (const k of Object.keys(panelDefaults) as PanelKey[]) {
+    if (typeof saved[k] === 'boolean') panelOpen[k] = saved[k]
+  }
+  watch(panelOpen, v => updateSettings('issue_detail_panels', { ...v }), { deep: true })
 }
 function togglePanel(k: PanelKey) {
   panelOpen[k] = !panelOpen[k]

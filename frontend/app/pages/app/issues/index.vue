@@ -116,12 +116,18 @@
         <UButton icon="i-heroicons-plus" size="sm" @click="openCreateModal">
           <span class="hidden md:inline">新建</span>
         </UButton>
-        <!-- 看板列显示/隐藏编辑器:置于工具栏行尾,仅看板视图显示 -->
+        <!-- 列显示/隐藏编辑器:置于工具栏行尾,按视图切换看板列 / 表格列编辑器 -->
         <KanbanColumnEditor
           v-if="viewMode === 'kanban'"
           :statuses="kanbanEditorStatuses"
           :hidden="settings.issues_kanban_hidden"
           @update:hidden="(v: string[]) => updateSettings('issues_kanban_hidden', v)"
+        />
+        <TableColumnEditor
+          v-if="viewMode === 'table'"
+          :columns="TABLE_COLUMNS"
+          :hidden="hiddenColumns"
+          @update:hidden="(v: string[]) => hiddenColumns = v"
         />
       </div>
     </div>
@@ -402,13 +408,8 @@
 
     <!-- Table View -->
     <div v-else class="bg-white dark:bg-gray-900 rounded-xl border border-gray-200/80 dark:border-gray-700 shadow-sm overflow-hidden">
-      <div class="flex justify-end px-4 py-2 border-b border-gray-50 dark:border-gray-800">
-        <label class="flex items-center gap-1.5 cursor-pointer select-none">
-          <USwitch v-model="showGHColumn" size="xs" />
-          <span class="text-xs text-gray-500 dark:text-gray-400">GitHub Issues</span>
-        </label>
-      </div>
       <UTable
+        :key="tableColumnsKey"
         v-model:row-selection="rowSelection"
         :data="issues"
         :columns="columns"
@@ -565,6 +566,7 @@
 import { ISSUE_STATUS, ISSUE_STATUS_OPTIONS, KANBAN_DEFAULT_COLUMNS, KANBAN_COMPLETED_LEFT, KANBAN_COMPLETED_RIGHT, statusColor as statusColorFn } from '~/constants/issueStatus'
 import StatusCell from '~/components/issue/StatusCell.vue'
 import KanbanColumnEditor from '~/components/issue/KanbanColumnEditor.vue'
+import TableColumnEditor from '~/components/issue/TableColumnEditor.vue'
 import TransferDialog from '~/components/issue/TransferDialog.vue'
 import AssignDialog from '~/components/issue/AssignDialog.vue'
 import { buildIssueQueryParams, buildIssueFilterParams } from '~/utils/issueQuery'
@@ -634,19 +636,22 @@ const viewMode = computed({
   get: () => settings.value.issues_view_mode,
   set: (v: 'kanban' | 'table') => updateSettings('issues_view_mode', v),
 })
-// 「查看全部」持久化到浏览器 localStorage,刷新页面不丢失该偏好
-const SHOW_COMPLETED_KEY = 'issues:showCompleted'
-const showCompleted = ref(
-  typeof localStorage !== 'undefined' && localStorage.getItem(SHOW_COMPLETED_KEY) === '1',
-)
+// 「查看全部」按账号存服务端(useUserSettings),换用户登录回到各自默认(false)
+const showCompleted = computed({
+  get: () => settings.value.issues_show_completed,
+  set: (v: boolean) => updateSettings('issues_show_completed', v),
+})
 
-// 标题列宽:拖拽调整 + 按浏览器 localStorage 记忆(见 useColumnWidth)
+// 标题列宽:拖拽调整 + 按账号记忆(存服务端用户设置,见 useColumnWidth)
 const {
   width: titleColWidth,
   load: loadTitleColWidth,
   startResize: startTitleResize,
   reset: resetTitleColWidth,
-} = useColumnWidth('issues:title-col-width')
+} = useColumnWidth({
+  load: () => settings.value.issues_title_col_width,
+  save: (v) => updateSettings('issues_title_col_width', v),
+})
 
 // 表头手柄按下:以当前列实际像素宽为起点开始拖拽
 function onTitleResizeDown(e: PointerEvent) {
@@ -657,43 +662,23 @@ function onTitleResizeDown(e: PointerEvent) {
 const page = ref(1)
 const pageSize = 15
 
-// 筛选条件持久化:负责人/提出人/优先级/状态(含点击徽章触发的处理人标签、优先级标签)存浏览器
-// localStorage,刷新后恢复。URL query 仍优先(首页统计卡片等外链可预填);「只看我的/只看我提出的」
-// 高亮不直接持久化,改在 onMounted 按当前登录用户重新判定(localStorage 跨账号共享,避免错配)。
+// 筛选条件持久化:负责人/提出人/优先级/状态(含点击徽章触发的处理人标签、优先级标签)按账号存服务端
+// 用户设置(useUserSettings),换用户登录回到各自默认(空)。URL query 仍优先(首页统计卡片等外链可预填);
+// 「只看我的/只看我提出的」高亮不直接持久化,改在 onMounted 按当前登录用户重新判定。
 type ReporterFilter = { type: 'reporter' | 'created_by' | 'reporter_display_user'; value: string; label: string }
-type PersistedFilters = {
-  assignee?: string
-  status?: string
-  priority?: string
-  priorityTag?: { value: string; label: string } | null
-  handler?: { id: string; label: string } | null
-  reporter?: ReporterFilter | null
-}
-const FILTERS_KEY = 'issues:filters'
-function loadPersistedFilters(): PersistedFilters {
-  if (typeof localStorage === 'undefined') return {}
-  try {
-    const raw = localStorage.getItem(FILTERS_KEY)
-    return raw ? (JSON.parse(raw) as PersistedFilters) : {}
-  } catch {
-    return {}
-  }
-}
 function persistFilters() {
-  if (typeof localStorage === 'undefined') return
-  const snapshot: PersistedFilters = {
+  updateSettings('issues_filters', {
     assignee: filterAssignee.value,
     status: filterStatus.value,
     priority: filterPriority.value,
     priorityTag: filterPriorityTag.value,
     handler: filterHandler.value,
     reporter: filterReporter.value,
-  }
-  localStorage.setItem(FILTERS_KEY, JSON.stringify(snapshot))
+  })
 }
-const persistedFilters = loadPersistedFilters()
+const persistedFilters = settings.value.issues_filters
 
-// Filters：取值优先级 URL query → localStorage 持久值 → 默认空;外部链接(如首页统计卡片)可预填
+// Filters：取值优先级 URL query → 用户设置持久值 → 默认空;外部链接(如首页统计卡片)可预填
 const filterAssignee = ref<string>(typeof route.query.assignee === 'string' ? route.query.assignee : (persistedFilters.assignee ?? ''))
 const filterPriority = ref<string>(typeof route.query.priority === 'string' ? route.query.priority : (persistedFilters.priority ?? ''))
 const filterStatus = ref<string>(typeof route.query.status === 'string' ? route.query.status : (persistedFilters.status ?? ''))
@@ -982,7 +967,31 @@ const selectedRowsData = computed(() => {
 
 const totalPages = computed(() => Math.max(1, Math.ceil(totalCount.value / pageSize)))
 
-const showGHColumn = ref(false)
+// 表格列定义(按既有表格顺序);locked 列恒显,其余可经列编辑器切换显隐。
+// w = 固定列宽的 Tailwind 宽度类(仅够容纳各列内容/表头),通过 meta.class 注入到表头 th + 表体 td。
+//   注:Nuxt UI 的表头 th 只接收 meta.class(不接收 meta.style),而 table-layout:fixed 的列宽由表头行决定,
+//   故必须用 class 注入。固定列宽随列定义走(非按位置),隐藏列后不会错配。
+// 未给 w 的列(标题/原因分析/解决方案)为弹性列,共享剩余空间;因「标题」恒为 width:auto 吸收者(见 CSS),
+// 所有剩余宽度都流向标题,固定列永远不被撑大(ID 始终仅够显示数字)。
+const TABLE_COLUMNS: { key: string; label: string; locked?: boolean; w?: string }[] = [
+  { key: 'id', label: 'ID', locked: true, w: 'w-14' },
+  { key: 'title', label: '标题', locked: true },
+  { key: 'cause', label: '原因分析' },
+  { key: 'solution', label: '解决方案' },
+  { key: 'priority', label: '优先级', w: 'w-20' },
+  { key: 'status', label: '状态', locked: true, w: 'w-32' },
+  { key: 'reporter', label: '提出人', w: 'w-24' },
+  { key: 'created_at', label: '历时', w: 'w-28' },
+  { key: 'estimated_completion', label: '要求完成日期', w: 'w-28' },
+  { key: 'github_issues', label: 'GitHub Issues', w: 'w-28' },
+]
+
+// 列显隐:存「被隐藏列 key 数组」(隐藏语义,未来新增列默认可见),按账号存服务端用户设置
+// (useUserSettings),换用户登录回到各自默认。默认隐藏 GitHub Issues,使开箱状态=此前的默认显示列。
+const hiddenColumns = computed<string[]>({
+  get: () => settings.value.issues_table_hidden,
+  set: (v) => updateSettings('issues_table_hidden', v),
+})
 
 // 列表排序:点击表头三态切换(无 → 升 → 降 → 无)。数据为后端分页,排序须走后端
 // (否则只排当前页),通过 DRF OrderingFilter 的 ordering 参数实现。
@@ -1023,23 +1032,22 @@ const ordering = computed(() => {
 })
 
 const columns = computed(() => {
-  const cols = [
-    { id: 'select', header: '', cell: '' },
-    { accessorKey: 'id', header: 'ID' },
-    { accessorKey: 'title', header: '标题' },
-    { accessorKey: 'cause', header: '原因分析' },
-    { accessorKey: 'solution', header: '解决方案' },
-    { accessorKey: 'priority', header: '优先级' },
-    { accessorKey: 'status', header: '状态' },
-    { accessorKey: 'reporter', header: '提出人' },
-    { accessorKey: 'created_at', header: '历时' },
-    { accessorKey: 'estimated_completion', header: '要求完成日期' },
-  ]
-  if (showGHColumn.value) {
-    cols.push({ accessorKey: 'github_issues', header: 'GitHub Issues' })
-  }
-  return cols
+  // 行选择列恒在最前;其余按 TABLE_COLUMNS 顺序,过滤掉被隐藏的非锁定列。
+  // 固定列宽通过 meta.class 注入到表头 th + 表体 td(随列定义走,隐藏列后不会因 nth-child 偏移而错配);
+  // 弹性列(无 w)不设宽度,由 table-layout: fixed 把剩余空间分给它们(标题等)。
+  const widthClass = (w: string) => ({ class: { th: w, td: w } })
+  const rest = TABLE_COLUMNS
+    .filter(c => c.locked || !hiddenColumns.value.includes(c.key))
+    .map(c => c.w
+      ? { accessorKey: c.key, header: c.label, meta: widthClass(c.w) }
+      : { accessorKey: c.key, header: c.label })
+  return [{ id: 'select', header: '', cell: '', meta: widthClass('w-10') }, ...rest]
 })
+
+// UTable(TanStack)在生产构建下不会因 columns prop 变化而重建列模型(dev 的即时 patch 掩盖了这点),
+// 故用可见列签名作 :key 强制其在列显隐变化时整体重挂载。行选中/排序/分页/标题列宽均存于外部 ref,
+// 重挂载后会自动恢复,无副作用。
+const tableColumnsKey = computed(() => hiddenColumns.value.join(','))
 
 // 看板按列独立取数(学 GitHub Projects):每列 20 条起,滚动到底续取。
 // 列参数 = 当前筛选条件 + 该列状态;状态下拉筛了别的状态时该列置空不取数。
@@ -1286,10 +1294,7 @@ watch(viewMode, () => {
   fetchIssues()
 })
 
-watch(showCompleted, (v) => {
-  if (typeof localStorage !== 'undefined') {
-    localStorage.setItem(SHOW_COMPLETED_KEY, v ? '1' : '0')
-  }
+watch(showCompleted, () => {
   page.value = 1
   rowSelection.value = {}
   fetchIssues()
@@ -1371,8 +1376,8 @@ onMounted(async () => {
   await ensureSettings()
   setPrioritiesFromSettings(siteSettings.value?.priorities)
   setStatusesFromSettings(siteSettings.value?.issue_statuses)
-  // 恢复「只看我的/只看我提出的」按钮高亮:localStorage 跨账号共享,按当前登录用户重新判定,
-  // 避免换账号后高亮错配(实际筛选值已随 filterAssignee/filterReporter 持久化恢复)。
+  // 恢复「只看我的/只看我提出的」按钮高亮:筛选值已随用户设置持久化恢复,这里按当前登录用户
+  // 重新判定高亮(高亮态本身不入持久化)。
   if (filterAssignee.value && filterAssignee.value === String(selfUserId.value)) {
     onlyMine.value = true
   }
@@ -1561,22 +1566,17 @@ async function checkAnalyzingIssues() {
 }
 /*
  * Issues table: fixed layout so we control column widths.
- * Columns: select | ID | 标题 | 原因分析 | 解决方案 | 优先级 | 状态 | 提出人 | 历时 | 预计完成
- * Narrow cols get fixed width; 标题/原因/方案 share remaining space.
+ * 固定列宽改由各列的 meta.style 注入(见 columns computed),随列定义走而非按位置 ——
+ * 这样隐藏任意列后,后续列的宽度不会因 nth-child 序号偏移而错配。
+ * 标题列特殊:无固定宽度(弹性),默认吃满剩余空间;可拖拽,宽度经 --title-col-w 覆盖。
+ * select / ID / 标题 恒为前三列、永不隐藏,故标题仍可安全用 nth-child(3) 定位。
  */
 .issues-table :deep(table) { table-layout: fixed; width: 100%; }
-.issues-table :deep(:is(th, td):nth-child(1)) { width: 2.5%; }   /* select */
-.issues-table :deep(:is(th, td):nth-child(2)) { width: 3.5%; }   /* ID */
-/* 3: 标题 — 可拖拽调宽，默认 auto；宽度由 --title-col-w 注入 */
-.issues-table :deep(:is(th, td):nth-child(3)) { width: var(--title-col-w, auto); }
+/* 3: 标题 — 唯一弹性列,恒为 width:auto,独吞所有剩余空间,从而固定列永远只占自身像素宽
+ * (ID 等不会被撑大)。拖拽手柄经 --title-col-w 设定「最小宽度」:可把标题拉得更宽(超出则
+ * 横向滚动),默认 0 → 吃满剩余;双击复原。用 min-width 而非 width,保证标题始终是 auto 吸收者。 */
+.issues-table :deep(:is(th, td):nth-child(3)) { width: auto; min-width: var(--title-col-w, 0px); }
 .issues-table :deep(th:nth-child(3)) { position: relative; }
-/* 4: 原因分析 — auto */
-/* 5: 解决方案 — auto */
-.issues-table :deep(:is(th, td):nth-child(6)) { width: 4.5%; }   /* 优先级 */
-.issues-table :deep(:is(th, td):nth-child(7)) { width: 8%; }     /* 状态 */
-.issues-table :deep(:is(th, td):nth-child(8)) { width: 6%; }     /* 提出人 */
-.issues-table :deep(:is(th, td):nth-child(9)) { width: 7%; }    /* 历时 */
-.issues-table :deep(:is(th, td):nth-child(10)) { width: 5%; }    /* 预计完成 */
 
 /* 标题列「抓手」:右边界常驻一个双竖条握柄(始终可见、好发现),hover 时点亮主题紫
  * 并浮出柔光底,明确"可拖拽";表头/表体均不加分隔线,保持原有留白。 */

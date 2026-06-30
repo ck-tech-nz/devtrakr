@@ -141,10 +141,16 @@ export function useAiWizard() {
   let abortController: AbortController | null = null
 
   // ---------- LocalStorage 持久化 ----------
+  // 草稿是「用户内容」而非偏好设置,故仍存 localStorage,但 key 按当前账号隔离:
+  // 换用户登录后看不到、也不会覆盖别人的草稿(同一浏览器多账号互不串)。
+  const { user } = useAuth()
+  const uid = user.value?.id ?? 'anon'
+  const turnsKey = `${STORAGE_KEY}:${uid}`
+  const msgKey = `${STORAGE_MSG_KEY}:${uid}`
   // 挂载时 restore (仅在 idle 状态有效, 避免覆盖正在进行的流)
   if (typeof window !== 'undefined') {
     try {
-      const raw = localStorage.getItem(STORAGE_KEY)
+      const raw = localStorage.getItem(turnsKey)
       if (raw) {
         const parsed = JSON.parse(raw)
         if (Array.isArray(parsed)) {
@@ -166,11 +172,11 @@ export function useAiWizard() {
       }
     } catch {
       // 损坏的 JSON, 静默清除
-      try { localStorage.removeItem(STORAGE_KEY) } catch {}
+      try { localStorage.removeItem(turnsKey) } catch {}
     }
     // 同样 restore messages (用于 chat 路径下次发消息时把完整历史送给 LLM)
     try {
-      const rawMsg = localStorage.getItem(STORAGE_MSG_KEY)
+      const rawMsg = localStorage.getItem(msgKey)
       if (rawMsg) {
         const parsedMsg = JSON.parse(rawMsg)
         if (Array.isArray(parsedMsg)) {
@@ -180,7 +186,7 @@ export function useAiWizard() {
         }
       }
     } catch {
-      try { localStorage.removeItem(STORAGE_MSG_KEY) } catch {}
+      try { localStorage.removeItem(msgKey) } catch {}
     }
 
     // 任何 turns 变化都 debounced 写回 (200ms)
@@ -198,7 +204,7 @@ export function useAiWizard() {
             serialized = JSON.stringify(payload)
           }
           if (serialized.length <= STORAGE_CAP_BYTES) {
-            localStorage.setItem(STORAGE_KEY, serialized)
+            localStorage.setItem(turnsKey, serialized)
           }
         } catch {
           // 配额满 / 隐私模式 - 静默
@@ -217,7 +223,7 @@ export function useAiWizard() {
           while (payload.length && payload[0]!.role !== 'user') payload = payload.slice(1)
           const serialized = JSON.stringify(payload)
           if (serialized.length <= STORAGE_CAP_BYTES) {
-            localStorage.setItem(STORAGE_MSG_KEY, serialized)
+            localStorage.setItem(msgKey, serialized)
           }
         } catch {}
       }, 200)
@@ -237,8 +243,8 @@ export function useAiWizard() {
     abortController?.abort()
     abortController = null
     if (typeof window !== 'undefined') {
-      try { localStorage.removeItem(STORAGE_KEY) } catch {}
-      try { localStorage.removeItem(STORAGE_MSG_KEY) } catch {}
+      try { localStorage.removeItem(turnsKey) } catch {}
+      try { localStorage.removeItem(msgKey) } catch {}
     }
   }
 

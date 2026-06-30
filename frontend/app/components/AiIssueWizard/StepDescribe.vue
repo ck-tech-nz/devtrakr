@@ -220,16 +220,11 @@ const isMac = computed(() => {
 // 发送键模式: 'enter' = 直接 Enter 发送, Shift+Enter 换行 / 'modifier' = ⌘/Ctrl+Enter 发送, Enter 换行.
 // 默认 modifier (跟历史行为一致, 不会让长按 Enter 的老用户突然误发)
 type SendMode = 'enter' | 'modifier'
-const SEND_MODE_KEY = 'ai-wizard:send-mode'
-function readSendMode(): SendMode {
-  if (typeof localStorage === 'undefined') return 'modifier'
-  return localStorage.getItem(SEND_MODE_KEY) === 'enter' ? 'enter' : 'modifier'
-}
-const sendMode = ref<SendMode>(readSendMode())
-watch(sendMode, (v) => {
-  if (typeof localStorage !== 'undefined') {
-    try { localStorage.setItem(SEND_MODE_KEY, v) } catch {}
-  }
+// 发送方式按账号存服务端用户设置(useUserSettings),换用户登录回到各自默认(modifier)
+const { settings, update: updateSettings } = useUserSettings()
+const sendMode = computed<SendMode>({
+  get: () => settings.value.ai_wizard_send_mode,
+  set: (v) => updateSettings('ai_wizard_send_mode', v),
 })
 
 const sendModeTitle = computed(() =>
