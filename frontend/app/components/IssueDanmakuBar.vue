@@ -91,6 +91,7 @@ function removeBullet(laneIndex: number, id: number) {
 function now() { return Date.now() }
 
 function spawn() {
+  if (reduced.value) return  // 减少动态模式下由 watch(queue) 负责静态收纳,调度器不出队
   if (paused.value) return
   if (typeof document !== 'undefined' && document.hidden) return
   if (!queue.value.length) return
@@ -118,26 +119,35 @@ watch(queue, (q) => {
   queue.value = []
 }, { deep: true })
 
+function onReducedChange(ev: MediaQueryListEvent) {
+  reduced.value = ev.matches
+}
+// 断点变化时按最新轨道数重排 laneModel(保留已有弹幕),避免渲染轨道数与 lanes.value 脱节
+function onMobileChange() {
+  lanes.value = mobileMql!.matches ? 1 : 3
+  laneModel.value = Array.from({ length: lanes.value }, (_, i) => laneModel.value[i] || [])
+}
+
 onMounted(() => {
   if (typeof window !== 'undefined' && window.matchMedia) {
     mql = window.matchMedia('(prefers-reduced-motion: reduce)')
     reduced.value = mql.matches
-    mql.addEventListener('change', ev => { reduced.value = ev.matches })
+    mql.addEventListener('change', onReducedChange)
 
     mobileMql = window.matchMedia('(max-width: 767px)')
-    const applyLanes = () => {
-      lanes.value = mobileMql!.matches ? 1 : 3
-      if (!laneModel.value.length) laneModel.value = Array.from({ length: lanes.value }, () => [])
-    }
-    applyLanes()
-    mobileMql.addEventListener('change', applyLanes)
+    onMobileChange()  // 挂载即按当前断点确定轨道数并初始化 laneModel
+    mobileMql.addEventListener('change', onMobileChange)
+  } else {
+    // 无 matchMedia(SSR/降级)时按默认轨道数初始化
+    laneModel.value = Array.from({ length: lanes.value }, (_, i) => laneModel.value[i] || [])
   }
-  laneModel.value = Array.from({ length: lanes.value }, () => [])
   timer = setInterval(spawn, TICK_MS)
 })
 
 onUnmounted(() => {
   if (timer) clearInterval(timer)
+  mql?.removeEventListener('change', onReducedChange)
+  mobileMql?.removeEventListener('change', onMobileChange)
 })
 </script>
 
