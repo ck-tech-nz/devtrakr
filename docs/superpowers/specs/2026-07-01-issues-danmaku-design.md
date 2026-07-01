@@ -285,6 +285,11 @@ Per-project visibility scoping; bullet reactions/emoji; user-authored danmaku
 sound; in-UI density/speed controls (kept as tunable constants); reopen/other
 status-change event types.
 
+Known limitation (deferred): uptime auto-recovery (`apps/uptime/services.py`) sets
+`resolved_at` explicitly before save, so the `save()` stamping branch is skipped and
+no 完成 danmaku fires for monitor auto-resolves; the invariant is still satisfied. A
+clean follow-up would let `save()` own the stamping there.
+
 ## 8. File touch-list
 
 **Backend (new):** `apps/issues/services_danmaku.py`

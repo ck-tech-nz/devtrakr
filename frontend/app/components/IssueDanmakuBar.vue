@@ -61,7 +61,7 @@ const DURATION = 14          // 单条滚过时长(s),恒定速度感
 const MIN_GAP_MS = 3500      // 同轨两条最小间隔,避免重叠
 const TICK_MS = 400          // 调度间隔
 
-const { queue, disable } = useIssueDanmaku()
+const { queue } = useIssueDanmaku()
 const { update } = useUserSettings()
 
 const reduced = ref(false)
