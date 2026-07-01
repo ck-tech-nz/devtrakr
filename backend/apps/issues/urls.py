@@ -11,6 +11,7 @@ from .views import (
     IssueCommentsView, IssueCommentDetailView,
     IssuePullRequestsView,
     ChatConversationsView, ChatUnreadTotalView, ChatMarkReadView,
+    DanmakuRecentView,
 )
 
 urlpatterns = [
@@ -29,6 +30,7 @@ urlpatterns = [
         ChatMarkReadView.as_view(),
         name="chat-mark-read",
     ),
+    path("danmaku/recent/", DanmakuRecentView.as_view(), name="issue-danmaku-recent"),
     path("<int:pk>/", IssueDetailView.as_view(), name="issue-detail"),
     path("<int:pk>/pull-requests/", IssuePullRequestsView.as_view(), name="issue-pull-requests"),
     path("<int:pk>/attachments/", IssueAttachmentsView.as_view(), name="issue-attachments"),

@@ -22,7 +22,8 @@ from apps.ai.models import Analysis
 from apps.ai.services import IssueAnalysisService
 from apps.repos.services import GitHubSyncService
 from apps.repos.serializers import GitHubIssueBriefSerializer
-from .models import Issue, IssueStatus, Activity, IssueComment, IssueChatParticipant
+from .models import Issue, IssueStatus, Activity, IssueComment, IssueChatParticipant, TERMINAL_STATUSES
+from .services_danmaku import build_payload
 from .serializers import (
     IssueListSerializer, IssueDetailSerializer,
     IssueCreateUpdateSerializer, BatchUpdateSerializer,
@@ -37,6 +38,9 @@ from .services import claim_issue, confirm_issue, transfer_issue, assign_issue, 
 from .services_chat import broadcast_comment
 
 User = get_user_model()
+
+DANMAKU_WINDOW = timedelta(hours=2)  # 回放时间窗(可调)
+DANMAKU_MAX = 50                     # 回放条数上限(可调)
 
 
 class AiWizardThrottle(UserRateThrottle):
@@ -315,6 +319,23 @@ class DashboardRecentActivityView(APIView):
     def get(self, request):
         activities = Activity.objects.select_related("user", "issue")[:20]
         return Response(ActivitySerializer(activities, many=True).data)
+
+
+class DanmakuRecentView(APIView):
+    """动态弹幕回放:最近 DANMAKU_WINDOW 内的新建 + 完成事件,倒序,上限 DANMAKU_MAX。"""
+    permission_classes = [IsAuthenticated, FullDjangoModelPermissions]
+    queryset = Issue.objects.all()  # 供 FullDjangoModelPermissions 推导 view_issue
+
+    def get(self, request):
+        cutoff = timezone.now() - DANMAKU_WINDOW
+        created = Issue.objects.filter(created_at__gte=cutoff)
+        completed = Issue.objects.filter(
+            status__in=TERMINAL_STATUSES, resolved_at__gte=cutoff
+        )
+        events = [build_payload(i, "created") for i in created]
+        events += [build_payload(i, "completed") for i in completed]
+        events.sort(key=lambda e: e["occurred_at"], reverse=True)
+        return Response(events[:DANMAKU_MAX])
 
 
 logger = logging.getLogger(__name__)
