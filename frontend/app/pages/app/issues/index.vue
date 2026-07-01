@@ -2,6 +2,7 @@
   <!-- 看板模式定高(学 GitHub Projects):页面不滚动,列内独立滚动;手机端改为单列竖排,整页滚动 -->
   <div :class="viewMode === 'kanban' && !isMobile ? 'h-full min-h-0 flex flex-col gap-6' : 'space-y-6'">
     <MyPendingTasks />
+    <IssueDanmakuBar v-if="settings.danmaku_enabled" />
     <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-end">
       <!-- 工具栏控件整体居右 -->
       <div class="flex items-center justify-between md:justify-end gap-2 md:gap-3">
@@ -88,6 +89,15 @@
         </div>
 
         <!-- 始终可见:视图切换 / 刷新 / 新建 -->
+        <UButton
+          :icon="settings.danmaku_enabled ? 'i-heroicons-bolt-solid' : 'i-heroicons-bolt'"
+          size="sm"
+          variant="ghost"
+          :color="settings.danmaku_enabled ? 'primary' : 'neutral'"
+          :aria-label="settings.danmaku_enabled ? '关闭动态弹幕' : '开启动态弹幕'"
+          :title="settings.danmaku_enabled ? '关闭动态弹幕' : '开启动态弹幕'"
+          @click="updateSettings('danmaku_enabled', !settings.danmaku_enabled)"
+        />
         <div class="flex items-center bg-gray-100 dark:bg-gray-800 rounded-lg p-0.5">
           <button
             class="px-3 py-1 text-sm font-medium rounded-md transition-colors"
@@ -629,6 +639,12 @@ function filterByPriority(issue: any) {
   filterPriorityTag.value = { value: issue.priority, label: priorityLabel(issue.priority) }
 }
 const { settings, update: updateSettings } = useUserSettings()
+// 动态弹幕:开关变化时驱动数据源连接/断开;页面卸载时断开
+const danmaku = useIssueDanmaku()
+watch(() => settings.value.danmaku_enabled, (on) => {
+  if (on) danmaku.enable()
+  else danmaku.disable()
+}, { immediate: true })
 const route = useRoute()
 const toast = useToast()
 
@@ -1367,6 +1383,7 @@ watch(searchQuery, () => {
 
 onUnmounted(() => {
   if (searchDebounce) clearTimeout(searchDebounce)
+  danmaku.disable()
 })
 
 onMounted(async () => {
