@@ -463,9 +463,6 @@ class IssueCreateUpdateSerializer(serializers.ModelSerializer):
                 user=user, issue=issue, action=action,
                 detail=f"状态从 {old_status} 改为 {new_status}",
             )
-            if new_status in ("已解决", "已发布", "已关闭") and not issue.resolved_at:
-                issue.resolved_at = timezone.now()
-                issue.save(update_fields=["resolved_at"])
             # 首次进入完成状态时锁定结算 (已结算的不再重算 → 重修不会双倍计价)
             if new_status in ("已解决", "已发布", "已关闭") and not issue.settlement:
                 from apps.kpi.settlement import settle_issue

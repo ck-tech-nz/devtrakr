@@ -160,7 +160,7 @@ class TestIssueDetail:
     def test_resolution_hours_computed(self, auth_client, site_settings):
         from django.utils import timezone
         from datetime import timedelta
-        issue = IssueFactory()
+        issue = IssueFactory(status="已解决")
         issue.resolved_at = issue.created_at + timedelta(hours=5)
         issue.save()
         response = auth_client.get(f"/api/issues/{issue.id}/")

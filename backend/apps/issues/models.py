@@ -1,5 +1,6 @@
 from django.conf import settings
 from django.db import models
+from django.utils import timezone
 from simple_history.models import HistoricalRecords
 
 
@@ -29,6 +30,14 @@ SYSTEM_ASSIGNED_STATUSES = (
     IssueStatus.IN_PROGRESS.value,           # claim / confirm 目标
     IssueStatus.RESOLVED.value,              # uptime fire_recovery 监控恢复自动置为已解决
     IssueStatus.CLOSED.value,                # IssueCloseWithGitHubView 关闭动作
+)
+
+# 终态集合:进入其一即视为「完成」。区别于 services.CLOSED_STATUSES(仅关闭/发布,
+# 用于查重),此处含「已解决」,供 resolved_at 不变式与动态弹幕使用。
+TERMINAL_STATUSES = (
+    IssueStatus.RESOLVED.value,
+    IssueStatus.PUBLISHED.value,
+    IssueStatus.CLOSED.value,
 )
 
 
@@ -141,6 +150,23 @@ class Issue(models.Model):
 
     def __str__(self):
         return f"#{self.pk} {self.title}"
+
+    def save(self, *args, update_fields=None, **kwargs):
+        # resolved_at 不变式:非空 ⟺ 当前处于终态。仅靠 (状态, resolved_at) 推导,
+        # 无需记录旧状态。override 而非 pre_save 信号:关闭端点用 update_fields=["status"]
+        # 部分保存,信号改字段不在 update_fields 中会被静默丢弃,这里可补入。
+        is_terminal = self.status in TERMINAL_STATUSES
+        self._danmaku_completed = False
+        if is_terminal and self.resolved_at is None:
+            self.resolved_at = timezone.now()
+            self._danmaku_completed = True  # 供 post_save 广播「完成」
+            if update_fields is not None:
+                update_fields = set(update_fields) | {"resolved_at"}
+        elif not is_terminal and self.resolved_at is not None:
+            self.resolved_at = None  # 重开:清空,不广播
+            if update_fields is not None:
+                update_fields = set(update_fields) | {"resolved_at"}
+        super().save(*args, update_fields=update_fields, **kwargs)
 
 
 class Activity(models.Model):
