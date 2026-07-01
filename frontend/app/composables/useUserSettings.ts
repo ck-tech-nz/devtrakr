@@ -35,6 +35,8 @@ interface UserSettings {
   ai_wizard_send_mode: 'enter' | 'modifier'
   // 系统公告(站点告警)已忽略的签名
   system_alert_dismissed: string
+  // 问题动态弹幕开关(Issues 页顶部滚动活动流),默认关闭
+  danmaku_enabled: boolean
 }
 
 const defaults: UserSettings = {
@@ -55,6 +57,7 @@ const defaults: UserSettings = {
   pending_tasks_collapsed: false,
   ai_wizard_send_mode: 'modifier',
   system_alert_dismissed: '',
+  danmaku_enabled: false,
 }
 
 export function useUserSettings() {
