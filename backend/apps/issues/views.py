@@ -203,7 +203,11 @@ class BatchUpdateView(APIView):
         elif data["action"] == "set_priority":
             issues.update(priority=data["value"])
         elif data["action"] == "set_status":
-            issues.update(status=data["value"])
+            # 逐条 save() 而非 QuerySet.update():触发 Issue.save() 的 resolved_at
+            # 不变式(进入终态盖戳/离开终态清空)与「完成」弹幕广播。批量选择规模小,可接受。
+            for issue in issues:
+                issue.status = data["value"]
+                issue.save(update_fields=["status"])
         elif data["action"] == "delete":
             issues.update(is_deleted=True, deleted_at=timezone.now())
 
@@ -328,10 +332,12 @@ class DanmakuRecentView(APIView):
 
     def get(self, request):
         cutoff = timezone.now() - DANMAKU_WINDOW
-        created = Issue.objects.filter(created_at__gte=cutoff)
+        created = Issue.objects.filter(created_at__gte=cutoff).select_related(
+            "created_by", "assignee", "updated_by"
+        )
         completed = Issue.objects.filter(
             status__in=TERMINAL_STATUSES, resolved_at__gte=cutoff
-        )
+        ).select_related("created_by", "assignee", "updated_by")
         events = [build_payload(i, "created") for i in created]
         events += [build_payload(i, "completed") for i in completed]
         events.sort(key=lambda e: e["occurred_at"], reverse=True)
